@@ -1,0 +1,237 @@
+# Feature Flags — Knowledge OS Migration
+
+**RFC-100 Release 0.1+** (updated Release 0.4 — Epistemic Memory shadow flag)  
+**Owner:** Platform / migration lead  
+**Principle:** Default **OFF** until parity proven; remove or default ON at Release 1.0.
+
+This registry tracks migration flags only. Existing Settings toggles (reranking, caches, tracing, etc.) are unchanged and documented in the dashboard Settings UI.
+
+---
+
+## Naming convention
+
+```
+knowledge_os_<subsystem>_<behavior>_enabled   # env: KNOWLEDGE_OS_<SUBSYSTEM>_<BEHAVIOR>_ENABLED
+enable_<feature>_v2                           # Settings column (diagnostics, cache)
+allow_legacy_<surface>                        # deprecation gates
+```
+
+---
+
+## Active flags (implemented)
+
+| Flag | Surface | Default | Purpose | Activate when | Rollback | Remove |
+|------|---------|---------|---------|---------------|----------|--------|
+| `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **false** | Route `/api/chat` (stream + non-stream) through `ExecutiveService` instead of direct `RagService` | Staging golden shadow green; ops sign-off | Set env `false` or unset; restart | Release 1.0 |
+| `enable_semantic_diagnostics_v2` | Settings DB column | **false** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Staging diagnostics validation; Step 015 dashboard | Set Settings `false`; restart not required | Release 1.0 |
+| `cache_namespace_v2_enabled` | Settings DB column | **false** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Staging cache invalidation validation; after Step 022 manual bump tested | Set Settings `false`; restart not required | Release 0.5 |
+| `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
+
+### `enable_semantic_diagnostics_v2`
+
+**Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/chat_response_builder.py` → `app/api/chat.py`
+
+**Behavior when OFF (default):**
+
+- `ChatResponse.understanding_trace` remains `null` (unchanged from Release 0.1)
+- Explicit `understanding_trace` in stream payloads is preserved (forward compat)
+
+**Behavior when ON + client `debug=true` + `enable_chat_debug_payload=true`:**
+
+- Response includes empty `understanding_trace` stub (`version: "stub"`, `populated: false`)
+- Persisted session diagnostics JSON includes the same stub
+
+**Behavior when ON + debug disabled:**
+
+- No `understanding_trace` stub added
+
+**Verification:**
+
+```bash
+cd backend
+.venv/bin/pytest tests/test_semantic_diagnostics_schema.py tests/test_golden_chat_parity.py -v -m unit
+```
+
+---
+
+### `knowledge_os_executive_enabled`
+
+**Code:** `app/core/config.py` → `app/services/feature_flags.py` → `app/api/chat.py`
+
+**Behavior when OFF (default):**
+
+- `_dispatch_non_stream_answer()` → `RagService.answer()`
+- `_dispatch_stream_events()` → `RagStreamingService.iter_events()`
+- Structured logs: `path=legacy`
+
+**Behavior when ON:**
+
+- Both paths delegate to `ExecutiveService` (passthrough to same RAG stack in 0.1)
+- Structured logs: `path=executive`
+
+**User-visible impact (0.1):** None — Executive is passthrough; parity tests require identical responses.
+
+**Verification:**
+
+```bash
+cd backend
+.venv/bin/pytest tests/test_chat_executive_routing.py tests/test_chat_stream_executive_routing.py \
+  tests/test_executive_service.py tests/test_golden_chat_parity.py -v -m unit
+```
+
+---
+
+### `cache_namespace_v2_enabled`
+
+**Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/cache_namespace_service.py` → `RagService` / `RagStreamingService`
+
+**Behavior when OFF (default):**
+
+- Cache namespace dict is **identical** to pre-0.3 behavior
+- `memory_version` on the settings row is **ignored** for cache keys
+- Existing retrieval and answer cache entries remain valid
+
+**Behavior when ON:**
+
+- `build_retrieval_namespace(..., db=session)` adds `memory_version` from **`MemoryVersionService.get()`**
+- Bumping `memory_version` (manual Step 022 API or Step 031 auto-bump on new shadow rows) produces a new namespace hash → cache miss on next lookup
+- `knowledge_version` / `index_version` behavior unchanged
+
+**Does not:**
+
+- Auto-bump `memory_version`
+- Change cache storage schema or TTL logic
+- Change chat, retrieval, or Executive paths
+
+**Verification:**
+
+```bash
+cd backend
+.venv/bin/pytest tests/test_cache_namespace_v2.py tests/test_caching.py tests/test_cache_safety.py -m unit -v
+```
+
+**Deploy:** requires migration `0013_cache_namespace_v2_enabled` (`alembic upgrade head`).
+
+---
+
+### `memory_shadow_write_enabled`
+
+**Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `EpistemicMemoryIntegrationService` → SI generation / inline indexing hooks
+
+**Behavior when OFF (default):**
+
+- Zero epistemic writes, zero `memory_version` bumps from shadow path
+- Production runtime unchanged
+
+**Behavior when ON:**
+
+- After SI generation: `ClaimExtractionFromSI` → idempotent persist via `EpistemicMemoryService`
+- `MemoryVersionService.bump(commit=False)` **only** when at least one new observation, claim, or evidence link is created (Step 031)
+- Bump commits with the caller transaction (SI batch / indexing save)
+
+**Does not:**
+
+- Use Epistemic Memory for chat, retrieval, or reasoning
+- Change `knowledge_version`
+- Invalidate caches unless `cache_namespace_v2_enabled=true` (memory bump then changes namespace hash)
+
+**Why auto-bump matters:** epistemic state can change without reindexing. Before memory-assisted evidence (Release 0.7+), consumers need a revision signal; with cache namespace v2 ON, bumps invalidate stale cached answers.
+
+**Verification:**
+
+```bash
+cd backend
+.venv/bin/pytest \
+  tests/test_epistemic_memory_shadow_write.py \
+  tests/test_epistemic_shadow_memory_version_bump.py \
+  tests/test_epistemic_memory_roundtrip.py \
+  tests/test_claim_extraction_from_si.py \
+  -m unit -v
+```
+
+**Release 0.4:** Implemented (Steps 027–033). Default OFF — zero production behavior change until explicitly enabled in staging.
+
+**Deploy:** requires migrations `0014_epistemic_memory_tables` and `0015_memory_shadow_write_enabled` (`alembic upgrade head`).
+
+See [RELEASE-0.4-ACCEPTANCE-REPORT.md](releases/RELEASE-0.4-ACCEPTANCE-REPORT.md) and [0.4-rollback.md](releases/0.4-rollback.md).
+
+---
+
+## Planned flags (not implemented yet)
+
+Do **not** enable until the release step that introduces them.
+
+| Flag | Release | Purpose |
+|------|---------|---------|
+| `claim_extraction_enabled` | 0.4 | SI → claim proposals (optional gate; extraction runs inside shadow hook today) |
+| `tension_surfacing_enabled` | 0.5 | Admin tension API + dashboard panel |
+| `reasoning_service_enabled` | 0.6 | ReasoningService on chat hot path |
+| `evidence_assembly_enabled` | 0.6 | Wrap `DocumentFirstRetrievalPipeline` in EvidenceAssemblyService |
+| `memory_canonical_shadow_enabled` | 0.7 | Compare memory vs legacy canonical picks in diagnostics |
+| `memory_evidence_assist_enabled` | 0.7 | Memory-assisted evidence routing |
+| `maintenance_execution_enabled` | 0.9 | Budgeted active maintenance investigations |
+| `allow_legacy_kp_presets` | 0.8 → 1.0 | Industry preset API (default true until 0.8) |
+
+---
+
+## Kill-switch procedure
+
+Use when Executive path causes regression in staging or production.
+
+1. **Disable flag:** set `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` (or unset) and restart backend pods/processes.
+2. **Clear caches** (optional but recommended after routing change):
+   - Admin → clear retrieval cache / semantic answer cache, or run maintenance script if available.
+3. **Verify:** run golden smoke (see below).
+4. **Observe:** confirm logs show `path=legacy` on new chat requests.
+5. **Post-mortem** within 24h if production was affected.
+
+There is no separate emergency env in 0.1; disabling `KNOWLEDGE_OS_EXECUTIVE_ENABLED` is sufficient.
+
+---
+
+## Golden smoke verification
+
+**CI (required on every PR touching chat/RAG):**
+
+```bash
+cd backend
+.venv/bin/pytest tests/test_golden_chat_parity.py tests/test_golden_queries_schema.py -v -m unit
+```
+
+**Staging shadow (required before enabling flag in staging/prod):**
+
+1. Deploy with flag **OFF**; confirm golden unit suite green on build.
+2. Enable `KNOWLEDGE_OS_EXECUTIVE_ENABLED=true` on staging only.
+3. Re-run golden smoke; compare `path=executive` logs and response invariants.
+4. Optional HTTP integration: `POSTGRES_TEST_URL=... GOLDEN_CHAT_LIVE=1 pytest tests/test_golden_chat_parity.py -m integration`
+
+See `docs/releases/0.1-rollback.md` for full deploy/rollback steps.
+
+---
+
+## Flag lifecycle
+
+| Phase | Action |
+|-------|--------|
+| Introduce | Default OFF; document here; add guard/parity tests |
+| Staging | Enable; golden + shadow validation |
+| Production | Gradual enable or hold OFF until next release gate |
+| Default ON | Release 1.0 for core migration flags |
+| Remove | Delete flag + dead branch after 2 releases at default ON |
+
+---
+
+## Cross-references
+
+| Document | Role |
+|----------|------|
+| `RFC-100-PRODUCTION-MIGRATION-STRATEGY.md` | Migration sequence |
+| `docs/releases/0.1-rollback.md` | Release 0.1 deploy & rollback |
+| `docs/releases/0.2-rollback.md` | Release 0.2 deploy & rollback |
+| `docs/releases/RELEASE-0.1-ACCEPTANCE-REPORT.md` | Release 0.1 baseline & decision |
+| `docs/releases/RELEASE-0.2-ACCEPTANCE-REPORT.md` | Release 0.2 baseline & decision |
+| `docs/releases/RELEASE-0.3-ACCEPTANCE-REPORT.md` | Release 0.3 baseline & Epistemic Memory readiness |
+| `docs/releases/0.3-rollback.md` | Release 0.3 deploy & rollback |
+| `docs/DEPLOYMENT.md` | Staging pipeline, smoke tests, release gates |
+| `docs/releases/RELEASE-CHECKLIST.md` | Pre-production checklist |
+| `backend/tests/golden/README.md` | Golden query suite |

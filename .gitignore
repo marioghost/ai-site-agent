@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Legacy SQLite files (no longer used at runtime; kept ignored so a leftover
+# app.db from an old install is never committed)
+*.db
+*.db-*
+*.db.backup.*
+*.sqlite3
+*.sqlite3-*
+
+# Env
+.env
+deploy/deploy.local.conf
+
+# Deploy artifacts / logs (production paths may differ)
+logs/
+backups/
+.build-info.json
+
+# Node / dashboard
+node_modules/
+dashboard/dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

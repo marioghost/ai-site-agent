@@ -1,0 +1,115 @@
+/* Design system foundations — typography, grid, icon alignment */
+
+/* ── Typography scale ────────────────────────────────────────── */
+
+.ds-display {
+  margin: 0;
+  font: var(--ds-text-display);
+  letter-spacing: -0.035em;
+  color: var(--ds-text);
+}
+
+.ds-page-title {
+  margin: 0;
+  font: var(--ds-text-page-title);
+  letter-spacing: -0.03em;
+  color: var(--ds-text);
+}
+
+.ds-section-title {
+  margin: 0;
+  font: var(--ds-text-section-title);
+  letter-spacing: -0.02em;
+  color: var(--ds-text);
+}
+
+.ds-card-title {
+  margin: 0;
+  font: var(--ds-text-card-title);
+  letter-spacing: -0.015em;
+  color: var(--ds-text);
+}
+
+.ds-body {
+  margin: 0;
+  font: var(--ds-text-body);
+  color: var(--ds-text);
+}
+
+.ds-body-lg {
+  margin: 0;
+  font: var(--ds-text-body-lg);
+  color: var(--ds-text);
+}
+
+.ds-caption {
+  margin: 0;
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+}
+
+.ds-tiny {
+  margin: 0;
+  font: var(--ds-text-tiny);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+
+.ds-label {
+  margin: 0;
+  font: var(--ds-text-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+
+/* Legacy aliases */
+.ds-h1 { font: var(--ds-text-page-title); letter-spacing: -0.03em; margin: 0; color: var(--ds-text); }
+.ds-h2 { font: var(--ds-text-section-title); letter-spacing: -0.02em; margin: 0; color: var(--ds-text); }
+.ds-h3 { font: var(--ds-text-card-title); letter-spacing: -0.015em; margin: 0; color: var(--ds-text); }
+.ds-body1 { font: var(--ds-text-body-lg); margin: 0; color: var(--ds-text); }
+.ds-body2 { font: var(--ds-text-body); margin: 0; color: var(--ds-text-secondary); }
+
+/* ── Grid & rhythm ───────────────────────────────────────────── */
+
+.ds-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-page-gap);
+}
+
+.ds-stack-sm {
+  gap: var(--ds-space-4);
+}
+
+.ds-stack-lg {
+  gap: var(--ds-space-10);
+}
+
+/* ── Icon alignment ──────────────────────────────────────────── */
+
+.ds-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--ds-icon-md);
+  height: var(--ds-icon-md);
+}
+
+.ds-icon--sm {
+  width: var(--ds-icon-sm);
+  height: var(--ds-icon-sm);
+}
+
+.ds-icon--lg {
+  width: var(--ds-icon-lg);
+  height: var(--ds-icon-lg);
+}
+
+.ds-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: var(--ds-icon-stroke);
+}

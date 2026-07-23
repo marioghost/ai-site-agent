@@ -1,0 +1,45 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@import "./tokens.css";
+@import "./foundations.css";
+@import "./components.css";
+@import "./chat.css";
+@import "./charts.css";
+@import "./llm-runtime.css";
+@import "./ollama-models.css";
+@import "./responsive.css";
+
+/* Base document styles (design system) */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ds-font);
+  font: var(--ds-text-body2);
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body:has(.ds-shell) {
+  overflow: hidden;
+}
+
+a {
+  color: var(--ds-color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

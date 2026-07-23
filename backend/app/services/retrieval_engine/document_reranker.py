@@ -1,0 +1,197 @@
+"""Document-level reranking with semantic diversity and human explanations."""
+from __future__ import annotations
+
+from app.models.source import Source
+from app.services.retrieval_engine.explanation_builder import ExplanationBuilder
+from app.services.retrieval_engine.query_understanding import QueryUnderstanding
+from app.services.retrieval_engine.semantic_compatibility import SemanticCompatibilityResult
+from app.services.retrieval_engine.types import RankedDocument
+from app.services.source_intelligence_service import SourceIntelligenceService, SourceProfile
+
+
+class DocumentReranker:
+    """Select top documents and explain why others were rejected."""
+
+    def rerank(
+        self,
+        documents: list[RankedDocument],
+        *,
+        limit: int,
+        minimum_score: float,
+        understanding: QueryUnderstanding,
+        sources: dict[int, Source] | None = None,
+    ) -> tuple[list[RankedDocument], list[RankedDocument]]:
+        if not documents:
+            return [], []
+
+        scored = sorted(documents, key=lambda d: d.score.final_score, reverse=True)
+        is_broad = understanding.expected_answer_type == "overview" or understanding.ambiguity >= 0.6
+
+        selected: list[RankedDocument] = []
+        rejected: list[RankedDocument] = []
+        seen_purposes: set[str] = set()
+        seen_topics: set[str] = set()
+
+        for doc in scored:
+            compat = self._compat_from_doc(doc)
+            profile = self._profile_for(doc, sources)
+
+            if doc.score.final_score < minimum_score:
+                doc.selected = False
+                reason = (
+                    f"below minimum score ({doc.score.final_score:.3f} < {minimum_score:.3f})"
+                )
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=reason,
+                )
+                rejected.append(doc)
+                continue
+
+            purpose = self._semantic_purpose(doc, profile)
+            topic_key = (profile.topics[0] if profile and profile.topics else doc.title or "").lower()
+
+            if is_broad and len(selected) >= limit:
+                reason = "overview diversity limit reached"
+                doc.selected = False
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=reason,
+                )
+                rejected.append(doc)
+                continue
+
+            if (
+                is_broad
+                and purpose
+                and purpose in seen_purposes
+                and not (profile and profile.canonical)
+                and len(selected) >= max(1, limit // 2)
+            ):
+                reason = f"duplicate semantic purpose ({purpose})"
+                doc.selected = False
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=reason,
+                )
+                rejected.append(doc)
+                continue
+
+            if (
+                is_broad
+                and topic_key
+                and topic_key in seen_topics
+                and not (profile and profile.canonical)
+            ):
+                reason = f"duplicate topic coverage ({topic_key[:48]})"
+                doc.selected = False
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=reason,
+                )
+                rejected.append(doc)
+                continue
+
+            if len(selected) >= limit:
+                reason = "lower score than selected documents"
+                doc.selected = False
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=reason,
+                )
+                rejected.append(doc)
+                continue
+
+            doc.selected = True
+            doc.why_selected = doc.ranking_reason or ExplanationBuilder.why_selected(
+                doc,
+                understanding=understanding,
+                compatibility=compat,
+                profile=profile,
+            )
+            doc.why_rejected = ""
+            selected.append(doc)
+            if purpose:
+                seen_purposes.add(purpose)
+            if topic_key:
+                seen_topics.add(topic_key)
+
+        for doc in rejected:
+            if not doc.why_rejected:
+                compat = self._compat_from_doc(doc)
+                profile = self._profile_for(doc, sources)
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code="not in top document limit",
+                )
+
+        return selected, rejected
+
+    @staticmethod
+    def _compat_from_doc(doc: RankedDocument) -> SemanticCompatibilityResult:
+        breakdown = doc.score_breakdown or {}
+        return SemanticCompatibilityResult(
+            compatibility_score=doc.score.compatibility_score,
+            evidence_score=doc.score.evidence_score,
+            intent_match_score=doc.score.intent_boost,
+            topic_match_score=doc.score.topic_match_score,
+            source_quality_score=doc.score.quality_boost,
+            answerability_score=doc.score.answerability_score,
+            confidence_score=doc.score.confidence,
+            si_incomplete=bool(breakdown.get("si_incomplete")),
+            si_warning=str(breakdown.get("si_warning") or ""),
+            signals=list(breakdown.get("signals") or []),
+        )
+
+    @staticmethod
+    def _profile_for(doc: RankedDocument, sources: dict[int, Source] | None) -> SourceProfile | None:
+        if not sources:
+            return None
+        source = sources.get(doc.source_id)
+        if source is None:
+            return None
+        profile = SourceIntelligenceService.profile_from_source(source)
+        if profile is None:
+            profile = SourceIntelligenceService.build_profile(source)
+        return profile
+
+    @staticmethod
+    def _semantic_purpose(doc: RankedDocument, profile: SourceProfile | None) -> str:
+        semantic = SourceIntelligenceService.semantic_from_profile(profile) if profile else None
+        if semantic and semantic.document_purpose:
+            return semantic.document_purpose
+        return doc.document_type or "unknown"
+
+    @staticmethod
+    def apply_to_representative_chunks(selected: list[RankedDocument]) -> list:
+        """Return one SearchHit per selected document with full diagnostics."""
+        hits = []
+        for doc in selected:
+            hit = doc.representative_chunk
+            hit.final_score = doc.score.final_score
+            hit.score = doc.score.final_score
+            hit.metadata_boost = doc.score.metadata_boost
+            hit.intent_boost = doc.score.intent_boost
+            hit.selection_reason = doc.why_selected or doc.ranking_reason
+            hit.rejection_reason = ""
+            hit.score_breakdown = doc.score_breakdown
+            hits.append(hit)
+        return hits

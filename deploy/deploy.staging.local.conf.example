@@ -1,0 +1,27 @@
+# Staging server overrides — copy to deploy/deploy.staging.local.conf
+#
+# Used by: make deploy-staging  (scripts/release/deploy-staging.sh)
+#
+# Typical setup:
+#   1. Install stack on staging VPS: PostgreSQL, Qdrant, Ollama, nginx
+#   2. sudo bash deploy/manage_deploy.sh --action install-postgres
+#   3. sudo bash deploy/manage_deploy.sh --action setup-postgres-db
+#   4. Copy this file → deploy/deploy.staging.local.conf and adjust paths
+#   5. Copy .env.staging.example → /opt/ai-site-agent-staging/.env
+#   6. From dev checkout: make deploy-staging
+
+PROJECT_ROOT="/opt/ai-site-agent-staging"
+BACKUP_DIR="/opt/ai-site-agent-staging/backups"
+LOG_DIR="/opt/ai-site-agent-staging/logs"
+ENV_FILE="/opt/ai-site-agent-staging/.env"
+APP_USER="www-data"
+HEALTHCHECK_URL="http://127.0.0.1:8000/api/health"
+
+# Deploy from dev checkout via rsync (not git pull on staging tree)
+GIT_PULL_DEFAULT=no
+
+# Optional: separate systemd unit for staging backend
+# BACKEND_SERVICE_NAME="ai-agent-backend-staging"
+
+# If npm is only available for your user (nvm):
+# NPM_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/npm"

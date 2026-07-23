@@ -1,0 +1,32 @@
+# Per-server overrides — copy to deploy/deploy.local.conf on the production host.
+#
+# Typical SSH session:
+#   ssh user@your-server
+#   cd /opt/ai-site-agent
+#   sudo bash deploy/manage_deploy.sh
+#
+# Uncomment and adjust:
+
+PROJECT_ROOT="/opt/ai-site-agent"
+BACKUP_DIR="/opt/ai-site-agent/backups"
+LOG_DIR="/opt/ai-site-agent/logs"
+APP_USER="www-data"
+HEALTHCHECK_URL="http://127.0.0.1:8000/api/health"
+
+# If you deploy without git on the server (rsync/staging from dev machine):
+# GIT_PULL_DEFAULT=no
+# USE_STAGING=yes
+# STAGING_DIR=/tmp/ai-site-agent-deploy
+
+# Optional future services (leave empty to skip in start/stop/status):
+# SCHEDULER_SERVICE_NAME=""
+# WORKER_SERVICE_NAME=""
+
+# Disable managing a dependency if another tool owns it:
+# MANAGE_OLLAMA=false
+# MANAGE_QDRANT=false
+# MANAGE_NGINX=false
+
+# If `sudo bash deploy/manage_deploy.sh` warns "npm not found" but npm works for your user
+# (typical with nvm), either install Node system-wide or set:
+# NPM_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/npm"

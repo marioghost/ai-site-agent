@@ -1,0 +1,17 @@
+[Unit]
+Description=Qdrant vector database (local, non-Docker)
+After=network.target
+
+[Service]
+Type=simple
+# Create a dedicated user if you prefer:  sudo useradd -r -s /bin/false qdrant
+User=qdrant
+Group=qdrant
+WorkingDirectory=/opt/qdrant
+ExecStart=/opt/qdrant/qdrant --config-path /opt/qdrant/config.yaml
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

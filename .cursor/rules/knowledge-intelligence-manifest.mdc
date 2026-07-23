@@ -1,0 +1,82 @@
+---
+description: Permanent engineering principles — Autonomous Knowledge Intelligence Engine (not RAG-with-knobs)
+alwaysApply: true
+---
+
+# Knowledge Intelligence Manifest (always applies)
+
+Full vision: `docs/KNOWLEDGE_INTELLIGENCE_ENGINE.md`  
+Engineering principles: `docs/ENGINEERING_PRINCIPLES.md`  
+Cognitive architecture: `docs/COGNITIVE_ARCHITECTURE.md` (foundational — supersedes software-first framing)  
+Active acquisition: `docs/RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md`  
+Engineering architecture v1: `docs/KNOWLEDGE_OS_ARCHITECTURE_v1.md`  
+Architecture RFC: `docs/RFC-0001-KNOWLEDGE-OS-CORE.md`  
+Migration roadmap: `docs/MIGRATION_ROADMAP_KNOWLEDGE_OS.md`  
+Full principles: `docs/ENGINEERING_MANIFEST.md`  
+Development charter: `docs/DEVELOPMENT_CHARTER.md` (execution phase — protect architecture, ADRs)
+
+## Mental model
+
+Stop thinking: Retrieval, Knowledge Graph, Documents.  
+Think: **Understanding**.
+
+```
+Website → Knowledge Understanding → Knowledge Memory → Knowledge Reasoning → Evidence Assembly → LLM
+```
+
+Retrieval is a **tool** inside reasoning — not the core.
+
+## Non-negotiables
+
+1. **Never hardcode business knowledge** — no industry rules, document-type weight tables, URL heuristics, boost/penalty maps, or manual ontologies. If tempted, add inference capability instead.
+2. **Never expose retrieval tuning to admins** — no weights, priorities, thresholds, or classification UI. Simple modes only (Automatic / Fast / Balanced / High Precision).
+3. **Every change must increase autonomy** — not more sliders, JSON configs, or manual mappings.
+4. **Understanding > everything else** — graph, embeddings, chunks, documents are implementation details. Optimize for semantic understanding, not for building structures.
+
+## Zero Hardcode Policy (STOP workflow)
+
+Before adding domain `if`s, static mappings, categories, heuristics, special cases, or admin knobs to patch missing intelligence:
+
+1. **STOP** — do not ship the workaround.
+2. Identify the **missing architectural capability**.
+3. Implement capability → solve via **inference**.
+
+Goal: engine understands **ANY** website — not “make this one site work.”
+
+**Hardcoded rule = architectural bug**, not a feature.
+
+## Self-critique (before every implementation)
+
+> Am I adding another rule? Or am I making the engine more intelligent?
+
+If adding a rule → **redesign**, do not implement.
+
+## Priorities
+
+Understanding > Retrieval | Reasoning > Search | Inference > Configuration | Architecture > Rules | Knowledge > Documents | Autonomy > Manual tuning
+
+- **Target:** Knowledge Reasoning over Knowledge Memory → Evidence Assembly → LLM
+- **Not the target:** document/chunk/embedding search as the architecture center; building graphs for their own sake
+- **Source Intelligence → Knowledge Intelligence:** what exists, why it matters, reliability, completeness, connections, answerable/unanswerable questions, supporting/contradicting evidence
+- **Explainability:** semantic decisions in human language (`why_selected` / `why_rejected`), not score dumps
+
+## Before implementing
+
+Ask the checklist in the manifest. If the solution needs a new config screen or static lookup table for one vertical, **redesign**.
+
+## Known legacy (remove, don't extend)
+
+Removed from production retrieval path (do not reintroduce):
+
+- `intent_scorer.py`, `ranking.py`, `source_intelligence_scorer.py`, `intent_retrieval_boosts.py`
+- `PRIMARY_OVERVIEW_*` / career URL heuristics in pipeline orchestration
+- `document_type_boost` in `hybrid_retrieval_service._fuse`
+- `rag_service._retrieve_hits` (dead hybrid-only path)
+
+Still to migrate (site-specific config, not global hardcode):
+
+- Knowledge Profile intent/document-type rules (per-site, admin-managed)
+- `canonical_source_service` news exclusion for overview intents
+- `LOW_OVERVIEW_DOCUMENT_TYPES` in Source Intelligence build (structural taxonomy)
+
+Prefer extending: Knowledge Memory / Understanding Layer (`docs/SEMANTIC_UNDERSTANDING_MVP.md`), `QueryUnderstanding`, Knowledge Intelligence (evolved Source Intelligence).
