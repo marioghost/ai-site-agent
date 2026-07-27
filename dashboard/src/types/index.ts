@@ -220,6 +220,21 @@ export interface SourceDetail extends Source {
   llm_summary?: string;
 }
 
+export interface TensionRecord {
+  tension_type: string;
+  claim_ids: number[];
+  observation_ref_ids: number[];
+  evidence_link_ids: number[];
+  summary: string;
+}
+
+export interface TensionList {
+  items: TensionRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface SourceList {
   items: Source[];
   total: number;

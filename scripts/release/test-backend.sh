@@ -25,6 +25,11 @@ echo "==> Backend unit tests (RFC migration suite)"
   tests/test_chat_executive_routing.py \
   tests/test_chat_stream_executive_routing.py \
   tests/test_executive_service.py \
+  tests/test_reasoning_service.py \
+  tests/test_evidence_assembly_service.py \
+  tests/test_step_041_flag_matrix.py \
+  tests/test_migration_confidence_gate.py \
+  tests/test_evidence_sufficiency.py \
   tests/test_chat_dispatch_logging.py \
   tests/test_retrieval_pipeline_v2.py \
   tests/test_semantic_diagnostics_schema.py \
@@ -42,6 +47,8 @@ echo "==> Backend unit tests (RFC migration suite)"
   tests/test_claim_extraction_from_si.py \
   tests/test_epistemic_memory_shadow_write.py \
   tests/test_tension_surfacing_service.py \
+  tests/test_tension_acceptance.py \
+  tests/test_understanding_tensions_api.py \
   tests/test_caching.py \
   -m "unit and not benchmark" -q "$@"
 

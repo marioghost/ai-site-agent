@@ -24,6 +24,7 @@ from app.api import (
     settings,
     sources,
     traces,
+    understanding,
     users,
 )
 from app.core.config import ConfigError, get_config
@@ -140,6 +141,7 @@ app.include_router(models.router)
 app.include_router(llm.router)
 app.include_router(traces.router)
 app.include_router(analytics.router)
+app.include_router(understanding.router)
 
 
 @app.get("/")

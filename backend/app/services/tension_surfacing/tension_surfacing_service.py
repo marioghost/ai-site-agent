@@ -1,9 +1,14 @@
 """Conservative tension detection from Epistemic Memory reads (RFC-100 Step 034).
 
-Read-only — produces in-memory ``TensionView`` DTOs. No persistence, no chat/retrieval
-integration, no maintenance execution.
+Read-only — produces in-memory ``TensionView`` epistemic hypotheses. No
+persistence, no chat/retrieval integration, no maintenance execution.
+
+A Tension is not knowledge, not a belief, and not a fact — only a possible-
+problem signal inside Epistemic Memory.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from app.services.epistemic_memory import EpistemicMemoryService
 from app.services.epistemic_memory.types import ClaimView, EvidenceLinkView
@@ -14,6 +19,26 @@ from app.services.tension_surfacing.tension_types import (
 )
 
 DEFAULT_CLAIM_LIMIT = 500
+# Engineering safety bound for operator scrapes / summarize_counts — not a
+# cognitive limit on how many tensions can exist in Epistemic Memory. Matches
+# DEFAULT_CLAIM_LIMIT so metrics and detection share the same scan ceiling.
+# Raising it increases per-scrape DB work (claims + evidence-link lists).
+METRICS_CLAIM_SCAN_LIMIT = DEFAULT_CLAIM_LIMIT
+
+
+@dataclass(frozen=True)
+class TensionCountSummary:
+    """Bounded count of epistemic hypotheses — not confirmed knowledge errors.
+
+    ``open_tensions`` is the number of surfaced TensionView rows after a scan of
+    at most ``claim_scan_limit`` active claims. With the current type set
+    (support_deficit + conflict) it equals the sum of the typed counters.
+    """
+
+    open_tensions: int
+    support_deficit_tensions: int
+    conflict_tensions: int
+    claim_scan_limit: int
 
 
 class TensionSurfacingService:
@@ -104,7 +129,35 @@ class TensionSurfacingService:
                         ),
                     )
 
-        return tensions
+        return sorted(
+            tensions,
+            key=lambda t: (
+                t.tension_type,
+                t.claim_ids,
+                t.observation_ref_ids,
+                t.evidence_link_ids,
+            ),
+        )
+
+    def summarize_counts(self, *, claim_limit: int | None = None) -> TensionCountSummary:
+        """Return bounded hypothesis counts for operators/metrics.
+
+        Uses the same detection path as ``surface_tensions`` (no rule changes).
+        Default scan is capped at ``METRICS_CLAIM_SCAN_LIMIT`` active claims —
+        not an unbounded Epistemic Memory walk.
+        """
+        limit = (
+            claim_limit if claim_limit is not None else METRICS_CLAIM_SCAN_LIMIT
+        )
+        tensions = self.surface_tensions(claim_limit=limit)
+        support = sum(1 for t in tensions if t.tension_type == TENSION_SUPPORT_DEFICIT)
+        conflict = sum(1 for t in tensions if t.tension_type == TENSION_CONFLICT)
+        return TensionCountSummary(
+            open_tensions=len(tensions),
+            support_deficit_tensions=support,
+            conflict_tensions=conflict,
+            claim_scan_limit=limit,
+        )
 
     @staticmethod
     def _append(
@@ -121,13 +174,17 @@ class TensionSurfacingService:
 
 def _support_deficit_summary(claim: ClaimView) -> str:
     excerpt = (claim.proposition or "")[:120]
-    return f"Active claim lacks supporting evidence: {excerpt!r}"
+    return (
+        "Possible support deficit: active claim has no supporting evidence: "
+        f"{excerpt!r}"
+    )
 
 
 def _intra_claim_conflict_summary(claim: ClaimView, link: EvidenceLinkView) -> str:
     excerpt = (claim.proposition or "")[:120]
     return (
-        f"Claim has explicit conflict evidence (link {link.id}): {excerpt!r}"
+        "Possible conflict: claim has explicit conflict evidence "
+        f"(link {link.id}): {excerpt!r}"
     )
 
 
@@ -135,7 +192,7 @@ def _cross_claim_conflict_summary(
     supported_claim_id: int, conflict_claim_id: int, observation_ref_id: int
 ) -> str:
     return (
-        "Observation "
+        "Possible conflict: observation "
         f"{observation_ref_id} supports claim {supported_claim_id} "
         f"and conflicts with claim {conflict_claim_id}"
     )

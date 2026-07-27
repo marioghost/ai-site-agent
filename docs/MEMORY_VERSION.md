@@ -173,16 +173,42 @@ cd backend
 .venv/bin/pytest tests/test_cache_namespace_v2_invariants.py tests/test_cache_namespace_v2.py -m unit -v
 ```
 
-## Operational metrics (Step 025)
+## Operational metrics (Steps 025 / 037)
 
-Operators can observe current revision counters without changing runtime behavior.
+Operators can observe revision counters and epistemic-health hypothesis counts
+without changing runtime behavior.
 
 | Endpoint | Format | Auth |
 |----------|--------|------|
-| `GET /api/metrics` | Prometheus text (`kos_memory_version`, `kos_knowledge_version` gauges) | None (same as `/api/health`) |
-| `GET /api/metrics/operational` | JSON `{ "memory_version", "knowledge_version" }` | None |
+| `GET /api/metrics` | Prometheus text (`kos_*` gauges) | None (same as `/api/health`) |
+| `GET /api/metrics/operational` | JSON snapshot | None |
 
-Both endpoints are **read-only**. Values come from **`MemoryVersionService.get()`** and **`KnowledgeVersionService.get()`** — not direct `settings.memory_version` reads in metrics code.
+Both endpoints are **read-only**.
+
+### Version gauges (Step 025)
+
+Values come from **`MemoryVersionService.get()`** and **`KnowledgeVersionService.get()`** — not direct `settings.memory_version` reads in metrics code.
+
+| Gauge | Meaning |
+|-------|---------|
+| `kos_memory_version` | Epistemic memory revision |
+| `kos_knowledge_version` | Indexed knowledge revision |
+
+### Tension gauges (Step 037)
+
+Values come from **`TensionSurfacingService.summarize_counts()`** (via Epistemic Memory reads only). They count **epistemic hypotheses** — possible memory issues — **not** confirmed knowledge errors. Only `support_deficit` and explicit `conflict` are measured. Non-zero values do **not** imply active maintenance.
+
+| Gauge | Meaning |
+|-------|---------|
+| `kos_open_tensions` | Total surfaced hypotheses (bounded claim scan) |
+| `kos_support_deficit_tensions` | Possible support-deficit hypotheses |
+| `kos_conflict_tensions` | Possible conflict hypotheses |
+
+Scan bound: `METRICS_CLAIM_SCAN_LIMIT` (500 active claims). JSON also reports `tension_claim_scan_limit`.
+
+**Why 500:** engineering safety bound for metrics scrapes (shared with detection’s
+`DEFAULT_CLAIM_LIMIT`) — **not** a cognitive limit on how many hypotheses can
+exist. See [TENSION_SURFACING.md](TENSION_SURFACING.md).
 
 Example Prometheus scrape:
 
@@ -193,9 +219,15 @@ kos_memory_version 1
 # HELP kos_knowledge_version Indexed knowledge revision counter (KnowledgeVersionService).
 # TYPE kos_knowledge_version gauge
 kos_knowledge_version 42
+# TYPE kos_open_tensions gauge
+kos_open_tensions 0
+# TYPE kos_support_deficit_tensions gauge
+kos_support_deficit_tensions 0
+# TYPE kos_conflict_tensions gauge
+kos_conflict_tensions 0
 ```
 
-Bumping via `POST /api/settings/memory-version/bump` updates `kos_memory_version` on the next scrape. No cache, chat, or auto-bump side effects.
+Bumping via `POST /api/settings/memory-version/bump` updates `kos_memory_version` on the next scrape. Tension scrapes do not mutate memory or bump versions. No cache, chat, or auto-bump side effects.
 
 ## Deploy
 

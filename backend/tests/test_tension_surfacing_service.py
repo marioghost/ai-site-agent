@@ -47,7 +47,10 @@ def _seed_support_deficit(session):
 
 
 def _seed_supported_claim(session):
+    from tests._dbutil import ensure_source_ids
+
     token = _token()
+    ensure_source_ids(session, 901)
     obs = ObservationRef(
         observation_key=f"obs:tension:supported:{token}",
         content_hash=f"hash-supported-{token}",
@@ -77,7 +80,10 @@ def _seed_supported_claim(session):
 
 
 def _seed_cross_claim_conflict(session):
+    from tests._dbutil import ensure_source_ids
+
     token = _token()
+    ensure_source_ids(session, 902)
     obs = ObservationRef(
         observation_key=f"obs:tension:cross:{token}",
         content_hash=f"hash-cross-{token}",

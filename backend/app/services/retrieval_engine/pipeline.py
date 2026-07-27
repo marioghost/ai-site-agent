@@ -37,6 +37,8 @@ class DocumentRetrievalResult:
     pipeline_stages: list[dict] = field(default_factory=list)
     chunk_debug: dict | None = None
     retrieval_ms: int = 0
+    # Additive Step 040 marker; DFP leaves None, EvidenceAssemblyService stamps.
+    evidence_assembly_path: str | None = None
 
 
 class DocumentFirstRetrievalPipeline:

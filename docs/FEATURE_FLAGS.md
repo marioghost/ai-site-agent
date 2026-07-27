@@ -23,6 +23,10 @@ allow_legacy_<surface>                        # deprecation gates
 | Flag | Surface | Default | Purpose | Activate when | Rollback | Remove |
 |------|---------|---------|---------|---------------|----------|--------|
 | `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **false** | Route `/api/chat` (stream + non-stream) through `ExecutiveService` instead of direct `RagService` | Staging golden shadow green; ops sign-off | Set env `false` or unset; restart | Release 1.0 |
+| `reasoning_service_enabled` | Env `REASONING_SERVICE_ENABLED` | **false** | Route chat through `ReasoningService` (Step 039). With EA also ON (Step 041), Reasoning orders RPS prepare→assemble→finalize once | Golden parity with flag ON; ops sign-off | Set env `false` or unset; restart | Release 1.0 |
+| `evidence_assembly_enabled` | Env `EVIDENCE_ASSEMBLY_ENABLED` | **false** | Route RPS assemble stage through `EvidenceAssemblyService` (Step 040). With Reasoning also ON, Reasoning coordinates that stage | Golden + retrieval parity; **Step 042 gate** | Set env `false` or unset; restart | Release 1.0 |
+
+**Step 042:** All three migration flags validated independently and in all 8 combinations — see [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md).
 | `enable_semantic_diagnostics_v2` | Settings DB column | **false** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Staging diagnostics validation; Step 015 dashboard | Set Settings `false`; restart not required | Release 1.0 |
 | `cache_namespace_v2_enabled` | Settings DB column | **false** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Staging cache invalidation validation; after Step 022 manual bump tested | Set Settings `false`; restart not required | Release 0.5 |
 | `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
@@ -164,9 +168,7 @@ Do **not** enable until the release step that introduces them.
 | Flag | Release | Purpose |
 |------|---------|---------|
 | `claim_extraction_enabled` | 0.4 | SI → claim proposals (optional gate; extraction runs inside shadow hook today) |
-| `tension_surfacing_enabled` | 0.5 | Admin tension API + dashboard panel |
-| `reasoning_service_enabled` | 0.6 | ReasoningService on chat hot path |
-| `evidence_assembly_enabled` | 0.6 | Wrap `DocumentFirstRetrievalPipeline` in EvidenceAssemblyService |
+| `tension_surfacing_enabled` | 0.5 | Optional future gate for dashboard. Steps 035–036 ship admin-auth-gated; taxonomy owned by `TensionSurfacingService` ([ADR-0002](adr/0002-tension-taxonomy-ownership.md)). |
 | `memory_canonical_shadow_enabled` | 0.7 | Compare memory vs legacy canonical picks in diagnostics |
 | `memory_evidence_assist_enabled` | 0.7 | Memory-assisted evidence routing |
 | `maintenance_execution_enabled` | 0.9 | Budgeted active maintenance investigations |

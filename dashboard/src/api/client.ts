@@ -35,6 +35,7 @@ import type {
   SourceListFilters,
   TimeseriesPoint,
   TopicDistributionRow,
+  TensionList,
   UnansweredQuery,
   UserCreatePayload,
   UserRecord,
@@ -96,6 +97,13 @@ export const logout = async (): Promise<void> => {
 export const getMe = async (): Promise<AuthUser> => (await api.get("/api/auth/me")).data;
 
 export const listUsers = async (): Promise<UserRecord[]> => (await api.get("/api/users")).data;
+
+export const listUnderstandingTensions = async (params?: {
+  page?: number;
+  page_size?: number;
+  claim_limit?: number;
+}): Promise<TensionList> =>
+  (await api.get("/api/understanding/tensions", { params })).data;
 
 export const createUser = async (payload: UserCreatePayload): Promise<UserRecord> =>
   (await api.post("/api/users", payload)).data;

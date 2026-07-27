@@ -102,6 +102,10 @@ class RagResult:
     cache: CacheStatusInfo | None = None
     error_type: str | None = None
     prompt_diagnostics: dict | None = None
+    # RFC-100 Step 039 — diagnostic path marker (legacy | reasoning_service); None = unset/legacy
+    reasoning_path: str | None = None
+    # RFC-100 Step 043 — additive advisory diagnostics; does not affect answer text
+    reasoning_diagnostics: dict | None = None
 
 
 LLM_TIMEOUT_MESSAGE = (
@@ -166,6 +170,7 @@ class RagService:
         referrer: str | None = None,
         debug: bool = False,
         bypass_cache: bool = False,
+        pipeline_provider=None,
     ) -> RagResult:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -321,17 +326,27 @@ class RagService:
 
         if hits is None:
             t_retr = perf_counter()
-            pipeline = RetrievalPipelineService(
-                self.db, s, self.embedding_service, self.qdrant_service
-            )
-            pipe_result = pipeline.run(
-                message,
-                normalized,
-                query_vector=query_vector,
-                debug=debug,
-                trace=trace,
-                profile=profile,
-            )
+            if pipeline_provider is not None:
+                pipe_result = pipeline_provider(
+                    message,
+                    normalized,
+                    query_vector=query_vector,
+                    debug=debug,
+                    trace=trace,
+                    profile=profile,
+                )
+            else:
+                pipeline = RetrievalPipelineService(
+                    self.db, s, self.embedding_service, self.qdrant_service
+                )
+                pipe_result = pipeline.run(
+                    message,
+                    normalized,
+                    query_vector=query_vector,
+                    debug=debug,
+                    trace=trace,
+                    profile=profile,
+                )
             intent_result = pipe_result.intent_result
             query_intent = pipe_result.intent_result.legacy_intent
             applied_config = pipe_result.applied_config

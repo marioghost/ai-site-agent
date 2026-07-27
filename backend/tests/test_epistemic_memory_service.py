@@ -44,6 +44,9 @@ def _session_and_service():
 
 
 def _seed_sample(session) -> "SampleData":
+    from tests._dbutil import ensure_source_ids
+
+    ensure_source_ids(session, 101, 102)
     obs_a = ObservationRef(
         observation_key="obs:svc:a",
         content_hash="hash-a",
@@ -162,7 +165,10 @@ def test_read_empty_memory_returns_empty_results():
 
 @pytest.mark.unit
 def test_read_inserted_observation_refs():
+    from tests._dbutil import ensure_source_ids
+
     session, svc, engine = _session_and_service()
+    ensure_source_ids(session, 55)
     obs = ObservationRef(
         observation_key="obs:svc:read-one",
         content_hash="read-one",
@@ -222,7 +228,10 @@ def test_read_inserted_claims_and_evidence_links():
 
 @pytest.mark.unit
 def test_pagination_limit_works():
+    from tests._dbutil import ensure_source_ids
+
     session, svc, engine = _session_and_service()
+    ensure_source_ids(session, 777)
     rows: list[ObservationRef] = []
     for i in range(5):
         obs = ObservationRef(

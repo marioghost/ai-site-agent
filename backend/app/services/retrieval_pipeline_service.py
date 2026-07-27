@@ -1,4 +1,25 @@
-"""Multi-stage retrieval pipeline orchestrator."""
+"""Multi-stage retrieval pipeline — legacy coordinator (RFC-100 Step 041).
+
+Responsibility map (Step 041)
+------------------------------
+| Stage / method              | Classification              | Step 041 action        |
+|-----------------------------|-----------------------------|------------------------|
+| prepare_query (intent)      | Reasoning (deferred)        | Stay as legacy adapter |
+| prepare_query (expansion)   | Deferred / ambiguous        | Stay as legacy adapter |
+| prepare_query (profile cfg) | Legacy coordination         | Stay as legacy adapter |
+| assemble_evidence           | Evidence Assembly invoke    | Clear EA/DFP boundary  |
+| finalize (broad inject)     | Deferred / ambiguous        | Stay as legacy adapter |
+| finalize (canonical)        | Deferred / ambiguous        | Stay as legacy adapter |
+| finalize (bilingual dedupe) | Deferred / ambiguous        | Stay as legacy adapter |
+| finalize (context builder)  | Language (deferred)         | Stay as legacy adapter |
+| diagnostics aggregation     | Diagnostics                 | Stay on RPS            |
+| run()                       | Legacy coordination         | Thin compose of stages |
+
+RPS is not deleted: callers (Rag, streaming) still use ``run()``. When both
+migration flags are ON, ReasoningService invokes the three stages explicitly
+so orchestration ownership sits with Reasoning without moving ambiguous policy
+into EA or Language.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,9 +34,18 @@ from app.models.settings import Settings
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig, KnowledgeProfile
 from app.services.canonical_source_service import CanonicalSourceService
 from app.services.context_builder_service import BuiltContext, ContextBuilderService
+from app.services.evidence_assembly import (
+    EVIDENCE_ASSEMBLY_PATH_LEGACY,
+    EvidenceAssemblyRequest,
+    EvidenceAssemblyService,
+)
+from app.services.feature_flags import evidence_assembly_enabled
 from app.services.retrieval_engine.context_builder import RetrievalContextBuilder
 from app.services.retrieval_engine.diagnostics_builder import DiagnosticsBuilder
-from app.services.retrieval_engine.pipeline import DocumentFirstRetrievalPipeline
+from app.services.retrieval_engine.pipeline import (
+    DocumentFirstRetrievalPipeline,
+    DocumentRetrievalResult,
+)
 from app.services.knowledge_profile_service import KnowledgeProfileService
 from app.services.qdrant_service import QdrantService, SearchHit
 from app.services.embedding_service import EmbeddingService
@@ -30,6 +60,10 @@ from app.services.language_resolver_service import detect_query_language
 from app.services.llm_mode_service import effective_generation_settings
 from app.services.source_intelligence_router import SourceIntelligenceRouter
 from app.services.trace_service import TraceBuilder
+
+RETRIEVAL_COORDINATOR_RAG = "rag"
+RETRIEVAL_COORDINATOR_REASONING = "reasoning"
+
 
 @dataclass
 class RetrievalDiagnostics:
@@ -74,6 +108,9 @@ class RetrievalDiagnostics:
     rejected_source_alternatives: list[dict] = field(default_factory=list)
     quality_metrics: dict | None = None
     retrieval_pipeline_stages: list[dict] = field(default_factory=list)
+    evidence_assembly_path: str = EVIDENCE_ASSEMBLY_PATH_LEGACY
+    # Additive Step 041: who ordered prepare→assemble→finalize.
+    retrieval_coordinator: str = RETRIEVAL_COORDINATOR_RAG
 
     def to_dict(self) -> dict:
         return {
@@ -116,6 +153,8 @@ class RetrievalDiagnostics:
             "rejected_source_alternatives": self.rejected_source_alternatives,
             "quality_metrics": self.quality_metrics,
             "retrieval_pipeline_stages": self.retrieval_pipeline_stages,
+            "evidence_assembly_path": self.evidence_assembly_path,
+            "retrieval_coordinator": self.retrieval_coordinator,
         }
 
 
@@ -129,7 +168,34 @@ class PipelineResult:
     retrieval_ms: int = 0
 
 
+@dataclass
+class PreparedRetrieval:
+    """Legacy query-preparation adapter output (intent + expansion + profile).
+
+    Not a cognitive Reasoning decision object — ownership of intent remains
+    deferred; this pack exists so Reasoning can order stages without owning
+    retrieval implementation details.
+    """
+
+    message: str
+    normalized: str
+    profile: KnowledgeProfile
+    intent_result: RetrievalIntentResult
+    applied_config: AppliedKnowledgeConfig
+    query_language: str
+    diagnostics: RetrievalDiagnostics
+    query_vector: list[float] | None
+    candidate_count: int
+    t0: float
+
+
 class RetrievalPipelineService:
+    """Thin legacy coordinator: prepare → assemble → finalize.
+
+    Ambiguous policy (broad/canonical/context) stays here as adapters until a
+    later RFC step assigns a clear owner.
+    """
+
     def __init__(
         self,
         db: Session,
@@ -151,7 +217,33 @@ class RetrievalPipelineService:
         debug: bool = False,
         trace: TraceBuilder | None = None,
         profile: KnowledgeProfile | None = None,
+        retrieval_coordinator: str = RETRIEVAL_COORDINATOR_RAG,
     ) -> PipelineResult:
+        """Compose legacy adapters — single DFP/EA retrieval inside assemble."""
+        prepared = self.prepare_query(
+            message,
+            normalized,
+            query_vector=query_vector,
+            profile=profile,
+        )
+        doc_result = self.assemble_evidence(prepared)
+        return self.finalize_pipeline(
+            prepared,
+            doc_result,
+            debug=debug,
+            trace=trace,
+            retrieval_coordinator=retrieval_coordinator,
+        )
+
+    def prepare_query(
+        self,
+        message: str,
+        normalized: str,
+        *,
+        query_vector: list[float] | None = None,
+        profile: KnowledgeProfile | None = None,
+    ) -> PreparedRetrieval:
+        """Legacy adapter: intent, expansion, profile boosts (deferred ownership)."""
         s = self.settings
         profile = profile or KnowledgeProfileService.from_settings(s)
         diag = RetrievalDiagnostics()
@@ -210,18 +302,69 @@ class RetrievalPipelineService:
 
         candidate_count = getattr(s, "retrieval_candidate_count", None) or 30
 
+        return PreparedRetrieval(
+            message=message,
+            normalized=normalized,
+            profile=profile,
+            intent_result=intent_result,
+            applied_config=applied,
+            query_language=query_language,
+            diagnostics=diag,
+            query_vector=query_vector,
+            candidate_count=candidate_count,
+            t0=t0,
+        )
+
+    def assemble_evidence(self, prepared: PreparedRetrieval) -> DocumentRetrievalResult:
+        """Invoke Evidence Assembly or legacy DFP exactly once."""
+        s = self.settings
+        diag = prepared.diagnostics
+        dfp_kwargs = dict(
+            query=prepared.message,
+            normalized=prepared.normalized,
+            intent_result=prepared.intent_result,
+            profile=prepared.profile,
+            query_vector=prepared.query_vector,
+            expansion_terms=(
+                diag.expanded_terms if s.enable_query_expansion else None
+            ),
+            query_language=prepared.query_language,
+        )
+        if evidence_assembly_enabled():
+            assembly = EvidenceAssemblyService(
+                self.db, s, self.embedding, self.qdrant
+            )
+            doc_result = assembly.assemble(EvidenceAssemblyRequest(**dfp_kwargs))
+            diag.evidence_assembly_path = (
+                doc_result.evidence_assembly_path or EVIDENCE_ASSEMBLY_PATH_LEGACY
+            )
+            return doc_result
+
         doc_pipeline = DocumentFirstRetrievalPipeline(
             self.db, s, self.embedding, self.qdrant
         )
-        doc_result = doc_pipeline.run(
-            query=message,
-            normalized=normalized,
-            intent_result=intent_result,
-            profile=profile,
-            query_vector=query_vector,
-            expansion_terms=diag.expanded_terms if s.enable_query_expansion else None,
-            query_language=query_language,
-        )
+        doc_result = doc_pipeline.run(**dfp_kwargs)
+        diag.evidence_assembly_path = EVIDENCE_ASSEMBLY_PATH_LEGACY
+        return doc_result
+
+    def finalize_pipeline(
+        self,
+        prepared: PreparedRetrieval,
+        doc_result: DocumentRetrievalResult,
+        *,
+        debug: bool = False,
+        trace: TraceBuilder | None = None,
+        retrieval_coordinator: str = RETRIEVAL_COORDINATOR_RAG,
+    ) -> PipelineResult:
+        """Legacy post-processing adapter: policy filters + context packing."""
+        s = self.settings
+        diag = prepared.diagnostics
+        intent_result = prepared.intent_result
+        legacy_intent = intent_result.legacy_intent
+        query_language = prepared.query_language
+        message = prepared.message
+        candidate_count = prepared.candidate_count
+        t0 = prepared.t0
 
         hits = list(doc_result.selected_hits)
         diag.retrieval_pipeline_stages = doc_result.pipeline_stages
@@ -231,19 +374,20 @@ class RetrievalPipelineService:
         diag.rejected_candidates = DiagnosticsBuilder.rejected_candidates(
             doc_result.rejected_documents
         )
+        diag.retrieval_coordinator = retrieval_coordinator
 
         if (
             setting_bool(s, "enable_broad_question_mode", default=True)
             and (intent_result.is_broad or intent_result.intent in BROAD_RETRIEVAL_INTENTS)
         ):
-            injected = self._inject_broad_pages(hits, profile)
+            injected = self._inject_broad_pages(hits, prepared.profile)
             if injected:
                 diag.broad_injected = [h.url for h in injected]
                 hits = self._merge_hits(injected, hits)
 
         if setting_bool(s, "enable_canonical_source_selection"):
             hits = CanonicalSourceService.select_context(
-                hits, legacy_intent, candidate_count, s, profile=profile
+                hits, legacy_intent, candidate_count, s, profile=prepared.profile
             )
 
         hits, lang_excluded = ContextBuilderService.dedupe_bilingual_hits_with_report(
@@ -301,12 +445,15 @@ class RetrievalPipelineService:
             trace.query_intent = legacy_intent
             trace.expanded_queries = diag.expanded_queries
 
+        # debug reserved for callers that previously passed it through run()
+        _ = debug
+
         return PipelineResult(
             hits=flat_hits,
             context=context,
             diagnostics=diag,
             intent_result=intent_result,
-            applied_config=applied,
+            applied_config=prepared.applied_config,
             retrieval_ms=int((perf_counter() - t0) * 1000),
         )
 

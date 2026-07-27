@@ -9,6 +9,16 @@ def knowledge_os_executive_enabled() -> bool:
     return bool(get_config().knowledge_os_executive_enabled)
 
 
+def reasoning_service_enabled() -> bool:
+    """Route chat through ReasoningService passthrough when True (default False, RFC-100 Step 039)."""
+    return bool(get_config().reasoning_service_enabled)
+
+
+def evidence_assembly_enabled() -> bool:
+    """Route DFP stage through EvidenceAssemblyService when True (default False, RFC-100 Step 040)."""
+    return bool(get_config().evidence_assembly_enabled)
+
+
 def semantic_diagnostics_v2_enabled(settings) -> bool:
     """Include semantic diagnostics v2 stubs when True (default False, RFC-100 Step 014)."""
     return bool(getattr(settings, "enable_semantic_diagnostics_v2", False))

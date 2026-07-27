@@ -148,6 +148,13 @@ class ChatResponseBuilder:
             payload["cache"] = asdict(result.cache)
         if result.prompt_diagnostics:
             payload["prompt_diagnostics"] = result.prompt_diagnostics
+        if result.reasoning_path:
+            payload["reasoning_path"] = result.reasoning_path
+        if result.reasoning_diagnostics:
+            payload["reasoning_diagnostics"] = result.reasoning_diagnostics
+            sufficiency = result.reasoning_diagnostics.get("evidence_sufficiency")
+            if isinstance(sufficiency, dict):
+                payload["evidence_sufficiency"] = sufficiency
         return payload
 
     def from_rag_result(

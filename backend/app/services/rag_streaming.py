@@ -109,6 +109,7 @@ class RagStreamingService:
         referrer: str | None = None,
         debug: bool = False,
         bypass_cache: bool = False,
+        pipeline_provider=None,
     ) -> Iterator[tuple[str, dict]]:
         collector = collector or DiagnosticsCollector(
             request_id=request_id,
@@ -129,7 +130,15 @@ class RagStreamingService:
         try:
             yield ("status", collector.status("retrieval", "running"))
             prepared, early = self._prepare(
-                message, session_id, request_id, user_ip, user_agent, referrer, debug, bypass_cache
+                message,
+                session_id,
+                request_id,
+                user_ip,
+                user_agent,
+                referrer,
+                debug,
+                bypass_cache,
+                pipeline_provider=pipeline_provider,
             )
             if (
                 prepared.pipeline_diagnostics is not None
@@ -574,6 +583,7 @@ class RagStreamingService:
         referrer: str | None,
         debug: bool,
         bypass_cache: bool,
+        pipeline_provider=None,
     ) -> tuple[_PreparedStream, RagResult | None]:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -734,17 +744,27 @@ class RagStreamingService:
 
         if hits is None:
             t_retr = perf_counter()
-            pipeline = RetrievalPipelineService(self.db, s, self.embedding_service, self.qdrant_service)
-            if query_vector is None:
-                query_vector = self.embedding_service.embed_query(normalized)
-            pipe_result = pipeline.run(
-                message,
-                normalized,
-                query_vector=query_vector,
-                debug=debug,
-                trace=trace,
-                profile=profile,
-            )
+            if pipeline_provider is not None:
+                pipe_result = pipeline_provider(
+                    message,
+                    normalized,
+                    query_vector=query_vector,
+                    debug=debug,
+                    trace=trace,
+                    profile=profile,
+                )
+            else:
+                pipeline = RetrievalPipelineService(self.db, s, self.embedding_service, self.qdrant_service)
+                if query_vector is None:
+                    query_vector = self.embedding_service.embed_query(normalized)
+                pipe_result = pipeline.run(
+                    message,
+                    normalized,
+                    query_vector=query_vector,
+                    debug=debug,
+                    trace=trace,
+                    profile=profile,
+                )
             query_intent = pipe_result.intent_result.legacy_intent
             applied_config = pipe_result.applied_config
             expanded = pipe_result.diagnostics.expanded_queries or expanded

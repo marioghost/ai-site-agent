@@ -20,9 +20,13 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_response_builder import ChatResponseBuilder, DiagnosticsCollector
 from app.services.chat_session_service import ChatSessionService
 from app.services.executive import ExecutiveService
-from app.services.feature_flags import knowledge_os_executive_enabled
+from app.services.feature_flags import (
+    knowledge_os_executive_enabled,
+    reasoning_service_enabled,
+)
 from app.services.rag_streaming import RagStreamingService
 from app.services.rag_service import RagService
+from app.services.reasoning import ReasoningService
 from app.services.trace_service import new_request_id
 
 router = APIRouter(tags=["chat"])
@@ -64,10 +68,25 @@ def _dispatch_non_stream_answer(
     debug: bool = False,
     bypass_cache: bool = False,
 ):
-    """Route non-streaming chat through Executive or legacy RagService (RFC-100 Step 002)."""
+    """Route non-streaming chat (RFC-100 Steps 002 / 039).
+
+    Order: Executive (if enabled) → else ReasoningService (if enabled) → else Rag.
+    Executive itself may further route through ReasoningService when that flag is ON.
+    """
     use_executive = knowledge_os_executive_enabled()
     if use_executive:
         return ExecutiveService(db, settings).answer(
+            message,
+            session_id,
+            request_id=request_id,
+            user_ip=user_ip,
+            user_agent=user_agent,
+            referrer=referrer,
+            debug=debug,
+            bypass_cache=bypass_cache,
+        )
+    if reasoning_service_enabled():
+        return ReasoningService(db, settings).answer(
             message,
             session_id,
             request_id=request_id,
@@ -104,9 +123,22 @@ def _dispatch_stream_events(
     debug: bool = False,
     bypass_cache: bool = False,
 ):
-    """Route streaming chat through Executive or legacy RagStreamingService (RFC-100 Step 003)."""
+    """Route streaming chat (RFC-100 Steps 003 / 039)."""
     if knowledge_os_executive_enabled():
         yield from ExecutiveService(db, settings).answer_stream(
+            message,
+            session_id,
+            request_id=request_id,
+            collector=collector,
+            user_ip=user_ip,
+            user_agent=user_agent,
+            referrer=referrer,
+            debug=debug,
+            bypass_cache=bypass_cache,
+        )
+        return
+    if reasoning_service_enabled():
+        yield from ReasoningService(db, settings).answer_stream(
             message,
             session_id,
             request_id=request_id,

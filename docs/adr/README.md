@@ -41,5 +41,6 @@ Copy `0000-template.md` when creating a new ADR.
 | ADR | Title | Status |
 |-----|-------|--------|
 | [0001](0001-shadow-observation-key-per-source.md) | Shadow observation identity keyed per source | Accepted |
+| [0002](0002-tension-taxonomy-ownership.md) | Tension taxonomy ownership | Accepted |
 
 *Update this table when ADRs are added.*

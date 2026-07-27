@@ -160,3 +160,40 @@ def make_engine(*, fresh: bool = True) -> Engine:
     else:
         Base.metadata.create_all(bind=engine, checkfirst=True)
     return engine
+
+
+def ensure_source_ids(session, *source_ids: int) -> None:
+    """Insert missing ``sources`` rows for hardcoded fixture source_ids.
+
+    Shared PostgreSQL test DBs may lack rows after a wipe; observation_ref FKs
+    require sources to exist. Idempotent — skips ids already present.
+    """
+    from app.models.source import Source
+
+    needed = {int(sid) for sid in source_ids if sid is not None}
+    if not needed:
+        return
+    existing = {
+        row[0]
+        for row in session.query(Source.id).filter(Source.id.in_(needed)).all()
+    }
+    missing = sorted(needed - existing)
+    if not missing:
+        return
+    for sid in missing:
+        session.add(
+            Source(
+                id=sid,
+                source_type="page",
+                url=f"https://fixture.example/src-{sid}",
+                title=f"Fixture source {sid}",
+            )
+        )
+    session.flush()
+    # Keep serial ahead of explicitly assigned ids.
+    session.execute(
+        text(
+            "SELECT setval(pg_get_serial_sequence('sources','id'), "
+            "(SELECT COALESCE(MAX(id), 1) FROM sources))"
+        )
+    )

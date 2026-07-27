@@ -14,7 +14,7 @@ Three **independent** states — see [LIFECYCLE.md](../LIFECYCLE.md) (Engineerin
 
 **Do not mark production-ready without staging-validated.**
 
-**Engineering may continue** (e.g. Release 0.5 / Step 034) while staging validation is pending. **Production deployment** remains blocked until staging-validated. Release 0.4 acceptance: [RELEASE-0.4-ACCEPTANCE-REPORT.md](RELEASE-0.4-ACCEPTANCE-REPORT.md).
+**Engineering may continue** (e.g. Release 0.6 / Step 039) while staging validation is pending. **Production deployment** remains blocked until staging-validated. Release 0.5 acceptance: [RELEASE-0.5-ACCEPTANCE-REPORT.md](RELEASE-0.5-ACCEPTANCE-REPORT.md). Prior: [RELEASE-0.4-ACCEPTANCE-REPORT.md](RELEASE-0.4-ACCEPTANCE-REPORT.md).
 
 ---
 
@@ -72,5 +72,7 @@ Three **independent** states — see [LIFECYCLE.md](../LIFECYCLE.md) (Engineerin
 | 0.1 | ≤ `0010` | health, golden unit |
 | 0.2 | `0011_semantic_diagnostics_v2` | + settings flags present |
 | 0.3 | `0013_cache_namespace_v2_enabled` | + `/api/build`, `/api/metrics`, memory_version |
+| 0.4 | `0015_memory_shadow_write_enabled` | + epistemic tables present; shadow flag OFF |
+| 0.5 | `0015` (no new migrations) | + `kos_open_tensions`; admin `/understanding` |
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) and [STAGING-SEED-SMOKE.md](../STAGING-SEED-SMOKE.md).

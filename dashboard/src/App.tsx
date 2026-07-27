@@ -15,6 +15,7 @@ const ChatTestPage = lazy(() => import("./pages/ChatTestPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const KnowledgeProfilePage = lazy(() => import("./pages/KnowledgeProfilePage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
+const UnderstandingPage = lazy(() => import("./pages/UnderstandingPage"));
 
 function RouteFallback() {
   const { t } = useTranslation();
@@ -103,6 +104,14 @@ export default function App() {
               element={
                 <LazyPage>
                   <KnowledgeProfilePage />
+                </LazyPage>
+              }
+            />
+            <Route
+              path="/understanding"
+              element={
+                <LazyPage>
+                  <UnderstandingPage />
                 </LazyPage>
               }
             />

@@ -47,6 +47,8 @@ class BuildInfoService:
 
         env_flags = {
             "KNOWLEDGE_OS_EXECUTIVE_ENABLED": self._config.knowledge_os_executive_enabled,
+            "REASONING_SERVICE_ENABLED": self._config.reasoning_service_enabled,
+            "EVIDENCE_ASSEMBLY_ENABLED": self._config.evidence_assembly_enabled,
         }
         settings_flags = {
             "enable_semantic_diagnostics_v2": bool(

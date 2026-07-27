@@ -26,4 +26,8 @@ def operational_metrics_json(db: Session = Depends(get_db)) -> OperationalMetric
     return OperationalMetricsResponse(
         memory_version=gauges.memory_version,
         knowledge_version=gauges.knowledge_version,
+        open_tensions=gauges.open_tensions,
+        support_deficit_tensions=gauges.support_deficit_tensions,
+        conflict_tensions=gauges.conflict_tensions,
+        tension_claim_scan_limit=gauges.tension_claim_scan_limit,
     )

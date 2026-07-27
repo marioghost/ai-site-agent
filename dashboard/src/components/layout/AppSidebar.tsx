@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings,
   Sun,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/chat", key: "nav.chat_test", Icon: MessageSquare },
   { to: "/analytics", key: "nav.analytics", Icon: BarChart3 },
   { to: "/logs", key: "nav.logs", Icon: ScrollText },
+  { to: "/understanding", key: "nav.understanding", Icon: TriangleAlert },
   { to: "/users", key: "nav.users", Icon: Users },
   { to: "/knowledge-profile", key: "nav.knowledge_profile", Icon: Brain },
   { to: "/settings", key: "nav.agent_settings", Icon: Settings },

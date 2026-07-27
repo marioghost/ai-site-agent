@@ -8,6 +8,7 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   "/analytics": ["admin", "operator", "viewer"],
   "/logs": ["admin", "operator", "viewer"],
   "/knowledge-profile": ["admin"],
+  "/understanding": ["admin"],
   "/settings": ["admin"],
   "/users": ["admin"],
 };

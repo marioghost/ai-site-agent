@@ -102,6 +102,12 @@ class AppConfig(BaseSettings):
     knowledge_os_executive_enabled: bool = Field(
         default=False, alias="KNOWLEDGE_OS_EXECUTIVE_ENABLED"
     )
+    reasoning_service_enabled: bool = Field(
+        default=False, alias="REASONING_SERVICE_ENABLED"
+    )
+    evidence_assembly_enabled: bool = Field(
+        default=False, alias="EVIDENCE_ASSEMBLY_ENABLED"
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:
