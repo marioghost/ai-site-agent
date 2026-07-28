@@ -33,7 +33,12 @@ if [[ "$(id -u)" -ne 0 && ! "${DEPLOY_SKIP_ROOT_CHECK:-0}" == "1" ]]; then
   die "run with sudo so manage_deploy can restart services and rsync to $PROJECT_ROOT"
 fi
 
-COMMIT="$(deploy_guard_resolve_commit "$REPO_ROOT" "$DEPLOY_COMMIT")"
+if [[ "${DEPLOY_LOCAL_MAIN:-0}" == "1" ]]; then
+  COMMIT="$(deploy_guard_local_main_hash "$REPO_ROOT")"
+  [[ -n "$COMMIT" ]] || die "local main branch not found"
+else
+  COMMIT="$(deploy_guard_resolve_commit "$REPO_ROOT" "$DEPLOY_COMMIT")"
+fi
 log "target commit: $COMMIT"
 
 if [[ "${DEPLOY_LOCAL_MAIN:-0}" == "1" ]]; then
