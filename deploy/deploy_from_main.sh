@@ -77,6 +77,10 @@ if [[ ! -f "$WORKTREE/dashboard/dist/index.html" ]]; then
   die "frontend build missing at $WORKTREE/dashboard/dist/index.html"
 fi
 
+log "staging frontend dist → $PROJECT_ROOT/dashboard/dist"
+mkdir -p "$PROJECT_ROOT/dashboard/dist"
+rsync -a --delete "$WORKTREE/dashboard/dist/" "$PROJECT_ROOT/dashboard/dist/"
+
 log "deploying worktree → $PROJECT_ROOT (preserves .env, backups, logs)"
 export PROJECT_ROOT
 export DEV_CHECKOUT="$WORKTREE"
