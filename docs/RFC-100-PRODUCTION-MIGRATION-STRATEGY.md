@@ -762,9 +762,9 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **049** | Offline eval script + report | Gate for staging assist candidacy — **implemented** (ops/evaluation; no flag); see `0.7-step-049-offline-memory-eval.md` |
 | **050** | Release 0.7 engineering closure | **Closed** — Engineering Ready; staging_validated=false; production_ready=false; see `RELEASE-0.7-ACCEPTANCE-REPORT.md` |
 
-**Release 0.7 flags remain default OFF.** Staging activation is blocked until a real diagnostics harvest + Step 049 recommendation. **Release 0.8 has not started.**
+**Release 0.7 flags remain default OFF.** Staging activation is blocked until a real diagnostics harvest + Step 049 recommendation.
 
-### Release 0.8
+### Release 0.8 — engineering accepted (2026-07-28)
 
 | Step | Title | Detail |
 |------|-------|--------|
@@ -773,7 +773,9 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **054** | `allow_legacy_kp_presets` default false | Preset 410 — **implemented** (code; not applied to live DB until approved deploy); see `0.8-step-054-implementation.md` |
 | **055** | CanonicalSourceService: disable doc-type path when memory canonical on | Flag — **implemented** as `legacy_doc_type_canonical_enabled` default false; see `0.8-step-055-implementation.md` |
 | **056** | Golden on generic profile only in CI | Loader fail-closed on `fixture_profile=generic_corporate` — **implemented** (CI/tests only); see `0.8-step-056-implementation.md` |
-| **057** | Release 0.8 | — |
+| **057** | Release 0.8 | **Closed** — Engineering Ready; staging_validated=false; production_ready=false; see `RELEASE-0.8-ACCEPTANCE-REPORT.md` |
+
+**Release 0.8 engineering accepted** (`closed_0_8: true`). Migrations **0018/0019** are code head only until an approved deploy. Memory assist/shadow remain default OFF. Release **0.9** has not started.
 
 ### Release 0.9
 

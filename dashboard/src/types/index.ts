@@ -278,7 +278,12 @@ export interface DeployedCapability {
 export interface ReleaseStatus {
   accepted: string;
   in_progress: string | null;
-  closed_0_6: boolean;
+  closed_0_6?: boolean;
+  closed_0_7?: boolean;
+  closed_0_8?: boolean;
+  engineering_ready?: boolean;
+  staging_validated?: boolean;
+  production_ready?: boolean;
   note: string;
 }
 

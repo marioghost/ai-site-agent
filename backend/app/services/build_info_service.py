@@ -14,7 +14,7 @@ from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
 # Last accepted RFC-100 release (engineering closure 2026-07-28).
-APP_RELEASE = "0.7"
+APP_RELEASE = "0.8"
 
 # Release 0.6 cognitive pipeline — code present when repo includes Steps 039–045.
 RELEASE_0_6_STEPS = (
@@ -34,6 +34,16 @@ RELEASE_0_7_STEPS = (
     {"step": "048", "title": "Memory canonical shadow comparator", "code": "present"},
     {"step": "049", "title": "Offline Memory Assist evaluation", "code": "present"},
     {"step": "050", "title": "Release 0.7 engineering closure", "code": "present"},
+)
+
+# Release 0.8 legacy surface cleanup — code present; staging/production not validated.
+RELEASE_0_8_STEPS = (
+    {"step": "052", "title": "Settings API boost field removal", "code": "present"},
+    {"step": "053", "title": "Dashboard boost inputs removal", "code": "present"},
+    {"step": "054", "title": "Legacy KP presets default off (410)", "code": "present"},
+    {"step": "055", "title": "Legacy doc-type canonical flag", "code": "present"},
+    {"step": "056", "title": "Golden generic profile CI fail-closed", "code": "present"},
+    {"step": "057", "title": "Release 0.8 engineering closure", "code": "present"},
 )
 
 _ENV_CAPABILITIES = (
@@ -238,10 +248,11 @@ class BuildInfoService:
             "env_flags": env_flags,
             "settings_flags": settings_flags,
             "release_status": {
-                "accepted": "0.7",
+                "accepted": "0.8",
                 "in_progress": None,
                 "closed_0_6": True,
                 "closed_0_7": True,
+                "closed_0_8": True,
                 "engineering_ready": True,
                 "staging_validated": False,
                 "production_ready": False,
@@ -249,6 +260,7 @@ class BuildInfoService:
                 "steps_046_050": list(RELEASE_0_7_STEPS),
                 # Backward-compatible alias for pre-closure consumers.
                 "steps_046_048": list(RELEASE_0_7_STEPS),
+                "steps_052_057": list(RELEASE_0_8_STEPS),
                 "release_0_7_capabilities": {
                     "memory_region_reads": {
                         "code_present": True,
@@ -285,12 +297,75 @@ class BuildInfoService:
                         "note": "Offline ops package; no runtime flag",
                     },
                 },
+                "release_0_8_capabilities": {
+                    "settings_boost_api_removed": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 052 — API fields removed; ORM columns retained",
+                    },
+                    "dashboard_boost_inputs_removed": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 053 — dashboard-only",
+                    },
+                    "legacy_kp_presets_disabled": {
+                        "code_present": True,
+                        "configured": bool(
+                            not settings_flags.get("allow_legacy_kp_presets", False)
+                        ),
+                        "enabled": bool(
+                            settings_flags.get("allow_legacy_kp_presets", False)
+                        ),
+                        "effective": bool(
+                            settings_flags.get("allow_legacy_kp_presets", False)
+                        ),
+                        "note": (
+                            "Step 054 — default false → preset APIs 410. "
+                            "configured=true means presets disabled (desired default). "
+                            "code_present ≠ live DB column until migration 0018 applied."
+                        ),
+                    },
+                    "legacy_doc_type_canonical_gated": {
+                        "code_present": True,
+                        "configured": bool(
+                            settings_flags.get(
+                                "legacy_doc_type_canonical_enabled", False
+                            )
+                        ),
+                        "enabled": bool(
+                            settings_flags.get(
+                                "legacy_doc_type_canonical_enabled", False
+                            )
+                        ),
+                        "effective": bool(
+                            settings_flags.get(
+                                "legacy_doc_type_canonical_enabled", False
+                            )
+                        ),
+                        "note": (
+                            "Step 055 — default false skips doc-type reorder. "
+                            "Overview/news quality risk when false. "
+                            "code_present ≠ live DB column until migration 0019 applied."
+                        ),
+                    },
+                    "golden_generic_profile_ci": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 056 — CI/test only; production profiles unaffected",
+                    },
+                },
                 "note": (
-                    "Release 0.7 engineering accepted (Steps 046–050). "
-                    "Assist/shadow flags default OFF; staging_validated=false; "
-                    "production_ready=false. Release 0.8 not started. "
-                    "code_present ≠ enabled ≠ effective ≠ active. "
-                    "Live /api/build reflects this metadata only after deploy+restart."
+                    "Release 0.8 engineering accepted (Steps 052–057). "
+                    "Engineering Ready; staging_validated=false; production_ready=false. "
+                    "Alembic code head 0019; migrations 0018/0019 not claimed applied live. "
+                    "allow_legacy_kp_presets + legacy_doc_type_canonical_enabled default false. "
+                    "Memory assist/shadow remain default OFF. "
+                    "Step 055 overview/news quality risk documented. "
+                    "code_present ≠ configured ≠ enabled ≠ effective ≠ deployed. "
+                    "Live /api/build reflects this metadata only after approved deploy+restart."
                 ),
             },
             "deployed_capabilities": deployed,

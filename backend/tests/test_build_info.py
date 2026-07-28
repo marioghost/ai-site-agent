@@ -94,9 +94,10 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False
     assert body["settings_flags"]["cache_namespace_v2_enabled"] is False
-    assert body["release_status"]["accepted"] == "0.7"
+    assert body["release_status"]["accepted"] == "0.8"
     assert body["release_status"]["closed_0_6"] is True
     assert body["release_status"]["closed_0_7"] is True
+    assert body["release_status"]["closed_0_8"] is True
     assert body["release_status"]["engineering_ready"] is True
     assert body["release_status"]["staging_validated"] is False
     assert body["release_status"]["production_ready"] is False
@@ -110,5 +111,16 @@ def test_build_info_endpoint(build_client: TestClient):
     assert caps["memory_canonical_shadow"]["enabled"] is False
     assert caps["memory_canonical_shadow"]["effective"] is False
     assert caps["memory_offline_evaluation"]["code_present"] is True
+    caps8 = body["release_status"]["release_0_8_capabilities"]
+    assert caps8["settings_boost_api_removed"]["code_present"] is True
+    assert caps8["dashboard_boost_inputs_removed"]["code_present"] is True
+    assert caps8["legacy_kp_presets_disabled"]["code_present"] is True
+    assert caps8["legacy_kp_presets_disabled"]["configured"] is True
+    assert caps8["legacy_kp_presets_disabled"]["enabled"] is False
+    assert caps8["legacy_doc_type_canonical_gated"]["code_present"] is True
+    assert caps8["legacy_doc_type_canonical_gated"]["enabled"] is False
+    assert caps8["golden_generic_profile_ci"]["code_present"] is True
+    steps8 = body["release_status"]["steps_052_057"]
+    assert [s["step"] for s in steps8] == ["052", "053", "054", "055", "056", "057"]
     assert "deployed_capabilities" in body
     assert body["deployed_capabilities"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"]["supported"] is True
