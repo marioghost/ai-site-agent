@@ -47,8 +47,19 @@ Product paths (chat, Memory, Reasoning, Language, Retrieval, Qdrant, flags) are 
 - `ALLOW_DIRTY_SYNC=1` → refused (emergency only)  
 - `DEPLOY_LOCAL_MAIN=1` → refused (emergency only)  
 - `--mode update` → hard error  
+- `--no-backup-db` on release deploy → hard error  
 - Interactive menu items 1–3 → `origin/main` deploy only  
-- Direct `--sync-from-dev` from operator checkout → refused unless `MD_RELEASE_DEPLOY=1` (set only by `deploy full`) or emergency  
+- Direct `--sync-from-dev` from operator checkout → refused unless `MD_RELEASE_DEPLOY=1` or emergency  
+
+## Release identity
+
+Deploy validates `APP_RELEASE` (code) == `.build-info.json` `release` == `RELEASE_VERSION`.  
+If an exact git tag (`v0.7` / `release-0.7` / `0.7`) exists on the commit, it must match.
+
+## Single entrypoint
+
+Future deploy/release-engineering features belong in `manage_deploy.sh` only.
+No new standalone deployment scripts except bootstrap/recovery utilities.
 
 ## Validation commands
 

@@ -208,3 +208,73 @@ deploy_guard_assert_frontend_identity() {
   fi
   return 0
 }
+
+deploy_guard_read_app_release() {
+  local root="$1"
+  local py="$root/backend/app/services/build_info_service.py"
+  if [[ ! -f "$py" ]]; then
+    echo ""
+    return 1
+  fi
+  python3 - "$root" <<'PY'
+import re
+import sys
+from pathlib import Path
+root = sys.argv[1]
+text = Path(root, "backend/app/services/build_info_service.py").read_text(encoding="utf-8")
+m = re.search(r'APP_RELEASE\s*=\s*["\']([^"\']+)["\']', text)
+print(m.group(1) if m else "")
+PY
+}
+
+deploy_guard_read_build_release() {
+  local root="$1"
+  local path="$root/.build-info.json"
+  if [[ ! -f "$path" ]]; then
+    echo ""
+    return 1
+  fi
+  python3 -c "import json; print(json.load(open('$path')).get('release',''))" 2>/dev/null || echo ""
+}
+
+# Validate release identity: APP_RELEASE == build-info.release == RELEASE_VERSION.
+# If an exact annotated/lightweight tag exists on the commit (vX.Y or release-X.Y), it must match.
+deploy_guard_assert_release_identity() {
+  local root="$1"
+  local commit="$2"
+  local expected_release="${3:-}"
+  local app_rel build_rel tag_rel
+  app_rel="$(deploy_guard_read_app_release "$root" || true)"
+  build_rel="$(deploy_guard_read_build_release "$root" || true)"
+  if [[ -z "$app_rel" ]]; then
+    echo "ERROR: cannot read APP_RELEASE from $root" >&2
+    return 1
+  fi
+  if [[ -z "$build_rel" ]]; then
+    echo "ERROR: cannot read release from .build-info.json under $root" >&2
+    return 1
+  fi
+  if [[ -n "$expected_release" && "$app_rel" != "$expected_release" ]]; then
+    echo "ERROR: APP_RELEASE ($app_rel) != RELEASE_VERSION ($expected_release)" >&2
+    return 1
+  fi
+  if [[ "$app_rel" != "$build_rel" ]]; then
+    echo "ERROR: APP_RELEASE ($app_rel) != build-info.release ($build_rel)" >&2
+    return 1
+  fi
+  tag_rel=""
+  if git -C "$root" describe --tags --exact-match "$commit" >/dev/null 2>&1; then
+    local raw
+    raw="$(git -C "$root" describe --tags --exact-match "$commit" 2>/dev/null || true)"
+    # Accept v0.7 / release-0.7 / 0.7
+    tag_rel="$(echo "$raw" | sed -E 's/^(v|release-)//')"
+    if [[ -n "$tag_rel" && "$tag_rel" != "$app_rel" ]]; then
+      echo "ERROR: git tag '$raw' (normalized $tag_rel) != APP_RELEASE ($app_rel)" >&2
+      return 1
+    fi
+    echo "OK: release identity tag=$raw APP_RELEASE=$app_rel build-info=$build_rel"
+  else
+    echo "OK: release identity APP_RELEASE=$app_rel build-info=$build_rel (no exact tag on commit)"
+  fi
+  return 0
+}

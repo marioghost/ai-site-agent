@@ -15,17 +15,17 @@ Release workflow (main-only policy):
   release check               Full make release-check gate
 
 Deploy (origin/main, clean worktree only):
-  deploy full                 Full deploy → /opt from origin/main
-  deploy backend              Backend sync + migrate + restart
-  deploy frontend             Frontend build + nginx reload
+  deploy full                 backup→build→deploy→verify→restart→smoke
+  deploy backend              Backend path (mandatory backup)
+  deploy frontend             Frontend path (mandatory backup)
 
 Verification:
+  status                      Concise repo/deploy/runtime identity report
   verify-release              End-to-end identity + health report
   smoke                       HTTP smoke (flags-off paths)
   build-info                  GET /api/build summary
 
 Operations:
-  status                      Module status + health
   doctor                      Pre-flight + git + DB connectivity
   health                      Health probes only
   backup db                   PostgreSQL pg_dump backup
@@ -42,7 +42,9 @@ Legacy flags (deprecated):
   --action status|...         → use top-level commands above
 
 Policy: deploy never uses dirty/feature checkouts; never deploys non-main;
-merge and push require explicit operator confirmation.
+backup is mandatory on release deploy (--no-backup-db refused);
+all future deploy/release-engineering features live under manage_deploy.sh
+(no new standalone deploy scripts except bootstrap/recovery).
 Emergency bypass: EMERGENCY_DEPLOY_I_UNDERSTAND=YES + reason + confirm
   (never for routine Release work).
 EOF
@@ -168,7 +170,7 @@ md_cli_main() {
       bash "$(md_cli_repo)/scripts/release/verify-release.sh" "$@"
       ;;
     status)
-      md_invoke_legacy --action status
+      bash "$(md_cli_repo)/scripts/release/status-release.sh" "$@"
       ;;
     doctor)
       md_cli_doctor

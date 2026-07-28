@@ -28,5 +28,7 @@ Architecture Review → Implementation → Tests → Review → Fixes → Accept
 ## Hard rules
 
 - Never merge or `git push origin main` without explicit user approval (ask separately).
-- Never use `ALLOW_DIRTY_SYNC` / `DEPLOY_LOCAL_MAIN` for normal work (emergency only).
-- Identity chain must match: origin/main == build-info == frontend identity == /api/build.
+- Never use `ALLOW_DIRTY_SYNC` / `DEPLOY_LOCAL_MAIN` / `--no-backup-db` for normal release deploys.
+- Identity chain must match: origin/main == build-info == frontend identity == /api/build == APP_RELEASE.
+- Release deploy stages: backup → build → deploy → verify → restart → smoke.
+- New deploy/release features go into `manage_deploy.sh` only (no new standalone deploy scripts except bootstrap/recovery).

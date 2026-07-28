@@ -933,7 +933,14 @@ parse_args() {
       --no-git-pull) DO_GIT_PULL=no; shift ;;
       --git-pull) DO_GIT_PULL=yes; shift ;;
       --backup-db) DO_BACKUP_DB=yes; shift ;;
-      --no-backup-db) DO_BACKUP_DB=no; shift ;;
+      --no-backup-db)
+        if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" ]]; then
+          log_error "--no-backup-db is forbidden on release deploy (backup is mandatory)"
+          exit 1
+        fi
+        DO_BACKUP_DB=no
+        shift
+        ;;
       --clear-db) CLEAR_DB=1; shift ;;
       --clear-qdrant) CLEAR_QDRANT=1; shift ;;
       --clear-caches) CLEAR_CACHES=1; shift ;;
@@ -1740,8 +1747,18 @@ deploy_backend() {
   log_section "Backend deploy"
   ensure_project_writable || return 1
   stop_backend || true
-  if [[ "${DO_BACKUP_DB:-$BACKUP_DB_DEFAULT}" == "yes" ]]; then
-    backup_postgres
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" ]]; then
+    if [[ "${MD_BACKUP_COMPLETED:-0}" == "1" ]]; then
+      log_info "Backup already completed in release stage 1 — skipping duplicate pg_dump"
+    elif [[ "${DO_BACKUP_DB:-yes}" == "yes" ]]; then
+      backup_postgres || return 1
+      MD_BACKUP_COMPLETED=1
+    else
+      log_error "Release deploy requires backup — refused"
+      return 1
+    fi
+  elif [[ "${DO_BACKUP_DB:-$BACKUP_DB_DEFAULT}" == "yes" ]]; then
+    backup_postgres || return 1
   fi
   update_source_code || return 1
   ensure_venv || return 1

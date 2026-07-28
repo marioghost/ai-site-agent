@@ -118,4 +118,37 @@ if ! grep -q 'Deprecated: --mode update' "$MANAGE"; then
   exit 1
 fi
 
+if ! grep -q 'deploy_guard_assert_release_identity' "$GUARD"; then
+  echo "FAIL: deploy_guard must validate release identity" >&2
+  exit 1
+fi
+if ! grep -q 'md_deploy_mandatory_backup\|BACKUP (mandatory)' "$SOURCE"; then
+  echo "FAIL: deploy_source must run mandatory backup stage" >&2
+  exit 1
+fi
+if ! grep -q 'backup → build → deploy → verify → restart → smoke' "$SOURCE" \
+  && ! grep -q 'stages: backup' "$SOURCE"; then
+  echo "FAIL: deploy_source must document mandatory stage order" >&2
+  exit 1
+fi
+if ! grep -q 'no-backup-db is forbidden' "$MANAGE"; then
+  echo "FAIL: manage_deploy must refuse --no-backup-db on release" >&2
+  exit 1
+fi
+STATUS_SH="$ROOT/scripts/release/status-release.sh"
+if [[ ! -f "$STATUS_SH" ]]; then
+  echo "FAIL: missing status-release.sh" >&2
+  exit 1
+fi
+
+# Release identity helper against this repo tip.
+# shellcheck source=deploy/lib/deploy_guard.sh
+source "$GUARD"
+APP_REL="$(deploy_guard_read_app_release "$ROOT")"
+if [[ -z "$APP_REL" ]]; then
+  echo "FAIL: deploy_guard_read_app_release returned empty" >&2
+  exit 1
+fi
+echo "OK: APP_RELEASE readable ($APP_REL)"
+
 echo "OK: deploy guard regression tests passed"

@@ -37,6 +37,22 @@ Same git commit. No exceptions for normal deploys.
 
 ---
 
+## Deploy stages (mandatory)
+
+```
+backup → build → deploy → verify → restart → smoke
+```
+
+`--no-backup-db` is **refused** on release deploy.
+
+## Single entrypoint policy
+
+All future deployment and release-engineering functionality must live under
+`deploy/manage_deploy.sh` (CLI or menu).
+
+Do **not** introduce new standalone deploy scripts unless they are
+bootstrap/recovery utilities (`install_*.sh`, one-shot cutovers).
+
 ## Deploy policy
 
 Deploy **only** from `origin/main` via:
