@@ -106,11 +106,9 @@ class SettingsBase(BaseModel):
 
     # --- Retrieval quality tuning ---
     retrieval_mode: RetrievalMode = "hybrid"
-    homepage_boost_enabled: bool = True
-    title_match_boost: float = Field(default=0.15, ge=0.0, le=2.0)
-    heading_match_boost: float = Field(default=0.15, ge=0.0, le=2.0)
-    homepage_boost_value: float = Field(default=0.10, ge=0.0, le=2.0)
-    short_query_lexical_boost: float = Field(default=0.20, ge=0.0, le=2.0)
+    # Step 052: title/heading/homepage/short_query boost knobs removed from the
+    # Settings API contract. ORM columns remain; DocumentScorer / RPS / cache NS
+    # still read stored values. Legacy PUT bodies are ignored via extra="ignore".
     enable_query_expansion: bool = True
     enable_retrieval_debug: bool = False
 
