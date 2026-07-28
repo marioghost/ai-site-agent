@@ -17,6 +17,7 @@ echo "==> Golden parity tests"
 "$VENV/bin/pytest" \
   tests/test_golden_chat_parity.py \
   tests/test_golden_queries_schema.py \
+  tests/test_step_056_golden_generic_profile.py \
   -m unit -q "$@"
 
 echo "OK: golden parity tests passed"
