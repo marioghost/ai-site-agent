@@ -19,6 +19,15 @@ def evidence_assembly_enabled() -> bool:
     return bool(get_config().evidence_assembly_enabled)
 
 
+def reasoning_speech_acts_enabled() -> bool:
+    """Activate Language consumption of speech acts (default False, RFC-100 Step 045).
+
+    Has no effect unless ReasoningService is on the chat path
+    (``REASONING_SERVICE_ENABLED``). Independently rollbackable.
+    """
+    return bool(get_config().reasoning_speech_acts_enabled)
+
+
 def semantic_diagnostics_v2_enabled(settings) -> bool:
     """Include semantic diagnostics v2 stubs when True (default False, RFC-100 Step 014)."""
     return bool(getattr(settings, "enable_semantic_diagnostics_v2", False))

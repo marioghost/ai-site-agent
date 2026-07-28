@@ -236,28 +236,49 @@ def build_reasoning_diagnostics(
     assessment: EvidenceSufficiencyAssessment,
     *,
     reasoning_path: str,
+    speech_act: Any | None = None,
 ) -> dict[str, Any]:
     """Additive diagnostics — decision summaries only, no chain-of-thought."""
-    return {
+    steps: list[dict[str, Any]] = [
+        {
+            "phase": "information_need_assessed",
+            "status": "completed",
+            "summary": "Information need classified from legacy intent/strategy signals.",
+        },
+        {
+            "phase": "evidence_sufficiency_assessed",
+            "status": "completed",
+            "summary": (
+                f"Sufficiency={assessment.sufficiency_status}; "
+                f"evidence_count={assessment.evidence_count}; "
+                f"completeness_risk={assessment.completeness_risk}."
+            ),
+        },
+    ]
+    diagnostics: dict[str, Any] = {
         "reasoning_path": reasoning_path,
         "evidence_sufficiency": assessment.to_diagnostics(),
-        "understanding_steps": [
+        "understanding_steps": steps,
+    }
+    if speech_act is not None:
+        act_diag = speech_act.to_diagnostics()
+        diagnostics["speech_act"] = act_diag
+        diagnostics["speech_act_reason"] = act_diag["speech_act_reason"]
+        diagnostics["qualification_required"] = act_diag["qualification_required"]
+        diagnostics["clarification_required"] = act_diag["clarification_required"]
+        diagnostics["refusal_required"] = act_diag["refusal_required"]
+        steps.append(
             {
-                "phase": "information_need_assessed",
-                "status": "completed",
-                "summary": "Information need classified from legacy intent/strategy signals.",
-            },
-            {
-                "phase": "evidence_sufficiency_assessed",
+                "phase": "speech_act_selected",
                 "status": "completed",
                 "summary": (
-                    f"Sufficiency={assessment.sufficiency_status}; "
-                    f"evidence_count={assessment.evidence_count}; "
-                    f"completeness_risk={assessment.completeness_risk}."
+                    f"Speech act={act_diag['speech_act']}; "
+                    f"reason={act_diag['speech_act_reason']} "
+                    "(advisory; Language owns wording)."
                 ),
-            },
-        ],
-    }
+            }
+        )
+    return diagnostics
 
 
 def assessment_as_dict(assessment: EvidenceSufficiencyAssessment) -> dict[str, Any]:

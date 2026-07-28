@@ -167,8 +167,10 @@ def test_reasoning_service_wrap_sets_advisory_fields_without_changing_answer(mon
     assert wrapped.evidence_sufficient is True
     assert wrapped.sufficiency is not None
     assert wrapped.sufficiency.sufficiency_status == "sufficient"
-    assert wrapped.speech_act is None
+    assert wrapped.speech_act == "answer"
+    assert wrapped.speech_act_decision is not None
     assert "evidence_sufficiency" in wrapped.reasoning_diagnostics
+    assert wrapped.reasoning_diagnostics["speech_act"]["speech_act"] == "answer"
     assert out.reasoning_diagnostics is not None
     assert out.reasoning_diagnostics["evidence_sufficiency"]["status"] == "sufficient"
 

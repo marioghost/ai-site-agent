@@ -108,6 +108,9 @@ class AppConfig(BaseSettings):
     evidence_assembly_enabled: bool = Field(
         default=False, alias="EVIDENCE_ASSEMBLY_ENABLED"
     )
+    reasoning_speech_acts_enabled: bool = Field(
+        default=False, alias="REASONING_SPEECH_ACTS_ENABLED"
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:

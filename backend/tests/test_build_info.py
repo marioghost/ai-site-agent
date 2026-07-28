@@ -94,3 +94,7 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False
     assert body["settings_flags"]["cache_namespace_v2_enabled"] is False
+    assert body["release_status"]["accepted"] == "0.5"
+    assert body["release_status"]["closed_0_6"] is False
+    assert "deployed_capabilities" in body
+    assert body["deployed_capabilities"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"]["supported"] is True

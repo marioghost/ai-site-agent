@@ -138,7 +138,12 @@ class ChatResponseBuilder:
 
     @staticmethod
     def build_retrieval_debug(result: RagResult) -> dict | None:
-        if not (result.retrieval_debug or result.retrieval_diagnostics):
+        if not (
+            result.retrieval_debug
+            or result.retrieval_diagnostics
+            or result.reasoning_diagnostics
+            or result.reasoning_path
+        ):
             return None
         payload: dict = {
             **(result.retrieval_debug or {}),
@@ -155,6 +160,18 @@ class ChatResponseBuilder:
             sufficiency = result.reasoning_diagnostics.get("evidence_sufficiency")
             if isinstance(sufficiency, dict):
                 payload["evidence_sufficiency"] = sufficiency
+            speech_act = result.reasoning_diagnostics.get("speech_act")
+            if isinstance(speech_act, dict):
+                payload["speech_act"] = speech_act
+            for key in (
+                "speech_act_applied",
+                "language_instruction",
+                "deterministic_response_used",
+                "llm_skipped",
+                "speech_act_reason",
+            ):
+                if key in result.reasoning_diagnostics:
+                    payload[key] = result.reasoning_diagnostics[key]
         return payload
 
     def from_rag_result(

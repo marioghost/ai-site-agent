@@ -7,18 +7,77 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.core.config import get_config
+from app.core.config import AppConfig, get_config
 from app.core.database import current_db_revision
 from app.repositories.settings_repository import SettingsRepository
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
-# RFC-100 release label — bump when acceptance report closes a release.
-APP_RELEASE = "0.3"
+# Last *accepted* RFC-100 release. Release 0.6 steps may exist in repo but are
+# not closed — do not claim 0.6 complete.
+APP_RELEASE = "0.5"
+
+_ENV_CAPABILITIES = (
+    (
+        "KNOWLEDGE_OS_EXECUTIVE_ENABLED",
+        "knowledge_os_executive_enabled",
+        "Executive seam",
+        False,
+        "Route chat through ExecutiveService instead of direct RagService",
+        "Release 1.0 default ON",
+    ),
+    (
+        "REASONING_SERVICE_ENABLED",
+        "reasoning_service_enabled",
+        "Reasoning seam",
+        False,
+        "Route chat through ReasoningService (diagnostics + optional Language)",
+        "Release 1.0 default ON",
+    ),
+    (
+        "EVIDENCE_ASSEMBLY_ENABLED",
+        "evidence_assembly_enabled",
+        "Evidence Assembly seam",
+        False,
+        "Route RPS assemble stage through EvidenceAssemblyService",
+        "Release 1.0 default ON",
+    ),
+    (
+        "REASONING_SPEECH_ACTS_ENABLED",
+        "reasoning_speech_acts_enabled",
+        "Speech-act Language rendering",
+        False,
+        "Language applies clarify/refuse/qualify when Reasoning is ON",
+        "Requires Reasoning ON; Step 045 must be deployed",
+    ),
+)
+
+_SETTINGS_CAPABILITIES = (
+    (
+        "enable_semantic_diagnostics_v2",
+        "Semantic diagnostics v2 stub",
+        False,
+        "Empty understanding_trace on chat when debug enabled",
+        "Release 1.0",
+    ),
+    (
+        "cache_namespace_v2_enabled",
+        "Cache namespace v2",
+        False,
+        "Include memory_version in retrieval/answer cache namespace",
+        "Staging validation",
+    ),
+    (
+        "memory_shadow_write_enabled",
+        "Memory shadow write",
+        False,
+        "Persist SI claim proposals to Epistemic Memory (shadow; not used by chat)",
+        "Default OFF until 0.7 assist",
+    ),
+)
 
 
 def _project_root() -> Path:
-    # backend/app/services -> repo root
     return Path(__file__).resolve().parents[3]
 
 
@@ -44,27 +103,46 @@ class BuildInfoService:
         settings = SettingsRepository(self._db).get_or_create()
         file_info = _load_build_file()
         revision = current_db_revision()
+        fields = getattr(AppConfig, "model_fields", {}) or {}
 
-        env_flags = {
-            "KNOWLEDGE_OS_EXECUTIVE_ENABLED": self._config.knowledge_os_executive_enabled,
-            "REASONING_SERVICE_ENABLED": self._config.reasoning_service_enabled,
-            "EVIDENCE_ASSEMBLY_ENABLED": self._config.evidence_assembly_enabled,
-        }
-        settings_flags = {
-            "enable_semantic_diagnostics_v2": bool(
-                getattr(settings, "enable_semantic_diagnostics_v2", False)
-            ),
-            "cache_namespace_v2_enabled": bool(
-                getattr(settings, "cache_namespace_v2_enabled", False)
-            ),
-            "memory_shadow_write_enabled": bool(
-                getattr(settings, "memory_shadow_write_enabled", False)
-            ),
-        }
+        env_flags: dict[str, bool] = {}
+        deployed: dict[str, dict] = {}
 
+        for flag_name, attr, friendly, default, effect, rollout in _ENV_CAPABILITIES:
+            supported = attr in fields
+            value: bool | None = None
+            if supported:
+                raw = getattr(self._config, attr, False)
+                value = raw if isinstance(raw, bool) else False
+                env_flags[flag_name] = value
+            deployed[flag_name] = {
+                "supported": supported,
+                "value": value,
+                "surface": "env",
+                "friendly_name": friendly,
+                "default": default,
+                "effect": effect,
+                "rollout": rollout,
+            }
+
+        settings_flags: dict[str, bool] = {}
+        for flag_name, friendly, default, effect, rollout in _SETTINGS_CAPABILITIES:
+            value = bool(getattr(settings, flag_name, False))
+            settings_flags[flag_name] = value
+            deployed[flag_name] = {
+                "supported": True,
+                "value": value,
+                "surface": "settings",
+                "friendly_name": friendly,
+                "default": default,
+                "effect": effect,
+                "rollout": rollout,
+            }
+
+        release = file_info.get("release") or APP_RELEASE
         return {
-            "app_version": file_info.get("release") or APP_RELEASE,
-            "release": file_info.get("release") or APP_RELEASE,
+            "app_version": release,
+            "release": release,
             "git_commit": file_info.get("git_commit")
             or os.getenv("GIT_COMMIT")
             or None,
@@ -76,4 +154,15 @@ class BuildInfoService:
             "feature_flags": {**env_flags, **settings_flags},
             "env_flags": env_flags,
             "settings_flags": settings_flags,
+            "release_status": {
+                "accepted": "0.5",
+                "in_progress": "0.6",
+                "closed_0_6": False,
+                "note": (
+                    "Release 0.5 accepted. Release 0.6 steps may exist in the "
+                    "repository; release is not closed. Deployed capability set "
+                    "is reported per process — Step 045 may be missing on older deploys."
+                ),
+            },
+            "deployed_capabilities": deployed,
         }

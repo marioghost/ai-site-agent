@@ -53,7 +53,12 @@ def _profile_rules_hash(profile_json: str) -> dict[str, str]:
     }
 
 
-def build_retrieval_namespace(settings: Settings, *, db: Session | None = None) -> dict[str, str]:
+def build_retrieval_namespace(
+    settings: Settings,
+    *,
+    db: Session | None = None,
+    speech_acts_active: bool | None = None,
+) -> dict[str, str]:
     profile_json = getattr(settings, "knowledge_profile_json", None) or ""
     rule_hashes = _profile_rules_hash(profile_json)
     retrieval_settings = {
@@ -81,6 +86,7 @@ def build_retrieval_namespace(settings: Settings, *, db: Session | None = None) 
         "heading_match_boost": settings.heading_match_boost,
         "short_query_lexical_boost": settings.short_query_lexical_boost,
     }
+    active = bool(speech_acts_active)
     namespace = {
         "index_version": str(settings.knowledge_version or 1),
         "knowledge_profile_version": sha256_hex(profile_json),
@@ -93,6 +99,9 @@ def build_retrieval_namespace(settings: Settings, *, db: Session | None = None) 
         "prompt_template_version": PROMPT_TEMPLATE_VERSION,
         "context_builder_version": CONTEXT_BUILDER_VERSION,
         "llm_model": settings.llm_model or "",
+        # Step 045 — isolate activated speech-act answers from advisory/legacy cache.
+        # Only set when Reasoning explicitly activates Language (not env alone).
+        "speech_act_language": "v1" if active else "off",
         **rule_hashes,
     }
     if cache_namespace_v2_enabled(settings):

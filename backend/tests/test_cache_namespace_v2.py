@@ -50,11 +50,13 @@ def test_flag_off_namespace_matches_legacy_snapshot():
         "prompt_template_version",
         "context_builder_version",
         "llm_model",
+        "speech_act_language",
         "document_type_rules_version",
         "content_hint_rules_version",
         "source_priority_rules_version",
         "query_expansion_version",
     }
+    assert ns["speech_act_language"] == "off"
 
 
 @pytest.mark.unit

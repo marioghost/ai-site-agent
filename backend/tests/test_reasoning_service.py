@@ -94,15 +94,19 @@ def test_reasoning_service_passthrough_preserves_answer_and_sources(monkeypatch)
     assert result.used_context is True
     assert result.query_intent == "overview"
     assert result.reasoning_path == REASONING_PATH_SERVICE
-    assert wrapped.speech_act is None
+    assert wrapped.speech_act == "qualify"
     assert wrapped.information_need == "overview"
     # Overview/list-shaped need → advisory unknown with completeness risk (Step 043)
+    # → qualify speech act (Step 044, advisory)
     assert wrapped.evidence_sufficient is None
     assert wrapped.sufficiency is not None
     assert wrapped.sufficiency.completeness_risk is True
-    assert wrapped.clarification_needed is None
+    assert wrapped.clarification_needed is False
     assert wrapped.refusal_reason is None
+    assert wrapped.speech_act_decision is not None
+    assert wrapped.speech_act_decision.qualification_required is True
     assert "evidence_sufficiency" in wrapped.reasoning_diagnostics
+    assert wrapped.reasoning_diagnostics["speech_act"]["speech_act"] == "qualify"
 
 
 @pytest.mark.unit

@@ -82,6 +82,9 @@ class _PreparedStream:
     kv: int
     bypass_cache: bool
     debug: bool
+    qualify_suffix: str | None = None
+    speech_language_diag: dict | None = None
+    apply_speech_acts: bool = False
 
 
 class RagStreamingService:
@@ -110,6 +113,7 @@ class RagStreamingService:
         debug: bool = False,
         bypass_cache: bool = False,
         pipeline_provider=None,
+        apply_speech_acts: bool = False,
     ) -> Iterator[tuple[str, dict]]:
         collector = collector or DiagnosticsCollector(
             request_id=request_id,
@@ -139,6 +143,7 @@ class RagStreamingService:
                 debug,
                 bypass_cache,
                 pipeline_provider=pipeline_provider,
+                apply_speech_acts=apply_speech_acts,
             )
             if (
                 prepared.pipeline_diagnostics is not None
@@ -389,6 +394,19 @@ class RagStreamingService:
         prepared.metrics.apply_call_tracker(call_tracker)
         prepared.prompt_diagnostics.update(call_tracker.to_dict())
 
+        if prepared.qualify_suffix:
+            from app.services.language.speech_act_render import apply_qualify_suffix
+
+            before = answer
+            answer = apply_qualify_suffix(answer, prepared.qualify_suffix)
+            if answer != before:
+                delta = (
+                    answer[len(before) :]
+                    if answer.startswith(before)
+                    else f"\n\n{prepared.qualify_suffix}"
+                )
+                yield ("token", {"delta": delta, "text": delta})
+
         if prepared.trace:
             prepared.trace.begin("source_formatting")
             prepared.trace.end("source_formatting", details={"sources": len(sources)})
@@ -415,6 +433,7 @@ class RagStreamingService:
             applied_knowledge_config=prepared.applied_config.model_dump(),
             cache=prepared.cache_info,
             prompt_diagnostics=prepared.prompt_diagnostics,
+            reasoning_diagnostics=prepared.speech_language_diag,
         )
 
         if (
@@ -431,7 +450,11 @@ class RagStreamingService:
                     sources_json=json.dumps([asdict(src) for src in sources], ensure_ascii=False),
                     knowledge_version=prepared.kv,
                     ttl_seconds=self.settings.answer_cache_ttl_seconds,
-                    namespace=build_retrieval_namespace(self.settings),
+                    namespace=build_retrieval_namespace(
+                        self.settings,
+                        db=self.db,
+                        speech_acts_active=prepared.apply_speech_acts,
+                    ),
                     used_context=True,
                     fallback_answer=prepared.fallback,
                 )
@@ -584,6 +607,7 @@ class RagStreamingService:
         debug: bool,
         bypass_cache: bool,
         pipeline_provider=None,
+        apply_speech_acts: bool = False,
     ) -> tuple[_PreparedStream, RagResult | None]:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -609,7 +633,9 @@ class RagStreamingService:
             trace.skip("query_intent", "delegated_to_pipeline")
 
         kv = s.knowledge_version or 1
-        cache_namespace = build_retrieval_namespace(s, db=self.db)
+        cache_namespace = build_retrieval_namespace(
+            s, db=self.db, speech_acts_active=apply_speech_acts
+        )
         cache_info.invalidation_version = cache_namespace.get("index_version")
         cache_info.cache_namespace = cache_namespace
         if trace:
@@ -687,6 +713,7 @@ class RagStreamingService:
                         kv=kv,
                         bypass_cache=bypass_cache,
                         debug=debug,
+                        apply_speech_acts=apply_speech_acts,
                     )
                     return prep, early
                 if trace:
@@ -792,6 +819,99 @@ class RagStreamingService:
             if trace and all_hits:
                 trace.set_chunks(all_hits, {h.url for h in hits})
 
+        applied_config_dict = applied_config.model_dump() if applied_config else None
+        speech_plan = None
+        speech_language_diag = None
+        qualify_suffix = None
+        if apply_speech_acts:
+            from app.services.language.speech_act_decide import decision_from_retrieval
+            from app.services.language.speech_act_render import (
+                plan_speech_act_render,
+                speech_act_diagnostics,
+            )
+            from app.services.reasoning.types import REASONING_PATH_SERVICE
+
+            assessment, decision = decision_from_retrieval(
+                hits=hits or [],
+                query_intent=query_intent,
+                applied_knowledge_config=applied_config_dict,
+                used_context=bool(hits),
+            )
+            speech_plan = plan_speech_act_render(
+                decision,
+                query_language=language,
+                default_language=s.default_response_language or "uk",
+            )
+            speech_language_diag = speech_act_diagnostics(
+                speech_plan,
+                decision=decision,
+                assessment_diagnostics=assessment.to_diagnostics(),
+                reasoning_path=REASONING_PATH_SERVICE,
+            )
+            qualify_suffix = speech_plan.qualify_suffix
+            if speech_plan.skip_llm:
+                if trace:
+                    trace.skip("context_building", "speech_act_deterministic")
+                    trace.skip("llm_generation", "speech_act_skip_llm")
+                early = RagResult(
+                    answer=speech_plan.text or fallback,
+                    sources=[],
+                    used_context=False,
+                    request_id=request_id,
+                    cache_hit=cache_hit,
+                    cache_type=cache_type if cache_hit else "none",
+                    retrieval_ms=retrieval_ms,
+                    generation_ms=0,
+                    retrieval_debug=retrieval_debug,
+                    query_intent=query_intent,
+                    applied_knowledge_config=applied_config_dict,
+                    cache=cache_info,
+                    prompt_diagnostics={
+                        "llm_skipped": True,
+                        "deterministic_response_used": True,
+                        "language_instruction": speech_plan.language_instruction,
+                    },
+                    reasoning_diagnostics=speech_language_diag,
+                )
+                prep = _PreparedStream(
+                    message=message,
+                    session_id=session_id,
+                    request_id=request_id,
+                    normalized=normalized,
+                    expanded=expanded,
+                    fallback=fallback,
+                    language=language,
+                    fast=fast,
+                    hits=hits or [],
+                    pipeline_context=pipeline_context,
+                    pipeline_diagnostics=pipeline_diagnostics,
+                    query_intent=query_intent,
+                    applied_config=applied_config,
+                    retrieval_ms=retrieval_ms,
+                    retrieval_debug=retrieval_debug,
+                    cache_hit=cache_hit,
+                    cache_type=cache_type,
+                    cache_info=cache_info,
+                    trace=trace,
+                    gen_system="",
+                    gen_user="",
+                    llm_opts={},
+                    metrics=LlmRuntimeMetrics(),
+                    prompt_diagnostics=early.prompt_diagnostics or {},
+                    mode_profile=get_mode_profile(s),
+                    user_ip=user_ip,
+                    user_agent=user_agent,
+                    referrer=referrer,
+                    query_vector=query_vector,
+                    kv=kv,
+                    bypass_cache=bypass_cache,
+                    debug=debug,
+                    qualify_suffix=None,
+                    speech_language_diag=speech_language_diag,
+                    apply_speech_acts=apply_speech_acts,
+                )
+                return prep, early
+
         if not hits:
             if trace:
                 trace.skip("context_building", "no relevant chunks")
@@ -806,8 +926,9 @@ class RagStreamingService:
                 retrieval_ms=retrieval_ms,
                 retrieval_debug=retrieval_debug,
                 query_intent=query_intent,
-                applied_knowledge_config=applied_config.model_dump() if applied_config else None,
+                applied_knowledge_config=applied_config_dict,
                 cache=cache_info,
+                reasoning_diagnostics=speech_language_diag,
             )
             prep = _PreparedStream(
                 message=message,
@@ -842,6 +963,9 @@ class RagStreamingService:
                 kv=kv,
                 bypass_cache=bypass_cache,
                 debug=debug,
+                qualify_suffix=None,
+                speech_language_diag=speech_language_diag,
+                apply_speech_acts=apply_speech_acts,
             )
             return prep, early
 
@@ -858,6 +982,9 @@ class RagStreamingService:
             intent=query_intent,
             settings=s,
             org_name=org_name,
+            speech_act_guidance=(
+                speech_plan.prompt_guidance if speech_plan else None
+            ),
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -942,5 +1069,8 @@ class RagStreamingService:
             kv=kv,
             bypass_cache=bypass_cache,
             debug=debug,
+            qualify_suffix=qualify_suffix,
+            speech_language_diag=speech_language_diag,
+            apply_speech_acts=apply_speech_acts,
         )
         return prep, None

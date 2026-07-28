@@ -1,7 +1,8 @@
-"""Reasoning request/result DTOs (RFC-100 Steps 039–043).
+"""Reasoning request/result DTOs (RFC-100 Steps 039–044).
 
 Independent of HTTP schemas and ORM models. Unsupported cognitive fields stay
-``None`` where not yet decided. Step 043 fills evidence sufficiency as advisory.
+``None`` where not yet decided. Step 043 fills evidence sufficiency; Step 044
+fills speech-act selection — both advisory until Language activation.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from typing import Any
 
 from app.services.rag_service import RagResult
 from app.services.reasoning.evidence_sufficiency import EvidenceSufficiencyAssessment
+from app.services.reasoning.speech_act import SpeechActDecision
 
 REASONING_PATH_LEGACY = "legacy"
 REASONING_PATH_SERVICE = "reasoning_service"
@@ -34,8 +36,8 @@ class ReasoningResult:
     """Typed reasoning outcome.
 
     ``legacy_result`` carries the existing RagResult so callers keep assembling
-    ChatResponse unchanged. Sufficiency (Step 043) is advisory — does not alter
-    speech act or final language.
+    ChatResponse unchanged. Sufficiency (043) and speech act (044) are advisory
+    — final answer text remains legacy-identical in Step 044.
     """
 
     legacy_result: RagResult
@@ -47,6 +49,7 @@ class ReasoningResult:
     clarification_needed: bool | None = None
     reasoning_diagnostics: dict[str, Any] = field(default_factory=dict)
     sufficiency: EvidenceSufficiencyAssessment | None = None
+    speech_act_decision: SpeechActDecision | None = None
 
     def as_rag_result(self) -> RagResult:
         """Return the passthrough RagResult with path + advisory diagnostics."""

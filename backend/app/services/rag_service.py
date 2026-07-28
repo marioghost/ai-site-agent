@@ -171,6 +171,7 @@ class RagService:
         debug: bool = False,
         bypass_cache: bool = False,
         pipeline_provider=None,
+        apply_speech_acts: bool = False,
     ) -> RagResult:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -197,7 +198,10 @@ class RagService:
             trace.skip("query_intent", "delegated_to_pipeline")
 
         kv = s.knowledge_version or 1
-        cache_namespace = build_retrieval_namespace(s, db=self.db)
+        # speech_acts_active only when Reasoning explicitly activates Language.
+        cache_namespace = build_retrieval_namespace(
+            s, db=self.db, speech_acts_active=apply_speech_acts
+        )
         cache_info.invalidation_version = cache_namespace.get("index_version")
         cache_info.cache_namespace = cache_namespace
         if trace:
@@ -375,6 +379,74 @@ class RagService:
             if trace and all_hits:
                 trace.set_chunks(all_hits, {h.url for h in hits})
 
+        applied_config_dict = (
+            applied_config.model_dump() if applied_config else None
+        )
+        speech_plan = None
+        speech_language_diag = None
+        if apply_speech_acts:
+            from app.services.language.speech_act_decide import decision_from_retrieval
+            from app.services.language.speech_act_render import (
+                plan_speech_act_render,
+                speech_act_diagnostics,
+            )
+            from app.services.reasoning.types import REASONING_PATH_SERVICE
+
+            assessment, decision = decision_from_retrieval(
+                hits=hits or [],
+                query_intent=query_intent,
+                applied_knowledge_config=applied_config_dict,
+                used_context=bool(hits),
+            )
+            speech_plan = plan_speech_act_render(
+                decision,
+                query_language=language,
+                default_language=s.default_response_language or "uk",
+            )
+            speech_language_diag = speech_act_diagnostics(
+                speech_plan,
+                decision=decision,
+                assessment_diagnostics=assessment.to_diagnostics(),
+                reasoning_path=REASONING_PATH_SERVICE,
+            )
+            if speech_plan.skip_llm:
+                if trace:
+                    trace.skip("context_building", "speech_act_deterministic")
+                    trace.skip("llm_generation", "speech_act_skip_llm")
+                    trace.skip("ukrainian_polish", "speech_act_skip_llm")
+                    trace.skip("source_formatting", "speech_act_no_sources")
+                # clarify/refuse: no irrelevant sources as proof of the act
+                return self._finalize(
+                    RagResult(
+                        answer=speech_plan.text or fallback,
+                        sources=[],
+                        used_context=False,
+                        request_id=request_id,
+                        cache_hit=cache_hit,
+                        cache_type=cache_type if cache_hit else "none",
+                        retrieval_ms=retrieval_ms,
+                        generation_ms=0,
+                        retrieval_debug=retrieval_debug,
+                        query_intent=query_intent,
+                        applied_knowledge_config=applied_config_dict,
+                        cache=cache_info,
+                        prompt_diagnostics={
+                            "llm_skipped": True,
+                            "deterministic_response_used": True,
+                            "language_instruction": speech_plan.language_instruction,
+                        },
+                        reasoning_diagnostics=speech_language_diag,
+                    ),
+                    message,
+                    session_id,
+                    trace,
+                    user_ip,
+                    user_agent,
+                    referrer,
+                    normalized,
+                    expanded,
+                )
+
         if not hits:
             if trace:
                 trace.skip("context_building", "no relevant chunks")
@@ -392,10 +464,9 @@ class RagService:
                     retrieval_ms=retrieval_ms,
                     retrieval_debug=retrieval_debug,
                     query_intent=query_intent,
-                    applied_knowledge_config=(
-                        applied_config.model_dump() if applied_config else None
-                    ),
+                    applied_knowledge_config=applied_config_dict,
                     cache=cache_info,
+                    reasoning_diagnostics=speech_language_diag,
                 ),
                 message,
                 session_id,
@@ -422,6 +493,9 @@ class RagService:
             intent=query_intent,
             settings=s,
             org_name=org_name,
+            speech_act_guidance=(
+                speech_plan.prompt_guidance if speech_plan else None
+            ),
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -582,6 +656,11 @@ class RagService:
         if validation.warnings:
             prompt_diagnostics["validation_warnings"] = validation.warnings
 
+        if speech_plan and speech_plan.qualify_suffix:
+            from app.services.language.speech_act_render import apply_qualify_suffix
+
+            answer = apply_qualify_suffix(answer, speech_plan.qualify_suffix)
+
         polish_ms = 0
         polish_decision = evaluate_polish(
             s,
@@ -654,6 +733,7 @@ class RagService:
             applied_knowledge_config=applied_config.model_dump(),
             cache=cache_info,
             prompt_diagnostics=prompt_diagnostics,
+            reasoning_diagnostics=speech_language_diag,
         )
 
         if s.enable_semantic_answer_cache and query_vector is not None and not bypass_cache:

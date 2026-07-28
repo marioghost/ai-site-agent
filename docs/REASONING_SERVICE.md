@@ -1,14 +1,15 @@
-# ReasoningService (Release 0.6 — Steps 039–043)
+# ReasoningService (Release 0.6 — Steps 039–045)
 
-**RFC-100** — stateless reasoning seam, evidence-acquisition coordinator, and
-advisory evidence-sufficiency assessment.
+**RFC-100** — stateless reasoning seam, evidence-acquisition coordinator,
+evidence-sufficiency assessment, and speech-act selection.
 
 ## Why it exists
 
 Release 0.6 extracts reasoning ownership from the legacy RAG path. Step 039
 created the seam; Step 041 lets Reasoning **order** legacy retrieval adapters
 when Evidence Assembly is also enabled; Step 043 adds **source-scoped**
-evidence sufficiency as an advisory contract — without changing answers.
+evidence sufficiency; Step 044 selects a **speech act**; Step 045 lets
+**Language** consume that act when a dedicated behavior flag is ON.
 
 ## What it owns now
 
@@ -18,8 +19,9 @@ evidence sufficiency as an advisory contract — without changing answers.
 | Typed request/result DTOs | ✅ `ReasoningRequest` / `ReasoningResult` |
 | Path diagnostics | ✅ `reasoning_path=reasoning_service` |
 | Evidence acquisition order (both flags ON) | ✅ `prepare → assemble → finalize` via RPS adapters |
-| Evidence sufficiency (Step 043) | ✅ advisory / shadow-only |
-| Speech act / refuse / clarify | **Not yet** — fields remain unset for speech-act control |
+| Evidence sufficiency (Step 043) | ✅ advisory / used by speech-act selection |
+| Speech act (Step 044) | ✅ selection + diagnostics |
+| Language activation (Step 045) | ✅ via `REASONING_SPEECH_ACTS_ENABLED` (Language renders) |
 
 ## Evidence sufficiency (Step 043)
 
@@ -32,51 +34,65 @@ It is **not** confidence in world truth. Completeness for list/enumeration
 questions is especially uncertain and surfaces as `completeness_risk=true`
 with status `unknown`.
 
-Assessment is:
+## Speech acts (Steps 044–045)
 
-- computed only when ReasoningService runs (flag ON);
-- advisory — **does not** refuse, clarify, or change answer text;
-- in-memory from existing `RagResult` fields (sources, `used_context`, intent);
-- zero extra retrieval / LLM calls;
-- no Epistemic Memory reads.
+Reasoning selects one of: `answer` | `qualify` | `clarify` | `refuse`.
 
-## What it must not own
+| Policy (v1) | Speech act |
+|-------------|------------|
+| Narrow fact + sufficient evidence | `answer` |
+| Completeness risk / enumeration | `qualify` |
+| Ambiguous / underspecified need | `clarify` |
+| No usable evidence / invalid provenance | `refuse` |
+| Sufficiency unknown with some evidence | `qualify` |
 
-- Qdrant / lexical / DFP internals
-- ORM models / cache storage
-- Prompt construction / LLM / polish / citations
-- Epistemic Memory mutation
-- HTTP schemas
-- Final user-facing language decisions (still Rag)
+**Refusal means** “insufficient **site** evidence,” not “false in the world.”
+**Qualify** is preferred over false certainty.
 
-## Call paths
+Reasoning emits a concise typed language instruction (e.g.
+`QUALIFY_INCOMPLETE_EVIDENCE`) — not free-form hidden reasoning and not a
+duplicate final answer.
 
-| Flags | Behavior |
-|-------|----------|
-| Reasoning ON, EA OFF | Passthrough to Rag → RPS.`run` → DFP → sufficiency assess |
-| Reasoning ON, EA ON | Reasoning coordinates RPS stages; Rag language; sufficiency assess |
+### Behavior activation
 
-## Statelessness
+| Flag combo | User-visible answer |
+|------------|---------------------|
+| Reasoning OFF | Exact legacy (speech-acts flag ignored) |
+| Reasoning ON + speech acts OFF | Step 044 advisory only |
+| Reasoning ON + speech acts ON | Language renders the selected act |
 
-Holds only Session/Settings (+ Rag deps). No cross-call caches of answers,
-claims, tensions, or pipeline results.
+See [LANGUAGE_SPEECH_ACTS.md](LANGUAGE_SPEECH_ACTS.md).
 
-## Related docs
+## Flag matrix (coordination)
 
-- [EVIDENCE_ASSEMBLY.md](EVIDENCE_ASSEMBLY.md)
+| Reasoning | EA | Behavior |
+|-----------|-----|----------|
+| OFF | * | Legacy Rag / Executive |
+| ON, EA OFF | — | Passthrough to Rag → RPS.`run` → DFP; sufficiency + speech act |
+| ON, EA ON | — | Reasoning coordinates RPS stages; Rag language; sufficiency + speech act |
+
+Speech-act **Language** activation is orthogonal: requires
+`REASONING_SPEECH_ACTS_ENABLED` in addition to Reasoning ON.
+
+## Rollback
+
+- Reasoning path: `REASONING_SERVICE_ENABLED=false`
+- Speech-act UX only: `REASONING_SPEECH_ACTS_ENABLED=false` (exact Step 044 advisory)
+
+## Related
+
+- [LANGUAGE_SPEECH_ACTS.md](LANGUAGE_SPEECH_ACTS.md)
 - [FEATURE_FLAGS.md](FEATURE_FLAGS.md)
-- [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md)
 - [0.6-step-043-evidence-sufficiency.md](releases/0.6-step-043-evidence-sufficiency.md)
+- [0.6-step-044-speech-act.md](releases/0.6-step-044-speech-act.md)
+- [0.6-step-045-speech-act-language.md](releases/0.6-step-045-speech-act-language.md)
 
-## Migration confidence (Step 042)
+## Roadmap (Release 0.6)
 
-All **8** flag combinations validated. See [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md).
-
-## Migration boundaries
-
-| Step | Intent |
+| Step | Status |
 |------|--------|
-| **042** | Migration Confidence Gate ✅ |
+| **039–042** | Migration seams ✅ |
 | **043** | Advisory evidence sufficiency ✅ |
-| **044** | Streaming fully aligned / speech-act wiring |
-| Later | Memory-assisted evidence; act on sufficiency |
+| **044** | Advisory speech-act selection ✅ |
+| **045** | Language consumes speech acts ✅ (await review) |
+| Later | Remaining 0.6 closure items — do not auto-close |

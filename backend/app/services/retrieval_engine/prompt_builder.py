@@ -66,6 +66,7 @@ class CompactPromptBuilder:
         intent: str,
         settings,
         org_name: str = "the organization",
+        speech_act_guidance: str | None = None,
     ) -> tuple[str, str]:
         query_lang = detect_query_language(message)
         profile = get_mode_profile(settings)
@@ -84,6 +85,7 @@ class CompactPromptBuilder:
             org_name=org_name,
             custom=(settings.system_prompt or "").strip(),
             settings=settings,
+            speech_act_guidance=speech_act_guidance,
         )
         user = f"Sources:\n{context_block}\n\nQuestion: {message.strip()}\n\nAnswer:"
         return system, user
@@ -99,6 +101,7 @@ class CompactPromptBuilder:
         org_name: str,
         custom: str,
         settings,
+        speech_act_guidance: str | None = None,
     ) -> str:
         lang_instruction = (
             "natural Ukrainian." if query_lang == "uk" else "the same language as the question."
@@ -124,6 +127,9 @@ class CompactPromptBuilder:
                 base=base,
                 lang_instruction=lang_instruction,
             )
+
+        if speech_act_guidance:
+            body = f"{body} {speech_act_guidance.strip()}"
 
         profile = get_mode_profile(settings)
         if custom and profile.key != "fast":
