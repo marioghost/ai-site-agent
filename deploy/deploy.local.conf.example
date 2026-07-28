@@ -37,3 +37,7 @@ HEALTHCHECK_URL="http://127.0.0.1:8000/api/health"
 # (typical with nvm), either install Node system-wide or set:
 # NPM_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/npm"
 # NODE_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/node"
+
+# Required for release smoke login when the seed password was changed:
+# STAGING_ADMIN_USER=admin
+# STAGING_ADMIN_PASSWORD="your-live-admin-password"
