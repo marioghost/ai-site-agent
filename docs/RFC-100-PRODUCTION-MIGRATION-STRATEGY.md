@@ -750,16 +750,19 @@ Exact sequence. Each step: **deployable**, **rollback**, **flag OFF** unless sta
 | 044 | Streaming uses same ReasoningService | **Advisory speech-act selection** (`0.6-step-044`); streaming parity covered in Steps 039–041 |
 | 045 | Release 0.6 closure | **Language speech-act rendering** (`0.6-step-045`) + this closure checkpoint |
 
-Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration flags remain **OFF**. Next numbered step: **046** (Release 0.7).
+Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration flags remain **OFF**.
 
+### Release 0.7 — engineering accepted (2026-07-28)
 
 | Step | Title | Detail |
 |------|-------|--------|
-| **046** | Memory read views: claims by region | — |
-| **047** | Reasoning activates memory before Evidence Assembly | Flag `memory_evidence_assist_enabled` |
-| **048** | Memory canonical shadow (`memory_canonical_shadow_enabled`) | Diagnostic compare Memory assist vs retrieval source sets |
+| **046** | Memory read views: claims by region | Typed `read_region()`; deployment corpus isolation — **implemented** |
+| **047** | Reasoning activates memory before Evidence Assembly | Flag `memory_evidence_assist_enabled` default OFF — **implemented** |
+| **048** | Memory canonical shadow (`memory_canonical_shadow_enabled`) | Diagnostic compare Memory assist vs retrieval source sets — **implemented** |
 | **049** | Offline eval script + report | Gate for staging assist candidacy — **implemented** (ops/evaluation; no flag); see `0.7-step-049-offline-memory-eval.md` |
-| **050** | Release 0.7 engineering closure | — |
+| **050** | Release 0.7 engineering closure | **Closed** — Engineering Ready; staging_validated=false; production_ready=false; see `RELEASE-0.7-ACCEPTANCE-REPORT.md` |
+
+**Release 0.7 flags remain default OFF.** Staging activation is blocked until a real diagnostics harvest + Step 049 recommendation. **Release 0.8 has not started.**
 
 ### Release 0.8
 

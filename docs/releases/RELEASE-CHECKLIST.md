@@ -14,7 +14,7 @@ Three **independent** states — see [LIFECYCLE.md](../LIFECYCLE.md) (Engineerin
 
 **Do not mark production-ready without staging-validated.**
 
-**Engineering may continue** (e.g. Release 0.6 / Step 039) while staging validation is pending. **Production deployment** remains blocked until staging-validated. Release 0.5 acceptance: [RELEASE-0.5-ACCEPTANCE-REPORT.md](RELEASE-0.5-ACCEPTANCE-REPORT.md). Prior: [RELEASE-0.4-ACCEPTANCE-REPORT.md](RELEASE-0.4-ACCEPTANCE-REPORT.md).
+**Engineering may continue** (e.g. Release 0.8 planning) while staging validation for Release 0.7 is pending. **Production deployment** of Memory assist/shadow remains blocked until staging-validated. Release 0.7 acceptance: [RELEASE-0.7-ACCEPTANCE-REPORT.md](RELEASE-0.7-ACCEPTANCE-REPORT.md). Prior: [RELEASE-0.6-ACCEPTANCE-REPORT.md](RELEASE-0.6-ACCEPTANCE-REPORT.md), [RELEASE-0.5-ACCEPTANCE-REPORT.md](RELEASE-0.5-ACCEPTANCE-REPORT.md).
 
 ---
 
@@ -74,5 +74,7 @@ Three **independent** states — see [LIFECYCLE.md](../LIFECYCLE.md) (Engineerin
 | 0.3 | `0013_cache_namespace_v2_enabled` | + `/api/build`, `/api/metrics`, memory_version |
 | 0.4 | `0015_memory_shadow_write_enabled` | + epistemic tables present; shadow flag OFF |
 | 0.5 | `0015` (no new migrations) | + `kos_open_tensions`; admin `/understanding` |
+| 0.6 | `0015` (no new migrations) | Reasoning/EA/speech-act flags OFF; golden parity |
+| 0.7 | `0017_memory_canonical_shadow_enabled` (code head) | Assist/shadow Settings OFF; `/api/build` `closed_0_7`; no Memory chat influence |
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) and [STAGING-SEED-SMOKE.md](../STAGING-SEED-SMOKE.md).

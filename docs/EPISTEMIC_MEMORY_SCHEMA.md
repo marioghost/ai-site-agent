@@ -84,6 +84,8 @@ cd backend && .venv/bin/alembic upgrade head
 # head: 0017_memory_canonical_shadow_enabled
 ```
 
+Release **0.7** engineering closed (Step 050). Migrations **0016–0017** are present in code and default **false**; they are **not** applied to production `ai_site_agent` until an approved deploy. See [RELEASE-0.7-ACCEPTANCE-REPORT.md](releases/RELEASE-0.7-ACCEPTANCE-REPORT.md).
+
 ## Tests
 
 ```bash

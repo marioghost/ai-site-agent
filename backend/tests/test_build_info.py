@@ -94,7 +94,21 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False
     assert body["settings_flags"]["cache_namespace_v2_enabled"] is False
-    assert body["release_status"]["accepted"] == "0.6"
+    assert body["release_status"]["accepted"] == "0.7"
     assert body["release_status"]["closed_0_6"] is True
+    assert body["release_status"]["closed_0_7"] is True
+    assert body["release_status"]["engineering_ready"] is True
+    assert body["release_status"]["staging_validated"] is False
+    assert body["release_status"]["production_ready"] is False
+    assert body["release_status"]["in_progress"] is None
+    caps = body["release_status"]["release_0_7_capabilities"]
+    assert caps["memory_region_reads"]["code_present"] is True
+    assert caps["memory_evidence_assist"]["code_present"] is True
+    assert caps["memory_evidence_assist"]["enabled"] is False
+    assert caps["memory_evidence_assist"]["effective"] is False
+    assert caps["memory_canonical_shadow"]["code_present"] is True
+    assert caps["memory_canonical_shadow"]["enabled"] is False
+    assert caps["memory_canonical_shadow"]["effective"] is False
+    assert caps["memory_offline_evaluation"]["code_present"] is True
     assert "deployed_capabilities" in body
     assert body["deployed_capabilities"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"]["supported"] is True

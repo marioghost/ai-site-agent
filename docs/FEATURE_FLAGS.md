@@ -36,6 +36,8 @@ allow_legacy_<surface>                        # deprecation gates
 
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
+**Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation. Release 0.8 not started.
+
 ### `enable_semantic_diagnostics_v2`
 
 **Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/chat_response_builder.py` → `app/api/chat.py`
@@ -214,6 +216,10 @@ See [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-e
 **Deploy:** migration `0017_memory_canonical_shadow_enabled`.
 
 See [0.7-step-048-memory-canonical-shadow.md](releases/0.7-step-048-memory-canonical-shadow.md).
+
+### Release 0.7 closure (Step 050)
+
+Engineering accepted — [RELEASE-0.7-ACCEPTANCE-REPORT.md](releases/RELEASE-0.7-ACCEPTANCE-REPORT.md), [0.7-rollback.md](releases/0.7-rollback.md). Flags remain OFF; staging_validated=false; production_ready=false.
 
 ---
 

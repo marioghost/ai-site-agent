@@ -33,6 +33,7 @@ RELEASE_0_7_STEPS = (
     {"step": "047", "title": "Advisory Memory evidence assist", "code": "present"},
     {"step": "048", "title": "Memory canonical shadow comparator", "code": "present"},
     {"step": "049", "title": "Offline Memory Assist evaluation", "code": "present"},
+    {"step": "050", "title": "Release 0.7 engineering closure", "code": "present"},
 )
 
 _ENV_CAPABILITIES = (
@@ -215,19 +216,59 @@ class BuildInfoService:
             "env_flags": env_flags,
             "settings_flags": settings_flags,
             "release_status": {
-                "accepted": "0.6",
-                "in_progress": "0.7",
+                "accepted": "0.7",
+                "in_progress": None,
                 "closed_0_6": True,
+                "closed_0_7": True,
                 "engineering_ready": True,
                 "staging_validated": False,
                 "production_ready": False,
                 "steps_039_045": list(RELEASE_0_6_STEPS),
+                "steps_046_050": list(RELEASE_0_7_STEPS),
+                # Backward-compatible alias for pre-closure consumers.
                 "steps_046_048": list(RELEASE_0_7_STEPS),
+                "release_0_7_capabilities": {
+                    "memory_region_reads": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Internal read views; no dedicated runtime flag",
+                    },
+                    "memory_evidence_assist": {
+                        "code_present": True,
+                        "enabled": bool(
+                            settings_flags.get("memory_evidence_assist_enabled", False)
+                        ),
+                        "effective": bool(
+                            deployed.get("memory_evidence_assist_enabled", {}).get(
+                                "effective", False
+                            )
+                        ),
+                    },
+                    "memory_canonical_shadow": {
+                        "code_present": True,
+                        "enabled": bool(
+                            settings_flags.get("memory_canonical_shadow_enabled", False)
+                        ),
+                        "effective": bool(
+                            deployed.get("memory_canonical_shadow_enabled", {}).get(
+                                "effective", False
+                            )
+                        ),
+                    },
+                    "memory_offline_evaluation": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Offline ops package; no runtime flag",
+                    },
+                },
                 "note": (
-                    "Release 0.6 engineering accepted (Steps 039–045). "
-                    "Release 0.7 Steps 046–048 implemented in code; flags default OFF. "
-                    "Staging validation not complete — not production ready. "
-                    "Capability code_present ≠ enabled ≠ active."
+                    "Release 0.7 engineering accepted (Steps 046–050). "
+                    "Assist/shadow flags default OFF; staging_validated=false; "
+                    "production_ready=false. Release 0.8 not started. "
+                    "code_present ≠ enabled ≠ effective ≠ active. "
+                    "Live /api/build reflects this metadata only after deploy+restart."
                 ),
             },
             "deployed_capabilities": deployed,

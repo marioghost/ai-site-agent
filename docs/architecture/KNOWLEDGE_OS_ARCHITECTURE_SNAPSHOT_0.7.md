@@ -1,11 +1,11 @@
-# Knowledge OS Architecture Snapshot — Release 0.7 (post–Step 048)
+# Knowledge OS Architecture Snapshot — Release 0.7 (post–Step 050 engineering closure)
 
 | Field | Value |
 |-------|-------|
-| **Status** | Official engineering baseline |
-| **Scope** | Implemented code after Release 0.6 closure + Steps 046–048 + engineering cleanup |
+| **Status** | Official engineering baseline (Release 0.7 Engineering Ready) |
+| **Scope** | Implemented code after Release 0.6 closure + Steps 046–050 |
 | **Date** | 2026-07-28 |
-| **App release marker** | `APP_RELEASE = "0.7"` (`build_info_service.py`) |
+| **App release marker** | `APP_RELEASE = "0.7"` (`build_info_service.py`); `closed_0_7: true` |
 | **Alembic head (code)** | `0017_memory_canonical_shadow_enabled` |
 | **Staging validated** | **false** |
 | **Production ready** | **false** |
@@ -671,14 +671,14 @@ Scale: 1 = concept only, 3 = seam exists, 5 = production-default cognitive owner
 | **0.4** Memory schema + shadow write | Accepted | Per release reports | Shadow write OFF | `memory_shadow_write_enabled` | Additive tables |
 | **0.5** Tension surfacing | Accepted | Admin gated | Auth gate | No dedicated flag | Understanding API |
 | **0.6** Reasoning / EA / speech acts | **Accepted** (`closed_0_6: true`) | Not required for closure | Flags OFF | Env flags OFF | Steps 039–045 |
-| **0.7 current** | Steps **046–048 implemented**; cleanup done; **not closed** | **staging_validated: false** | **production_ready: false** | Assist + shadow Settings OFF | Next numbered work: Step 049 offline eval (not started) |
+| **0.7** Memory assist + shadow + offline eval | **Accepted** (`closed_0_7: true`; Engineering Ready) | **staging_validated: false** | **production_ready: false** | Assist + shadow Settings OFF | Steps 046–050; Release 0.8 not started |
 
-**Outstanding blockers for 0.7 closure (implemented understanding, not a roadmap invent):**
+**Outstanding blockers for staging activation (not for engineering closure):**
 
 1. Memory coverage gate for assist staging.
-2. Offline eval (Step 049) not started.
-3. No claim of staging validation in build metadata.
-4. All migration flags remain default OFF in runtime.
+2. Real staging diagnostics harvest + Step 049 recommendation on real data.
+3. Explicit approval before any controlled assist/shadow experiment.
+4. All migration flags remain default OFF in runtime until that approval.
 
 ---
 
@@ -817,12 +817,12 @@ Off-chat (implemented, separate):
 | Dimension | Verdict |
 |-----------|---------|
 | **Architecture health** | **Good seams, tangled runtime.** Boundaries for EA, Memory, and Shadow are clean. Reasoning/Rag/Language form a workable but cyclic orchestration cluster. |
-| **Migration progress** | Release **0.6 closed**. Release **0.7** has Steps **046–048 in code** with flags OFF. Not staging-validated. |
-| **Remaining releases** | 0.7 closure still ahead (eval + gates). 0.8+ for Rag shrink / canonical Memory influence. 1.0 for default-ON migration. |
-| **Readiness for Step 049** | **Yes.** Step 049 is offline eval/report — does not require changing chat runtime. Snapshot + cleanup provide a trustworthy baseline. |
+| **Migration progress** | Release **0.6 closed**. Release **0.7 closed** (Steps **046–050** Engineering Ready) with flags OFF. Not staging-validated. |
+| **Remaining releases** | Release **0.8 not started**. 0.8+ for Rag shrink / canonical Memory influence. 1.0 for default-ON migration. |
+| **Readiness for staging activation** | **Blocked** until real diagnostics harvest + Step 049 recommendation. Synthetic fixtures are not live recommendations. |
 | **Known risks** | Enabling assist/shadow before coverage/eval; treating diagnostics as product behaviour; Rag/streaming drift; sparse Memory misread as “no knowledge.” |
-| **Recommendation** | Treat this document as the **sole current-state baseline**. Proceed to Step 049 as **read-only evaluation** against this architecture. Do not enable 0.7 Memory flags in staging until coverage gate + eval report say so. Do not start answer-influencing Memory work under this baseline. |
+| **Recommendation** | Treat this document as the **current-state baseline** at 0.7 engineering closure. Do not enable 0.7 Memory flags in staging until coverage gate + real eval report say so. Do not start Release 0.8 under this closure task. |
 
 ---
 
-**End of snapshot. Step 049 not started.**
+**End of snapshot. Release 0.7 engineering closed (Step 050). Release 0.8 not started.**

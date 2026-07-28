@@ -105,7 +105,7 @@ Speech-act **Language** activation is orthogonal: requires
 | **047** | Advisory Memory evidence assist ✅ — flag default OFF |
 | **048** | Memory canonical shadow comparator ✅ — flag default OFF; diagnostic only |
 | **049** | Offline Memory Assist eval (Operations) ✅ — no flag; fixture-based; see [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-eval.md) |
-| **050** | Release 0.7 closure — not started |
+| **050** | Release 0.7 engineering closure ✅ — [RELEASE-0.7-ACCEPTANCE-REPORT.md](releases/RELEASE-0.7-ACCEPTANCE-REPORT.md); staging activation pending; flags OFF |
 
 ### Step 047 caller obligations (MemoryRegionView)
 
