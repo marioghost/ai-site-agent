@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
-# AI Site Agent — deployment & operations manager for Linux operators (SSH-friendly).
+# AI Site Agent — canonical deployment & operations manager (SSH-friendly).
 #
 # Stack: systemd backend + nginx frontend + local Ollama + local Qdrant + PostgreSQL.
-# No Docker. Run interactively over SSH.
+# No Docker. Single public entry point for release engineering.
 #
-# Preferred (dev → /opt): run from the code checkout so sync is automatic:
-#   cd ~/projects/ai-site-agent && sudo bash deploy/manage_deploy.sh
+# Preferred release deploy (origin/main only):
+#   cd /path/to/ai-site-agent && sudo bash deploy/manage_deploy.sh deploy full
+#   bash deploy/manage_deploy.sh verify-release
 #
-# Also supported from /opt when DEV_CHECKOUT is set in deploy.local.conf:
-#   cd /opt/ai-site-agent && sudo bash deploy/manage_deploy.sh
-#   # deploy.local.conf: DEV_CHECKOUT="/home/you/projects/ai-site-agent"
+# Interactive menu:
+#   sudo bash deploy/manage_deploy.sh
 #
-# Non-interactive deploy:
-#   bash deploy/manage_deploy.sh --mode full|backend|frontend|clean|...
-#
-# Non-interactive operations:
-#   bash deploy/manage_deploy.sh --action start-all|stop-all|restart-all|status
-#   bash deploy/manage_deploy.sh --action start|stop|restart --module backend
+# Legacy flags still accepted (deprecated):
+#   bash deploy/manage_deploy.sh --mode full|backend|frontend|...
+#   bash deploy/manage_deploy.sh --action start-all|status|...
 #
 set -uo pipefail
 
@@ -944,10 +941,28 @@ parse_args() {
       --recreate-venv) RECREATE_VENV=1; shift ;;
       --no-npm-install) DO_NPM_INSTALL=no; shift ;;
       --no-reload-nginx) DO_RELOAD_NGINX=no; shift ;;
-      --use-staging) USE_STAGING_FLAG=yes; shift ;;
+      --use-staging)
+        USE_STAGING_FLAG=yes
+        if ! deploy_guard_emergency_enabled; then
+          log_error "--use-staging is emergency-only (prepare_staging bypasses origin/main)."
+          log_error "Use: manage_deploy.sh deploy full"
+          exit 1
+        fi
+        deploy_guard_require_emergency "staging-tree deploy" || exit 1
+        shift
+        ;;
       --sync-from-dev) SYNC_FROM_DEV_FLAG=yes; shift ;;
       --no-sync-from-dev) SYNC_FROM_DEV_FLAG=no; shift ;;
-      -h|--help) usage; exit 0 ;;
+      -h|--help)
+        if [[ -f "$SCRIPT_DIR/lib/cli.sh" ]]; then
+          # shellcheck source=deploy/lib/cli.sh
+          source "$SCRIPT_DIR/lib/cli.sh"
+          md_cli_usage
+        else
+          usage
+        fi
+        exit 0
+        ;;
       *) log_error "Unknown option: $1"; usage; exit 1 ;;
     esac
   done
@@ -1050,17 +1065,30 @@ sync_from_dev_checkout() {
     log_info "Sync source and project path are the same ($PROJECT_ROOT) — skip rsync"
     return 0
   fi
-  if [[ "${ALLOW_DIRTY_SYNC:-0}" != "1" ]]; then
-    if ! deploy_guard_assert_clean_worktree "$SYNC_SOURCE" "sync source"; then
-      log_error "Refusing rsync from dirty tree: $SYNC_SOURCE"
-      log_error "Use: sudo bash deploy/deploy_from_main.sh  (clean origin/main worktree)"
-      log_error "Unsafe override: ALLOW_DIRTY_SYNC=1 (logged below)"
+  # Normal path: only the clean origin/main worktree created by `deploy full`.
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" ]]; then
+    if ! deploy_guard_assert_clean_worktree "$SYNC_SOURCE" "release worktree"; then
+      log_error "Release worktree is dirty — abort"
       return 1
     fi
   else
-    log_warn "ALLOW_DIRTY_SYNC=1 — rsyncing from potentially dirty tree: $SYNC_SOURCE"
+    # Direct --sync-from-dev from an operator checkout is blocked.
+    if [[ "${ALLOW_DIRTY_SYNC:-0}" == "1" ]] || [[ "${DEPLOY_LOCAL_MAIN:-0}" == "1" ]]; then
+      deploy_guard_reject_legacy_bypasses || return 1
+    fi
+    if ! deploy_guard_emergency_enabled; then
+      log_error "Refusing rsync from operator checkout: $SYNC_SOURCE"
+      log_error "Use: sudo bash deploy/manage_deploy.sh deploy full"
+      log_error "That builds a clean worktree from origin/main (never feature/dirty trees)."
+      return 1
+    fi
+    deploy_guard_require_emergency "sync from non-release checkout" || return 1
+    if ! deploy_guard_assert_clean_worktree "$SYNC_SOURCE" "emergency sync source"; then
+      log_error "Even emergency sync refuses a dirty tree"
+      return 1
+    fi
   fi
-  log_info "Rsync dev checkout → production (keeps DB, venv, node_modules)..."
+  log_info "Rsync release source → production (keeps DB, venv, node_modules)..."
   log_info "  from: $SYNC_SOURCE"
   log_info "  to:   $PROJECT_ROOT"
   # Never overwrite production secrets/state with the dev checkout copy.
@@ -1736,6 +1764,15 @@ deploy_frontend() {
 }
 
 mode_full() {
+  if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+    if deploy_guard_emergency_enabled; then
+      deploy_guard_require_emergency "legacy --mode full" || return 1
+    else
+      log_error "Refusing --mode full from operator checkout."
+      log_error "Use: sudo bash deploy/manage_deploy.sh deploy full"
+      return 1
+    fi
+  fi
   print_plan
   # Build UI before final chown so APP_USER!=deploy-user cannot break npm mid-run.
   SKIP_FIX_OWNERSHIP=yes deploy_backend || return 1
@@ -1747,12 +1784,30 @@ mode_full() {
 }
 
 mode_backend() {
+  if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+    if deploy_guard_emergency_enabled; then
+      deploy_guard_require_emergency "legacy --mode backend" || return 1
+    else
+      log_error "Refusing --mode backend from operator checkout."
+      log_error "Use: sudo bash deploy/manage_deploy.sh deploy backend"
+      return 1
+    fi
+  fi
   print_plan
   deploy_backend || return 1
   health_checks
 }
 
 mode_frontend() {
+  if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+    if deploy_guard_emergency_enabled; then
+      deploy_guard_require_emergency "legacy --mode frontend" || return 1
+    else
+      log_error "Refusing --mode frontend from operator checkout."
+      log_error "Use: sudo bash deploy/manage_deploy.sh deploy frontend"
+      return 1
+    fi
+  fi
   log_section "Frontend-only deploy"
   deploy_frontend || return 1
   log_ok "Dashboard updated — hard-refresh browser (Ctrl+Shift+R) if UI looks stale"
@@ -1825,6 +1880,21 @@ run_menu_action() {
   pause_menu
 }
 
+# Wrap CLI menu actions (release/deploy helpers).
+run_menu_cli() {
+  local label="$1"
+  shift
+  log_section "$label"
+  # shellcheck source=deploy/lib/cli.sh
+  source "$SCRIPT_DIR/lib/cli.sh"
+  if "$@"; then
+    log_ok "$label — finished successfully"
+  else
+    log_error "$label — finished with errors"
+  fi
+  pause_menu
+}
+
 interactive_menu() {
   show_banner
   preflight_check || log_warn "Some pre-flight checks failed — continue with care"
@@ -1834,14 +1904,10 @@ interactive_menu() {
     echo ""
     _color "1;37" "What do you want to do?"
     echo ""
-    if paths_differ; then
-      echo "  Deploy   ($SYNC_SOURCE → $PROJECT_ROOT: code is rsynced before each deploy)"
-    else
-      echo "  Deploy   (no DEV_CHECKOUT sync — rebuilds $PROJECT_ROOT as-is)"
-    fi
-    echo "    1) Full redeploy          backend + frontend (usual update)"
-    echo "    2) Backend only           API / Python changes"
-    echo "    3) Frontend only          dashboard UI changes"
+    echo "  Deploy   (always from origin/main clean worktree)"
+    echo "    1) Full deploy from origin/main   recommended"
+    echo "    2) Backend from origin/main"
+    echo "    3) Frontend from origin/main"
     echo ""
     echo "  Maintenance"
     echo "    4) Clean reinstall        destructive — asks what to wipe"
@@ -1875,9 +1941,20 @@ interactive_menu() {
     echo "   28) Configure PostgreSQL  print tuning recommendations"
     echo "   29) Configure Ollama      print concurrency tuning for chat+indexing"
     echo ""
+    echo "  Release engineering (origin/main only)"
+    echo "   30) Release status         git + deploy readiness"
+    echo "   31) Release check          make release-check gate"
+    echo "   32) Prepare branch review  commits/files vs main"
+    echo "   33) Merge branch → main    interactive confirm"
+    echo "   34) Push origin/main       interactive confirm"
+    echo "   35) Deploy from origin/main  clean worktree → /opt"
+    echo "   36) Smoke verify           health / build / metrics"
+    echo "   37) Verify release         full identity chain report"
+    echo "   38) Show build-info API    GET /api/build"
+    echo ""
     echo "    0) Exit"
     echo ""
-    read -r -p "Enter choice [0-29]: " choice
+    read -r -p "Enter choice [0-38]: " choice
 
     # Reset per-run flags to safe defaults.
     DO_BACKUP_DB=""
@@ -1889,41 +1966,13 @@ interactive_menu() {
 
     case "$choice" in
       1)
-        prompt_yn "Back up PostgreSQL before deploy?" "y" && DO_BACKUP_DB=yes || DO_BACKUP_DB=no
-        resolve_sync_source
-        if paths_differ; then
-          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
-        else
-          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
-          if [[ -z "${DEV_CHECKOUT:-}" ]]; then
-            log_warn "Tip: set DEV_CHECKOUT=/path/to/projects/ai-site-agent in deploy.local.conf"
-          fi
-          prompt_yn "Run git pull for latest code?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
-        fi
-        run_menu_action "Full redeploy" mode_full
+        run_menu_cli "Deploy full from origin/main" md_cli_deploy full
         ;;
       2)
-        prompt_yn "Back up PostgreSQL before deploy?" "y" && DO_BACKUP_DB=yes || DO_BACKUP_DB=no
-        resolve_sync_source
-        if paths_differ; then
-          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
-        else
-          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
-          prompt_yn "Run git pull?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
-        fi
-        run_menu_action "Backend deploy" mode_backend
+        run_menu_cli "Deploy backend from origin/main" md_cli_deploy backend
         ;;
       3)
-        resolve_sync_source
-        if paths_differ; then
-          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
-        else
-          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
-          prompt_yn "Run git pull?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
-        fi
-        prompt_yn "Run npm install?" "y" && DO_NPM_INSTALL=yes || DO_NPM_INSTALL=no
-        prompt_yn "Reload nginx after build?" "y" && DO_RELOAD_NGINX=yes || DO_RELOAD_NGINX=no
-        run_menu_action "Frontend deploy" mode_frontend
+        run_menu_cli "Deploy frontend from origin/main" md_cli_deploy frontend
         ;;
       4) run_menu_action "Clean reinstall" mode_clean ;;
       5) run_menu_action "Restart services" interactive_restart_menu ;;
@@ -1972,13 +2021,42 @@ interactive_menu() {
       27) run_menu_action "Show DB stats" show_db_stats ;;
       28) run_menu_action "Configure PostgreSQL" configure_postgres ;;
       29) run_menu_action "Configure Ollama" configure_ollama ;;
+      30) run_menu_cli "Release status" md_cli_release status ;;
+      31) run_menu_cli "Release check" md_cli_release check ;;
+      32)
+        read -r -p "Branch to review [$(git -C "$REPO_ROOT" symbolic-ref -q --short HEAD 2>/dev/null || echo feature)]: " _prep
+        _prep="${_prep:-$(git -C "$REPO_ROOT" symbolic-ref -q --short HEAD 2>/dev/null || true)}"
+        run_menu_cli "Prepare branch $_prep" md_cli_release prepare --branch "$_prep"
+        ;;
+      33)
+        read -r -p "Branch to merge into main: " _merge
+        if [[ -n "$_merge" ]]; then
+          run_menu_cli "Merge $_merge into main" md_cli_release merge --branch "$_merge"
+        fi
+        ;;
+      34) run_menu_cli "Push origin/main" md_cli_release push ;;
+      35) run_menu_cli "Deploy from origin/main" md_cli_deploy full ;;
+      36) run_menu_cli "Smoke verify" bash "$REPO_ROOT/scripts/release/smoke-staging.sh" ;;
+      37) run_menu_cli "Verify release" bash "$REPO_ROOT/scripts/release/verify-release.sh" ;;
+      38) run_menu_cli "Build info" bash -c 'curl -sf http://127.0.0.1:8000/api/build | python3 -m json.tool' ;;
       0|q|Q) log_info "Goodbye."; exit 0 ;;
-      *) log_warn "Invalid choice — enter 0-29" ;;
+      *)
+        log_error "Invalid choice: $choice"
+        pause_menu
+        ;;
     esac
   done
 }
 
 main() {
+  # Canonical CLI: manage_deploy.sh <command> … (not --mode/--action)
+  if [[ "${MD_SKIP_CLI:-0}" != "1" && $# -gt 0 && "$1" != --* ]]; then
+    # shellcheck source=deploy/lib/cli.sh
+    source "$SCRIPT_DIR/lib/cli.sh"
+    md_cli_main "$@"
+    exit $?
+  fi
+
   parse_args "$@"
   load_env_overrides
   detect_project_root
@@ -2001,15 +2079,30 @@ main() {
   fi
 
   case "${MODE:-}" in
-    full) mode_full ;;
-    update)
-      # One-shot: deploy THIS checkout to PROJECT_ROOT (sync + migrate + build + restart).
-      SYNC_FROM_DEV=yes
-      DO_GIT_PULL=no
+    full)
+      if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+        log_warn "Deprecated: --mode full from arbitrary checkout"
+        log_warn "Use: manage_deploy.sh deploy full  (origin/main clean worktree)"
+      fi
       mode_full
       ;;
-    backend) mode_backend ;;
-    frontend) mode_frontend ;;
+    update)
+      log_error "Deprecated: --mode update (deployed dirty/feature trees)."
+      log_error "Use: sudo bash deploy/manage_deploy.sh deploy full"
+      exit 1
+      ;;
+    backend)
+      if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+        log_warn "Deprecated: --mode backend — prefer: manage_deploy.sh deploy backend"
+      fi
+      mode_backend
+      ;;
+    frontend)
+      if [[ "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+        log_warn "Deprecated: --mode frontend — prefer: manage_deploy.sh deploy frontend"
+      fi
+      mode_frontend
+      ;;
     clean) mode_clean ;;
     restart) op_restart_all ;;
     plan) show_deploy_plan ;;

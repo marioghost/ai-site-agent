@@ -1,26 +1,18 @@
 #!/usr/bin/env bash
-# Deploy this checkout → /opt/ai-site-agent (uses deploy/deploy.local.conf + /opt/.env).
+# DEPRECATED wrapper — use: sudo bash deploy/manage_deploy.sh deploy full
 #
 #   bash scripts/deploy.sh
-#   bash scripts/deploy.sh --no-backup-db
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# shellcheck disable=SC1091
-source "$ROOT/scripts/lib/deploy-env.sh"
-
-echo "==> Deploy to $PROJECT_ROOT"
-echo "    Env:    $ENV_FILE"
-echo "    Health: $HEALTHCHECK_URL"
-
-bash "$ROOT/scripts/release/write-build-info.sh"
+echo "NOTE: scripts/deploy.sh → manage_deploy.sh deploy full (origin/main only)" >&2
 
 if [[ "$(id -u)" -eq 0 ]]; then
-  exec bash deploy/sync_to_opt.sh "$@"
+  exec bash deploy/manage_deploy.sh deploy full "$@"
 elif command -v sudo &>/dev/null; then
-  exec sudo bash deploy/sync_to_opt.sh "$@"
+  exec sudo bash deploy/manage_deploy.sh deploy full "$@"
 else
   echo "ERROR: deploy needs sudo for systemd/nginx" >&2
   exit 1

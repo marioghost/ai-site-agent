@@ -208,6 +208,14 @@ class BuildInfoService:
             or os.getenv("GIT_COMMIT")
             or None,
             "git_commit_short": file_info.get("git_commit_short") or None,
+            "backend_commit": file_info.get("backend_commit")
+            or file_info.get("git_commit")
+            or os.getenv("GIT_COMMIT")
+            or None,
+            "frontend_commit": file_info.get("frontend_commit")
+            or file_info.get("git_commit")
+            or None,
+            "source_ref": file_info.get("source_ref") or None,
             "build_time": file_info.get("build_time") or os.getenv("BUILD_TIME") or None,
             "alembic_head": revision,
             "memory_version": MemoryVersionService(self._db).get(),

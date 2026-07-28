@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Regression: release deploy must refuse dirty trees and non-main commits.
+# Regression: release deploy must refuse dirty trees, non-main commits, and legacy bypasses.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GUARD="$ROOT/deploy/lib/deploy_guard.sh"
 FROM_MAIN="$ROOT/deploy/deploy_from_main.sh"
 MANAGE="$ROOT/deploy/manage_deploy.sh"
+CLI="$ROOT/deploy/lib/cli.sh"
+SOURCE="$ROOT/deploy/lib/deploy_source.sh"
+VERIFY="$ROOT/scripts/release/verify-release.sh"
 
 if [[ ! -f "$GUARD" ]]; then
   echo "FAIL: missing $GUARD" >&2
@@ -25,7 +28,6 @@ git -C "$TMP/repo" config user.name "Test"
 echo "a" >"$TMP/repo/README"
 git -C "$TMP/repo" add README
 git -C "$TMP/repo" commit -q -m "init"
-git -C "$TMP/repo" checkout -q -b main
 git -C "$TMP/repo" branch -M main
 echo "b" >>"$TMP/repo/README"
 git -C "$TMP/repo" checkout -q -b feature
@@ -67,26 +69,52 @@ if deploy_guard_assert_commit_on_main "$TMP/repo" "$FEATURE_HEAD"; then
 fi
 echo "OK: non-main commit rejected"
 
-# manage_deploy must source guard and refuse dirty sync by default.
-if ! grep -q 'deploy_guard_assert_clean_worktree' "$MANAGE"; then
-  echo "FAIL: manage_deploy.sh must call deploy_guard_assert_clean_worktree" >&2
+# Legacy bypasses must fail without emergency mode.
+ALLOW_DIRTY_SYNC=1
+if deploy_guard_reject_legacy_bypasses 2>/dev/null; then
+  echo "FAIL: ALLOW_DIRTY_SYNC should be rejected without emergency" >&2
   exit 1
 fi
-if ! grep -q 'ALLOW_DIRTY_SYNC' "$MANAGE"; then
-  echo "FAIL: manage_deploy.sh must support ALLOW_DIRTY_SYNC override" >&2
+unset ALLOW_DIRTY_SYNC
+echo "OK: ALLOW_DIRTY_SYNC rejected without emergency"
+
+DEPLOY_LOCAL_MAIN=1
+if deploy_guard_reject_legacy_bypasses 2>/dev/null; then
+  echo "FAIL: DEPLOY_LOCAL_MAIN should be rejected without emergency" >&2
+  exit 1
+fi
+unset DEPLOY_LOCAL_MAIN
+echo "OK: DEPLOY_LOCAL_MAIN rejected without emergency"
+
+# manage_deploy must refuse operator sync without MD_RELEASE_DEPLOY.
+if ! grep -q 'MD_RELEASE_DEPLOY' "$MANAGE"; then
+  echo "FAIL: manage_deploy.sh must gate sync with MD_RELEASE_DEPLOY" >&2
+  exit 1
+fi
+if ! grep -q 'EMERGENCY_DEPLOY' "$GUARD"; then
+  echo "FAIL: deploy_guard must define emergency mode" >&2
+  exit 1
+fi
+if [[ ! -f "$CLI" ]] || [[ ! -f "$SOURCE" ]] || [[ ! -f "$VERIFY" ]]; then
+  echo "FAIL: missing cli/deploy_source/verify-release" >&2
+  exit 1
+fi
+if ! grep -q 'md_cli_main' "$MANAGE"; then
+  echo "FAIL: manage_deploy.sh must dispatch CLI commands" >&2
+  exit 1
+fi
+if [[ ! -f "$FROM_MAIN" ]] || ! grep -q 'manage_deploy.sh deploy full' "$FROM_MAIN"; then
+  echo "FAIL: deploy_from_main.sh must wrap manage_deploy deploy full" >&2
+  exit 1
+fi
+if ! grep -q 'EXPECTED_COMMIT' "$ROOT/scripts/release/write-build-info.sh"; then
+  echo "FAIL: write-build-info must support EXPECTED_COMMIT" >&2
   exit 1
 fi
 
-if [[ ! -x "$FROM_MAIN" ]] && [[ ! -f "$FROM_MAIN" ]]; then
-  echo "FAIL: missing deploy_from_main.sh" >&2
-  exit 1
-fi
-if ! grep -q 'worktree add' "$FROM_MAIN"; then
-  echo "FAIL: deploy_from_main.sh must use git worktree" >&2
-  exit 1
-fi
-if ! grep -q 'RELEASE_VERSION=0.7' "$FROM_MAIN"; then
-  echo "FAIL: deploy_from_main.sh must set RELEASE_VERSION=0.7" >&2
+# --mode update must be hard-refused
+if ! grep -q 'Deprecated: --mode update' "$MANAGE"; then
+  echo "FAIL: --mode update must be deprecated/refused" >&2
   exit 1
 fi
 

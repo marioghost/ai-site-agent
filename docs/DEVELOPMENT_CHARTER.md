@@ -52,7 +52,7 @@ Protect the architecture, engineering principles, and long-term vision — by **
 | Cognitive | `COGNITIVE_ARCHITECTURE.md`, `RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md` | Frozen v1 |
 | Product identity | `RFC-0001-KNOWLEDGE-OS-CORE.md`, `KNOWLEDGE_INTELLIGENCE_ENGINE.md` | Frozen |
 | Engineering | `KNOWLEDGE_OS_ARCHITECTURE_v1.md` | Frozen v1 |
-| Migration execution | `RFC-100-PRODUCTION-MIGRATION-STRATEGY.md` | Frozen execution plan |
+| Release workflow | `RELEASE_ENGINEERING_WORKFLOW.md` | Mandatory lifecycle (main / origin/main) |
 
 **Changes allowed only** when there is a **fundamental architectural reason**, documented in an **ADR**.
 
