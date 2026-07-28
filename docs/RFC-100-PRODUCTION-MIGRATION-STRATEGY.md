@@ -768,9 +768,9 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 
 | Step | Title | Detail |
 |------|-------|--------|
-| **052** | Remove boost fields from Settings API response (deprecated) | — |
-| **053** | Dashboard: remove title/heading boost inputs | — |
-| **054** | `allow_legacy_kp_presets` default false | Preset 410 |
+| **052** | Remove boost fields from Settings API response (deprecated) | — **done** |
+| **053** | Dashboard: remove title/heading boost inputs | — **done** |
+| **054** | `allow_legacy_kp_presets` default false | Preset 410 — **implemented** (code; not applied to live DB until approved deploy); see `0.8-step-054-implementation.md` |
 | **055** | CanonicalSourceService: disable doc-type path when memory canonical on | Flag |
 | **056** | Golden on generic profile only in CI | — |
 | **057** | Release 0.8 | — |

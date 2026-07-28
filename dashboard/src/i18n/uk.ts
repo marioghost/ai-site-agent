@@ -69,6 +69,8 @@ export const uk: TranslationDict = {
   "knowledge_profile.advanced_json": "Розширений JSON-редактор",
   "knowledge_profile.presets.title": "Пресети",
   "knowledge_profile.presets.load": "Завантажити пресет",
+  "knowledge_profile.presets.disabled_banner":
+    "Застарілі шаблони профілів знань вимкнено. Наявні профілі залишаються активними. Профіль можна відредагувати або імпортувати вручну.",
   "knowledge_profile.identity.title": "Ідентичність сайту",
   "knowledge_profile.identity.display_name": "Назва сайту",
   "knowledge_profile.identity.organization": "Назва організації",

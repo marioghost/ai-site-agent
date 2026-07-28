@@ -33,10 +33,13 @@ allow_legacy_<surface>                        # deprecation gates
 | `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
 | `memory_evidence_assist_enabled` | Settings DB column | **false** | Advisory Memory region read in Reasoning before Evidence Assembly (Step 047) | Reasoning ON + `cache_namespace_v2_enabled`; staging NO-GO until Memory coverage gate | Set Settings `false`; restart not required | Release 1.0 |
 | `memory_canonical_shadow_enabled` | Settings DB column | **false** | Diagnostic Memory vs retrieval source-set comparison (Step 048); no answer influence | Reasoning ON + assist ON + cache v2 ON; skipped on answer cache hit | Set Settings `false`; restart not required | Release 1.0 |
+| `allow_legacy_kp_presets` | Settings DB column | **false** | Allow GET/POST Knowledge Profile industry preset APIs; **410** when false (Step 054) | Ops rollback only — keep false in normal 0.8 operation | Set Settings `true` | Release 1.0 |
 
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
-**Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation. Release 0.8 not started.
+**Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation.
+
+**Release 0.8 (in progress):** Steps 052–053 complete (Settings boost API/UI cleanup). Step **054** implements `allow_legacy_kp_presets` default **false** (Preset 410). Stored Knowledge Profiles remain active; generation/wizard remains ungated; in-process `PRESETS` retained.
 
 ### `enable_semantic_diagnostics_v2`
 
@@ -177,7 +180,6 @@ Do **not** enable until the release step that introduces them.
 | `claim_extraction_enabled` | 0.4 | SI → claim proposals (optional gate; extraction runs inside shadow hook today) |
 | `tension_surfacing_enabled` | 0.5 | Optional future gate for dashboard. Steps 035–036 ship admin-auth-gated; taxonomy owned by `TensionSurfacingService` ([ADR-0002](adr/0002-tension-taxonomy-ownership.md)). |
 | `maintenance_execution_enabled` | 0.9 | Budgeted active maintenance investigations |
-| `allow_legacy_kp_presets` | 0.8 → 1.0 | Industry preset API (default true until 0.8) |
 
 ---
 
@@ -216,6 +218,30 @@ See [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-e
 **Deploy:** migration `0017_memory_canonical_shadow_enabled`.
 
 See [0.7-step-048-memory-canonical-shadow.md](releases/0.7-step-048-memory-canonical-shadow.md).
+
+### `allow_legacy_kp_presets` (Step 054)
+
+**Code:** `feature_flags.allow_legacy_kp_presets` → `api/knowledge_profile.py` (`list_presets`, `load_preset`)
+
+**Default:** **false** (Settings column; migration `0018_allow_legacy_kp_presets`).
+
+**Behavior when OFF (default):**
+
+- `GET /api/knowledge-profile/presets` → **410** (`legacy_kp_presets_disabled`)
+- `POST /api/knowledge-profile/presets/load` → **410** (same detail)
+- Stored `knowledge_profile_json` continues to drive chat/retrieval
+- Empty JSON still falls back to `generic_corporate`
+- Generation/wizard and in-process `PRESETS` remain available to code/tests
+
+**Behavior when ON (rollback):** Preset list/load behave as before Step 054 (including Deprecation headers on successful load).
+
+**Does not:** Change ranking, Memory, Reasoning, cache namespaces, or rewrite profiles.
+
+**Rollback:** Settings PUT `allow_legacy_kp_presets=true`.
+
+**Deploy:** apply migration `0018` only with an approved release deploy — do not apply to `ai_site_agent` during implementation review.
+
+See [0.8-step-054-architecture-review.md](releases/0.8-step-054-architecture-review.md) and [0.8-step-054-implementation.md](releases/0.8-step-054-implementation.md).
 
 ### Release 0.7 closure (Step 050)
 

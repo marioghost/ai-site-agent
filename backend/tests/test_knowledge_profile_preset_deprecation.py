@@ -18,11 +18,12 @@ from app.services.knowledge_profile_service import KnowledgeProfileService
 PRESET_ID = "documentation_portal"
 
 
-def _stub_knowledge_profile_deps(monkeypatch) -> None:
+def _stub_knowledge_profile_deps(monkeypatch, *, allow_presets: bool = True) -> None:
     class FakeRepo:
         def get_or_create(self):
             settings = MagicMock()
             settings.knowledge_profile_json = "{}"
+            settings.allow_legacy_kp_presets = allow_presets
             return settings
 
         def save(self, settings):

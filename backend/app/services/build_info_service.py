@@ -107,6 +107,13 @@ _SETTINGS_CAPABILITIES = (
         "Diagnostic Memory vs retrieval source-set comparison (shadow only)",
         "Requires Reasoning ON + assist ON + cache_namespace_v2; skipped on answer cache hit",
     ),
+    (
+        "allow_legacy_kp_presets",
+        "Legacy KP presets",
+        False,
+        "Allow GET/POST Knowledge Profile industry preset APIs (410 when false)",
+        "Default OFF at Step 054; rollback = Settings true",
+    ),
 )
 
 

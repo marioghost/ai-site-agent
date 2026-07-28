@@ -59,6 +59,15 @@ def memory_canonical_shadow_enabled(settings) -> bool:
     return bool(getattr(settings, "memory_canonical_shadow_enabled", False))
 
 
+def allow_legacy_kp_presets(settings) -> bool:
+    """Allow Knowledge Profile industry preset list/load APIs (default False, Step 054).
+
+    Settings-backed only — not an environment flag. Does not affect stored
+    ``knowledge_profile_json`` runtime, generation/wizard, or in-process PRESETS.
+    """
+    return bool(getattr(settings, "allow_legacy_kp_presets", False))
+
+
 def memory_canonical_shadow_effective(settings) -> bool:
     """True when shadow comparison is configured to run (all prerequisites ON)."""
     return (

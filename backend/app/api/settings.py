@@ -121,6 +121,7 @@ def _to_read(model: Settings) -> SettingsRead:
         memory_canonical_shadow_enabled=getattr(
             model, "memory_canonical_shadow_enabled", False
         ),
+        allow_legacy_kp_presets=getattr(model, "allow_legacy_kp_presets", False),
         max_trace_retention_days=model.max_trace_retention_days,
         max_concurrent_chat_requests=model.max_concurrent_chat_requests,
         max_concurrent_llm_requests=model.max_concurrent_llm_requests,
@@ -312,6 +313,7 @@ def update_settings(
     settings.memory_shadow_write_enabled = payload.memory_shadow_write_enabled
     settings.memory_evidence_assist_enabled = payload.memory_evidence_assist_enabled
     settings.memory_canonical_shadow_enabled = payload.memory_canonical_shadow_enabled
+    settings.allow_legacy_kp_presets = payload.allow_legacy_kp_presets
     settings.max_trace_retention_days = payload.max_trace_retention_days
     settings.max_concurrent_chat_requests = payload.max_concurrent_chat_requests
     settings.max_concurrent_llm_requests = payload.max_concurrent_llm_requests

@@ -14,6 +14,7 @@ const FLAG_ORDER = [
   "memory_shadow_write_enabled",
   "memory_evidence_assist_enabled",
   "memory_canonical_shadow_enabled",
+  "allow_legacy_kp_presets",
 ] as const;
 
 function valueLabel(

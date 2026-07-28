@@ -81,10 +81,12 @@ In-memory mapper only — see [0.4-step-029](releases/0.4-step-029-claim-extract
 
 ```bash
 cd backend && .venv/bin/alembic upgrade head
-# head: 0017_memory_canonical_shadow_enabled
+# head: 0018_allow_legacy_kp_presets
 ```
 
 Release **0.7** engineering closed (Step 050). Migrations **0016–0017** are present in code and default **false**; they are **not** applied to production `ai_site_agent` until an approved deploy. See [RELEASE-0.7-ACCEPTANCE-REPORT.md](releases/RELEASE-0.7-ACCEPTANCE-REPORT.md).
+
+Step **054** adds migration **0018** (`allow_legacy_kp_presets`, default **false**) — Settings column only; not applied to `ai_site_agent` until an approved deploy. See [0.8-step-054-implementation.md](releases/0.8-step-054-implementation.md).
 
 ## Tests
 
