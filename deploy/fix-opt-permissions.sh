@@ -18,7 +18,12 @@ fi
 
 echo "chown -R ${OWNER}:${OWNER} $TARGET"
 chown -R "${OWNER}:${OWNER}" "$TARGET"
+# u+rwX for owner; g+rwX for group; o+rx on dirs so path traversal works if
+# systemd User differs briefly, and avoid status=200/CHDIR on 700 trees.
 chmod -R u+rwX,g+rwX "$TARGET"
+chmod u+rwx,g+rx,o+rx "$TARGET"
+find "$TARGET" -type d -exec chmod u+rwx,g+rx,o+rx {} +
+chmod 600 "$TARGET/.env" 2>/dev/null || true
 mkdir -p "$TARGET/backups" "$TARGET/logs"
 chown -R "${OWNER}:${OWNER}" "$TARGET/backups" "$TARGET/logs"
 

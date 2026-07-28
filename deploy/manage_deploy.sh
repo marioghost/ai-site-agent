@@ -1410,6 +1410,7 @@ wait_for_backend_http() {
 
 start_backend() {
   log_info "Starting backend ($BACKEND_SERVICE_NAME)..."
+  ensure_service_cwd
   install_systemd_unit
   run_root systemctl enable "$BACKEND_SERVICE_NAME" 2>/dev/null || true
   if ! run_root systemctl start "$BACKEND_SERVICE_NAME"; then
@@ -1606,6 +1607,34 @@ fix_ownership() {
   fi
   run_root chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT" 2>/dev/null || \
     log_warn "Could not chown to $APP_USER (may need sudo)"
+  # Avoid 700/nobody trees that break systemd User=APP_USER (status=200/CHDIR).
+  run_root chmod u+rwx,g+rx,o+rx "$PROJECT_ROOT" 2>/dev/null || true
+  if [[ -d "$PROJECT_ROOT/backend" ]]; then
+    run_root chmod u+rwx,g+rx,o+rx "$PROJECT_ROOT/backend" 2>/dev/null || true
+  fi
+  run_root chmod 600 "$PROJECT_ROOT/.env" 2>/dev/null || true
+}
+
+# Lightweight: ensure systemd WorkingDirectory is traversable by APP_USER.
+# Must run before systemctl start even when SKIP_FIX_OWNERSHIP=yes (mode_full
+# defers full recursive chown until after npm).
+ensure_service_cwd() {
+  if ! id "$APP_USER" &>/dev/null; then
+    return 0
+  fi
+  local wd="${PROJECT_ROOT}/backend"
+  [[ -d "$PROJECT_ROOT" ]] || return 0
+  run_root chown "$APP_USER:$APP_GROUP" "$PROJECT_ROOT" 2>/dev/null || true
+  run_root chmod u+rwx,g+rx,o+rx "$PROJECT_ROOT" 2>/dev/null || true
+  if [[ -d "$wd" ]]; then
+    run_root chown -R "$APP_USER:$APP_GROUP" "$wd" 2>/dev/null || \
+      run_root chown "$APP_USER:$APP_GROUP" "$wd" 2>/dev/null || true
+    run_root chmod u+rwx,g+rx,o+rx "$wd" 2>/dev/null || true
+  fi
+  if ! run_root su -s /bin/sh "$APP_USER" -c "test -x '$PROJECT_ROOT' && test -x '$wd'" 2>/dev/null; then
+    log_warn "APP_USER=${APP_USER} cannot traverse $wd — running full fix_ownership"
+    fix_ownership
+  fi
 }
 
 ensure_project_writable() {
