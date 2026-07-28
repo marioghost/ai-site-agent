@@ -42,6 +42,35 @@ npm_cmd() {
   fi
 }
 
+prepend_path_dir() {
+  local dir="$1"
+  [[ -n "$dir" && -d "$dir" ]] || return 0
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) PATH="$dir:$PATH" ;;
+  esac
+}
+
+augment_path_for_node() {
+  if [[ -n "${NPM_BIN:-}" ]]; then
+    prepend_path_dir "$(dirname "$NPM_BIN")"
+  fi
+  if [[ -n "${NODE_BIN:-}" ]]; then
+    prepend_path_dir "$(dirname "$NODE_BIN")"
+  fi
+  local owner home nvm_bin
+  owner="${SUDO_USER:-${USER:-}}"
+  if [[ -n "$owner" && "$owner" != "root" ]]; then
+    home="$(getent passwd "$owner" 2>/dev/null | cut -d: -f6 || true)"
+    if [[ -n "$home" && -d "$home/.nvm/versions/node" ]]; then
+      nvm_bin="$(ls -1d "$home/.nvm/versions/node/"*/bin 2>/dev/null | sort -V | tail -1 || true)"
+      prepend_path_dir "$nvm_bin"
+    fi
+  fi
+  prepend_path_dir "/usr/local/bin"
+  export PATH
+}
+
 PROJECT_ROOT="${PROJECT_ROOT:-/opt/ai-site-agent}"
 DEPLOY_COMMIT="${DEPLOY_COMMIT:-}"
 ALLOW_DIRTY_SYNC="${ALLOW_DIRTY_SYNC:-0}"
@@ -94,7 +123,9 @@ log "writing .build-info.json (release 0.7 @ $COMMIT)"
 RELEASE_VERSION=0.7 ROOT="$WORKTREE" bash "$WORKTREE/scripts/release/write-build-info.sh"
 
 log "building dashboard from commit $COMMIT"
+augment_path_for_node
 NPM="$(npm_cmd)" || die "npm not found — set NPM_BIN in deploy/deploy.local.conf (sudo drops nvm from PATH)"
+command -v node &>/dev/null || die "node not on PATH — set NODE_BIN in deploy/deploy.local.conf"
 cd "$WORKTREE/dashboard"
 if [[ ! -d node_modules ]]; then
   "$NPM" ci --silent
@@ -116,7 +147,7 @@ export PROJECT_ROOT
 export DEV_CHECKOUT="$WORKTREE"
 export ALLOW_DIRTY_SYNC="$ALLOW_DIRTY_SYNC"
 # Propagate machine overrides — worktree lacks gitignored deploy.local.conf.
-export NPM_BIN NODE_BIN APP_USER APP_GROUP
+export NPM_BIN NODE_BIN APP_USER APP_GROUP PATH
 exec bash "$WORKTREE/deploy/manage_deploy.sh" \
   --mode full \
   --sync-from-dev \
