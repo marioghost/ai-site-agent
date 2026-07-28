@@ -2,7 +2,7 @@
 # Write .build-info.json at repo root (rsynced to /opt on deploy).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 OUT="$ROOT/.build-info.json"
 
 GIT_COMMIT="unknown"
@@ -14,7 +14,7 @@ else
 fi
 
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-RELEASE="${RELEASE_VERSION:-0.6}"
+RELEASE="${RELEASE_VERSION:-0.7}"
 
 python3 - <<PY
 import json
