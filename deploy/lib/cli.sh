@@ -29,7 +29,10 @@ Operations:
   doctor                      Pre-flight + git + DB connectivity
   health                      Health probes only
   backup db                   PostgreSQL pg_dump backup
-  migrate                     Alembic upgrade head
+  migrate                     Alembic upgrade head using live /opt install tree
+  migrate live                Explicit alias of bare migrate (/opt tree only)
+  migrate release             Schema-first: Alembic from clean origin/main worktree
+                              against live /opt DB (no code sync, no restart)
   restart [all|backend|...]   Restart systemd modules
   logs [--module backend]     Service logs
   test unit                   Backend unit test subset
@@ -43,10 +46,17 @@ Legacy flags (deprecated):
 
 Policy: deploy never uses dirty/feature checkouts; never deploys non-main;
 backup is mandatory on release deploy (--no-backup-db refused);
+schema-first cutovers: status → backup db → migrate release → verify schema head
+  → deploy full → health → build-info → smoke → verify-release;
+deploy full still runs post-sync Alembic (idempotent no-op after migrate release;
+  defense-in-depth — not a substitute for migrate release);
+bare migrate / migrate live cannot advance past migrations present in /opt;
+migrate release is the only supported schema-first command;
+CLI does not hard-block deploy full if migrate release was skipped (operator policy);
 all future deploy/release-engineering features live under manage_deploy.sh
 (no new standalone deploy scripts except bootstrap/recovery).
 Emergency bypass: EMERGENCY_DEPLOY_I_UNDERSTAND=YES + reason + confirm
-  (never for routine Release work).
+  (never for routine Release work; migrate release refuses emergency mode).
 EOF
 }
 
@@ -142,6 +152,31 @@ md_cli_deploy() {
   esac
 }
 
+md_cli_migrate() {
+  local sub="${1:-}"
+  if [[ -z "$sub" ]]; then
+    # Live install tree under PROJECT_ROOT (/opt) — not schema-first release.
+    md_invoke_legacy --action run-migrations
+    return $?
+  fi
+  shift || true
+  case "$sub" in
+    release)
+      # shellcheck source=deploy/lib/migrate_release.sh
+      source "$(dirname "${BASH_SOURCE[0]}")/migrate_release.sh"
+      md_migrate_release "$@"
+      ;;
+    live)
+      md_invoke_legacy --action run-migrations
+      ;;
+    *)
+      echo "Unknown migrate subcommand: $sub" >&2
+      echo "Use: migrate | migrate live | migrate release [--yes]" >&2
+      return 1
+      ;;
+  esac
+}
+
 md_cli_main() {
   local group sub
   if [[ $# -eq 0 ]]; then
@@ -183,7 +218,7 @@ md_cli_main() {
       md_invoke_legacy --action backup-postgres --yes
       ;;
     migrate)
-      md_invoke_legacy --action run-migrations
+      md_cli_migrate "$@"
       ;;
     smoke)
       bash "$(md_cli_repo)/scripts/release/smoke-staging.sh"
