@@ -114,6 +114,13 @@ _SETTINGS_CAPABILITIES = (
         "Allow GET/POST Knowledge Profile industry preset APIs (410 when false)",
         "Default OFF at Step 054; rollback = Settings true",
     ),
+    (
+        "legacy_doc_type_canonical_enabled",
+        "Legacy document-type canonical selection",
+        False,
+        "When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (DFP/score order)",
+        "Default OFF at Step 055; rollback = Settings true; not Memory authority",
+    ),
 )
 
 

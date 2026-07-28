@@ -71,6 +71,9 @@ def build_retrieval_namespace(
         "enable_reranking": bool(settings.enable_reranking),
         "enable_intent_aware_retrieval": bool(settings.enable_intent_aware_retrieval),
         "enable_canonical_source_selection": bool(settings.enable_canonical_source_selection),
+        "legacy_doc_type_canonical_enabled": bool(
+            getattr(settings, "legacy_doc_type_canonical_enabled", False)
+        ),
         "enable_broad_question_mode": bool(getattr(settings, "enable_broad_question_mode", True)),
         "enable_context_builder": bool(getattr(settings, "enable_context_builder", True)),
         "retrieval_candidate_count": getattr(settings, "retrieval_candidate_count", 30),

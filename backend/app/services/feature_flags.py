@@ -68,6 +68,16 @@ def allow_legacy_kp_presets(settings) -> bool:
     return bool(getattr(settings, "allow_legacy_kp_presets", False))
 
 
+def legacy_doc_type_canonical_enabled(settings) -> bool:
+    """Allow legacy CanonicalSourceService doc-type reorder (default False, Step 055).
+
+    Settings-backed only. When False, RPS finalize skips KP document-type
+    canonical reorder and keeps post-DFP/broad-inject order. Does not implement
+    Memory authority selection and does not change shadow/assist semantics.
+    """
+    return bool(getattr(settings, "legacy_doc_type_canonical_enabled", False))
+
+
 def memory_canonical_shadow_effective(settings) -> bool:
     """True when shadow comparison is configured to run (all prerequisites ON)."""
     return (

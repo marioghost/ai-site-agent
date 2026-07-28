@@ -115,6 +115,7 @@ export interface Settings {
   memory_evidence_assist_enabled?: boolean;
   memory_canonical_shadow_enabled?: boolean;
   allow_legacy_kp_presets?: boolean;
+  legacy_doc_type_canonical_enabled?: boolean;
   max_trace_retention_days: number;
   max_concurrent_chat_requests: number;
   max_concurrent_llm_requests: number;

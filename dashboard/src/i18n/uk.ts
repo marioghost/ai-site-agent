@@ -1617,6 +1617,10 @@ export const uk: TranslationDict = {
   "migration_flags.meta.commit": "Git commit",
   "migration_flags.meta.build_time": "Час збірки",
   "migration_flags.meta.alembic": "Ревізія Alembic",
+  "migration_flags.flag.legacy_doc_type_canonical_enabled":
+    "Застарілий канонічний вибір за типом документа",
+  "migration_flags.flag.legacy_doc_type_canonical_enabled.help":
+    "Коли ВИМК., переупорядкування фіналізації retrieval за типом документа з Knowledge Profile пропускається (залишається порядок DFP/оцінки). Коли УВІМК., відновлюється застарілий порядок до Step 055. Це не активує Memory authority, Memory Assist і не змінює canonical shadow.",
 
   "chat.debug_mode": "Режим діагностики",
 };

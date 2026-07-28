@@ -34,12 +34,13 @@ allow_legacy_<surface>                        # deprecation gates
 | `memory_evidence_assist_enabled` | Settings DB column | **false** | Advisory Memory region read in Reasoning before Evidence Assembly (Step 047) | Reasoning ON + `cache_namespace_v2_enabled`; staging NO-GO until Memory coverage gate | Set Settings `false`; restart not required | Release 1.0 |
 | `memory_canonical_shadow_enabled` | Settings DB column | **false** | Diagnostic Memory vs retrieval source-set comparison (Step 048); no answer influence | Reasoning ON + assist ON + cache v2 ON; skipped on answer cache hit | Set Settings `false`; restart not required | Release 1.0 |
 | `allow_legacy_kp_presets` | Settings DB column | **false** | Allow GET/POST Knowledge Profile industry preset APIs; **410** when false (Step 054) | Ops rollback only — keep false in normal 0.8 operation | Set Settings `true` | Release 1.0 |
+| `legacy_doc_type_canonical_enabled` | Settings DB column | **false** | When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (Step 055) | Ops rollback to restore pre-055 reorder | Set Settings `true` | Release 1.0 |
 
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
 **Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation.
 
-**Release 0.8 (in progress):** Steps 052–053 complete (Settings boost API/UI cleanup). Step **054** implements `allow_legacy_kp_presets` default **false** (Preset 410). Stored Knowledge Profiles remain active; generation/wizard remains ungated; in-process `PRESETS` retained.
+**Release 0.8 (in progress):** Steps 052–054 complete. Step **055** adds `legacy_doc_type_canonical_enabled` default **false** (skip legacy doc-type reorder). Memory does **not** replace it; shadow/assist unchanged.
 
 ### `enable_semantic_diagnostics_v2`
 
@@ -242,6 +243,26 @@ See [0.7-step-048-memory-canonical-shadow.md](releases/0.7-step-048-memory-canon
 **Deploy:** apply migration `0018` only with an approved release deploy — do not apply to `ai_site_agent` during implementation review.
 
 See [0.8-step-054-architecture-review.md](releases/0.8-step-054-architecture-review.md) and [0.8-step-054-implementation.md](releases/0.8-step-054-implementation.md).
+
+### `legacy_doc_type_canonical_enabled` (Step 055)
+
+**Code:** `feature_flags.legacy_doc_type_canonical_enabled` → `RetrievalPipelineService.finalize_pipeline`
+
+**Default:** **false** (Settings column; migration `0019_legacy_doc_type_canonical_enabled`).
+
+**Behavior when OFF (default):** Skip KP document-type `CanonicalSourceService.select_context` reorder; retain post-DFP / broad-inject hit order (downstream bilingual dedupe / ContextBuilder unchanged).
+
+**Behavior when ON (rollback):** Legacy doc-type reorder runs when `enable_canonical_source_selection` is also true.
+
+**Does not:** Change DocumentScorer, Memory Assist, canonical shadow, or implement Memory authority selection.
+
+**Rollback:** Settings PUT `legacy_doc_type_canonical_enabled=true`.
+
+**Cache:** Flag is part of retrieval cache namespace fingerprint.
+
+**Deploy:** apply migration `0019` only with an approved release deploy — do not apply to `ai_site_agent` during implementation review.
+
+See [0.8-step-055-architecture-review.md](releases/0.8-step-055-architecture-review.md) and [0.8-step-055-implementation.md](releases/0.8-step-055-implementation.md).
 
 ### Release 0.7 closure (Step 050)
 

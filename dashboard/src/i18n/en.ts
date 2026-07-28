@@ -1590,6 +1590,10 @@ export const en: TranslationDict = {
   "migration_flags.meta.commit": "Git commit",
   "migration_flags.meta.build_time": "Build time",
   "migration_flags.meta.alembic": "Alembic revision",
+  "migration_flags.flag.legacy_doc_type_canonical_enabled":
+    "Legacy document-type canonical selection",
+  "migration_flags.flag.legacy_doc_type_canonical_enabled.help":
+    "When OFF, the Knowledge Profile document-type reorder in retrieval finalize is skipped (DFP/score order remains). When ON, restores pre–Step 055 legacy reorder. This does not activate Memory authority, Memory Assist, or canonical shadow selection.",
 
   "chat.debug_mode": "Debug mode",
 };
