@@ -1655,6 +1655,36 @@ ensure_project_writable() {
   return 1
 }
 
+# Stamp dashboard/dist so verify-release / deploy stage 4 can match origin/main.
+# Vite rebuild wipes this file unless rewritten after build.
+write_frontend_deploy_identity() {
+  local commit="${MD_DEPLOY_COMMIT:-}"
+  local release short
+  if [[ -z "$commit" && -f "$PROJECT_ROOT/.build-info.json" ]]; then
+    commit="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('git_commit',''))" 2>/dev/null || true)"
+  fi
+  [[ -n "$commit" ]] || return 0
+  [[ -d "$FRONTEND_BUILD_DIR" ]] || return 0
+  release="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('release',''))" 2>/dev/null || true)"
+  [[ -n "$release" ]] || release="${RELEASE_VERSION:-0.7}"
+  short="${commit:0:7}"
+  mkdir -p "$FRONTEND_BUILD_DIR"
+  python3 - <<PY
+import json
+from pathlib import Path
+payload = {
+    "git_commit": "$commit",
+    "git_commit_short": "$short",
+    "release": "$release",
+    "artifact": "dashboard/dist",
+}
+Path("$FRONTEND_BUILD_DIR/.deploy-identity.json").write_text(
+    json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+)
+print("OK: frontend identity → $FRONTEND_BUILD_DIR/.deploy-identity.json")
+PY
+}
+
 build_frontend() {
   require_dev_sync_for_ui || return 1
   local npm_bin
@@ -1681,6 +1711,7 @@ build_frontend() {
     log_error "Build output missing: $FRONTEND_BUILD_DIR/index.html"
     return 1
   fi
+  write_frontend_deploy_identity
   log_ok "Frontend built → $FRONTEND_BUILD_DIR"
 }
 
@@ -1804,7 +1835,14 @@ deploy_frontend() {
   log_section "Frontend deploy"
   ensure_project_writable || return 1
   update_source_code || return 1
-  build_frontend || return 1
+  # Release stage 2 already built+rsynced dist (incl. .deploy-identity.json);
+  # a second vite build would wipe the identity stamp.
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" && -f "$FRONTEND_BUILD_DIR/index.html" ]]; then
+    log_info "Release deploy: frontend artifact already present — skip duplicate npm build"
+    write_frontend_deploy_identity
+  else
+    build_frontend || return 1
+  fi
   fix_ownership
   reload_nginx || return 1
 }
@@ -1823,7 +1861,13 @@ mode_full() {
   # Build UI before final chown so APP_USER!=deploy-user cannot break npm mid-run.
   SKIP_FIX_OWNERSHIP=yes deploy_backend || return 1
   ensure_project_writable || return 1
-  build_frontend || return 1
+  # Release stage 2 already built+rsynced dist; duplicate vite build wipes identity.
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" && -f "$FRONTEND_BUILD_DIR/index.html" ]]; then
+    log_info "Release deploy: frontend artifact already present — skip duplicate npm build"
+    write_frontend_deploy_identity
+  else
+    build_frontend || return 1
+  fi
   fix_ownership
   reload_nginx || return 1
   health_checks
