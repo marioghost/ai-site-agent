@@ -116,22 +116,39 @@ Each flag rolls back independently (default **OFF**):
 - `KNOWLEDGE_OS_EXECUTIVE_ENABLED`
 - `REASONING_SERVICE_ENABLED`
 - `EVIDENCE_ASSEMBLY_ENABLED`
+- `REASONING_SPEECH_ACTS_ENABLED` (Step 045 — UX only; ignored when Reasoning OFF)
 
-No coupling requires multiple flags OFF for safe rollback.
+No coupling requires multiple flags OFF for safe rollback. Migration confidence
+gate keeps speech-acts **OFF** so answer parity vs baseline remains green.
 
 ## Future extraction points (Release 0.7+)
 
-1. Act on sufficiency / speech-act (post Step 043 advisory)
-2. Language service (prompt, LLM, polish)
-3. Memory-assisted evidence (Step 047+)
-4. Intent ownership move from RPS.prepare_query
-5. Context builder move from RPS.finalize_pipeline
+1. Language service extraction (prompt, LLM, polish) beyond speech-act render
+2. Memory-assisted evidence (Step 047+)
+3. Intent ownership move from RPS.prepare_query
+4. Context builder move from RPS.finalize_pipeline
 
 ## Step 043 note (advisory sufficiency)
 
 When `REASONING_SERVICE_ENABLED` is ON, ReasoningService computes
-`evidence_sufficiency` diagnostics. This is **shadow-only** — answer text and
-sources remain legacy-identical. EA and RPS do not decide sufficiency.
+`evidence_sufficiency` diagnostics. This is **shadow-only** when speech-acts
+are OFF — answer text and sources remain legacy-identical. EA and RPS do not
+decide sufficiency.
+
+## Step 044 note (advisory speech act)
+
+When Reasoning is ON and speech-acts OFF, ReasoningService selects a speech act
+(`answer` / `qualify` / `clarify` / `refuse`) from sufficiency. Diagnostics are
+additive; answer text unchanged. Refuse means insufficient **site** evidence.
+
+## Step 045 note (Language activation)
+
+`REASONING_SPEECH_ACTS_ENABLED` (default false) activates Language consumption
+of the typed speech-act instruction. Clarify/refuse may skip the LLM;
+qualify preserves useful evidence with an explicit limitation; answer is
+unchanged. Cache namespace includes `speech_act_language` when activated.
+See [LANGUAGE_SPEECH_ACTS.md](LANGUAGE_SPEECH_ACTS.md) and
+[0.6-step-045-speech-act-language.md](releases/0.6-step-045-speech-act-language.md).
 
 ## Validation commands
 
