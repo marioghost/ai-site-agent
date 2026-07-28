@@ -85,11 +85,6 @@ export interface Settings {
   max_cached_answers: number;
   knowledge_version?: number | null;
   retrieval_mode: RetrievalMode;
-  homepage_boost_enabled: boolean;
-  title_match_boost: number;
-  heading_match_boost: number;
-  homepage_boost_value: number;
-  short_query_lexical_boost: number;
   enable_query_expansion: boolean;
   enable_retrieval_debug: boolean;
   enable_intent_aware_retrieval: boolean;

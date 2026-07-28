@@ -129,23 +129,7 @@ export default function SettingsAdvancedSection({
                 />
               </Field>
             </FormGrid>
-            <FormGrid columns={4}>
-              <Field label={t("settings.retrieval.title_boost")}>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={settings.title_match_boost}
-                  onChange={(e) => onChange("title_match_boost", Number(e.target.value))}
-                />
-              </Field>
-              <Field label={t("settings.retrieval.heading_boost")}>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={settings.heading_match_boost}
-                  onChange={(e) => onChange("heading_match_boost", Number(e.target.value))}
-                />
-              </Field>
+            <FormGrid columns={2}>
               <Field label={t("settings.generation.max_tokens")}>
                 <Input
                   type="number"

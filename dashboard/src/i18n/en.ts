@@ -985,17 +985,10 @@ export const en: TranslationDict = {
   "settings.retrieval.mode.dense": "Dense (vector)",
   "settings.retrieval.mode.lexical": "Lexical (keywords)",
   "settings.retrieval.mode.hybrid": "Hybrid",
-  "settings.retrieval.homepage_boost": "Boost homepage",
   "settings.retrieval.query_expansion": "Query expansion",
   "settings.retrieval.debug": "Retrieval debug mode",
-  "settings.retrieval.title_boost": "Title match boost",
-  "settings.retrieval.heading_boost": "Heading match boost",
-  "settings.retrieval.homepage_boost_value": "Homepage boost value",
-  "settings.retrieval.short_query_boost": "Short query lexical boost",
   "settings.retrieval.intent_detection": "Intent detection",
   "settings.retrieval.broad_mode": "Broad question mode (homepage/about injection)",
-  "settings.retrieval.about_boost": "About page boost",
-  "settings.retrieval.metadata_boost": "Content category metadata boost",
   "settings.retrieval.context_builder": "Page-grouped context builder",
   "settings.retrieval.candidate_count": "Stage 1 candidate count",
   "settings.retrieval.final_chunks": "Final context chunks",
@@ -1143,14 +1136,12 @@ export const en: TranslationDict = {
     "Message when nothing relevant is found above the similarity threshold.",
   "settings.docs.retrieval.mode":
     "Search mode: vector (dense), keywords (lexical), or hybrid (recommended).",
-  "settings.docs.retrieval.boosts":
-    "Title/heading boosts (advanced) are minor metadata signals — they do not replace semantic ranking.",
   "settings.docs.retrieval.intent":
     "Query intent and Source Intelligence profiles decide which pages fit the question — no manual document-type weight tables.",
   "settings.docs.retrieval.context":
     "How many candidates and pages reach the LLM context after search.",
   "settings.docs.retrieval.reindex":
-    "After changing boosts or search mode, reindex or reprocess sources when possible.",
+    "After changing search mode or indexing settings, reindex or reprocess sources when possible.",
   "settings.docs.intelligence.what":
     "Source Intelligence stores a semantic profile per page: topic, purpose, supported intents, suitability. The retrieval engine uses this for automatic ranking.",
   "settings.docs.intelligence.routing":
