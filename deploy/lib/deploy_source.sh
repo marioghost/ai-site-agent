@@ -54,16 +54,17 @@ PY
 }
 
 md_deploy_strip_no_backup_args() {
-  local out=()
+  MD_DEPLOY_FORWARD_ARGS=()
   local a
   for a in "$@"; do
     if [[ "$a" == "--no-backup-db" ]]; then
       echo "ERROR: --no-backup-db is forbidden on release deploy (backup is mandatory)" >&2
       return 1
     fi
-    out+=("$a")
+    # Skip empty tokens (bash "${arr[@]:-}" can inject "" when arr is empty).
+    [[ -n "$a" ]] || continue
+    MD_DEPLOY_FORWARD_ARGS+=("$a")
   done
-  MD_DEPLOY_FORWARD_ARGS=("${out[@]}")
 }
 
 md_deploy_mandatory_backup() {
@@ -171,13 +172,18 @@ md_deploy_from_main() {
   [[ "$mode" == "backend" ]] && legacy_mode="backend"
   [[ "$mode" == "frontend" ]] && legacy_mode="frontend"
 
-  bash "$MD_DEPLOY_WORKTREE/deploy/manage_deploy.sh" \
-    --mode "$legacy_mode" \
-    --sync-from-dev \
-    --no-git-pull \
-    --backup-db \
-    --yes \
-    "${MD_DEPLOY_FORWARD_ARGS[@]:-}"
+  local -a deploy_cmd=(
+    bash "$MD_DEPLOY_WORKTREE/deploy/manage_deploy.sh"
+    --mode "$legacy_mode"
+    --sync-from-dev
+    --no-git-pull
+    --backup-db
+    --yes
+  )
+  if ((${#MD_DEPLOY_FORWARD_ARGS[@]})); then
+    deploy_cmd+=("${MD_DEPLOY_FORWARD_ARGS[@]}")
+  fi
+  "${deploy_cmd[@]}"
   echo "[deploy 3/6] DEPLOY OK"
 
   # --- 4/6 VERIFY ---

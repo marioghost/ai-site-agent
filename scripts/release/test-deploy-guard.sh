@@ -151,4 +151,14 @@ if [[ -z "$APP_REL" ]]; then
 fi
 echo "OK: APP_RELEASE readable ($APP_REL)"
 
+# Empty forward-args must not inject a blank argv token into manage_deploy.
+if grep -q 'MD_DEPLOY_FORWARD_ARGS\[@\]:-' "$SOURCE"; then
+  echo "FAIL: deploy_source must not use \${arr[@]:-} (injects empty option)" >&2
+  exit 1
+fi
+if ! grep -q 'deploy_cmd' "$SOURCE"; then
+  echo "FAIL: deploy_source should build deploy_cmd array without empty args" >&2
+  exit 1
+fi
+
 echo "OK: deploy guard regression tests passed"
