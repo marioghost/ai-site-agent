@@ -197,7 +197,7 @@ def test_build_info_release_and_capabilities():
     from app.core.config import get_config
     from app.services.build_info_service import APP_RELEASE, BuildInfoService
 
-    assert APP_RELEASE == "0.6"
+    assert APP_RELEASE == "0.7"
     svc = BuildInfoService.__new__(BuildInfoService)
     svc._db = MagicMock()
     svc._config = get_config()
@@ -219,7 +219,6 @@ def test_build_info_release_and_capabilities():
         MV.return_value.get.return_value = 1
         KV.return_value.get.return_value = 1
         data = svc.collect()
-    assert data["release_status"]["accepted"] == "0.6"
-    assert data["release_status"]["closed_0_6"] is True
+    assert data["release_status"]["accepted"] == "0.7"
     assert data["deployed_capabilities"]["REASONING_SERVICE_ENABLED"]["supported"] is True
     assert "memory_shadow_write_enabled" in data["deployed_capabilities"]
