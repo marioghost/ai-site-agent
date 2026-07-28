@@ -26,6 +26,14 @@ if [[ -f "$DEPLOY_ENV_ROOT/.env" ]]; then
   set +a
 fi
 
+# Live install .env may carry STAGING_ADMIN_* for release smoke (gitignored).
+if [[ -n "${PROJECT_ROOT:-}" && -f "$PROJECT_ROOT/.env" && "$PROJECT_ROOT/.env" != "$DEPLOY_ENV_ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$PROJECT_ROOT/.env"
+  set +a
+fi
+
 STAGING_BASE_URL="${STAGING_BASE_URL:-${HEALTHCHECK_URL%/api/health}}"
 STAGING_ADMIN_USER="${STAGING_ADMIN_USER:-admin}"
 STAGING_ADMIN_PASSWORD="${STAGING_ADMIN_PASSWORD:-фвьшт}"

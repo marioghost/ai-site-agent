@@ -195,14 +195,28 @@ md_deploy_from_main() {
   fi
   echo "[deploy 4/6] VERIFY OK"
 
-  # --- 5/6 RESTART (ensure services up after deploy) ---
+  # --- 5/6 RESTART (backend only — do not bounce qdrant/ollama) ---
+  # Stage 3 already started the new backend. A full restart-all races smoke
+  # (connection refused / dep warmup) and is unnecessary for code deploys.
   echo "[deploy 5/6] RESTART"
   MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
-    bash "$MD_DEPLOY_PROJECT_ROOT/deploy/manage_deploy.sh" --action restart-all --yes \
+    bash "$MD_DEPLOY_PROJECT_ROOT/deploy/manage_deploy.sh" --action restart --module backend --yes \
     || MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
-         bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action restart-all --yes \
+         bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action restart --module backend --yes \
     || true
-  # Prefer project copy; fall back to repo script. Soft-warn if systemd unavailable.
+  # Wait until HTTP is ready before smoke (covers brief post-restart lag).
+  local ready=0
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if curl -sf --max-time 2 "http://127.0.0.1:8000/api/health" -o /dev/null; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$ready" -ne 1 ]]; then
+    echo "WARN: backend HTTP not ready after restart — smoke may fail" >&2
+  fi
   echo "[deploy 5/6] RESTART attempted"
 
   # --- 6/6 SMOKE ---
