@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Deploy + smoke in one step.
-#
-#   bash scripts/deploy-and-smoke.sh
+# DEPRECATED wrapper — use: manage_deploy.sh deploy full && manage_deploy.sh smoke
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-
-bash "$ROOT/scripts/deploy.sh" "$@"
-bash "$ROOT/scripts/smoke.sh"
+bash "$ROOT/deploy/manage_deploy.sh" deploy full "$@"
+exec bash "$ROOT/deploy/manage_deploy.sh" smoke

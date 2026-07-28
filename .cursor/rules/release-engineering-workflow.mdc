@@ -1,0 +1,34 @@
+---
+description: Mandatory release lifecycle — main/origin/main only; deploy via manage_deploy; no auto-merge
+alwaysApply: true
+---
+
+# Release Engineering Workflow
+
+Full policy: `docs/RELEASE_ENGINEERING_WORKFLOW.md`  
+Hardening notes: `docs/releases/RELEASE-ENGINEERING-HARDENING.md`
+
+## Source of truth
+
+`main` and `origin/main` only. Feature branches are temporary.
+
+## Canonical deploy entry
+
+```bash
+sudo bash deploy/manage_deploy.sh deploy full
+bash deploy/manage_deploy.sh verify-release
+```
+
+Never deploy feature branches, dirty trees, or local-only commits.
+
+## Lifecycle
+
+Architecture Review → Implementation → Tests → Review → Fixes → Acceptance → Merge `main` → Validate → Push `origin/main` → Deploy → Verify
+
+## Hard rules
+
+- Never merge or `git push origin main` without explicit user approval (ask separately).
+- Never use `ALLOW_DIRTY_SYNC` / `DEPLOY_LOCAL_MAIN` / `--no-backup-db` for normal release deploys.
+- Identity chain must match: origin/main == build-info == frontend identity == /api/build == APP_RELEASE.
+- Release deploy stages: backup → build → deploy → verify → restart → smoke.
+- New deploy/release features go into `manage_deploy.sh` only (no new standalone deploy scripts except bootstrap/recovery).

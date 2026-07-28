@@ -55,6 +55,9 @@ class BuildInfoResponse(BaseModel):
     release: str
     git_commit: str | None = None
     git_commit_short: str | None = None
+    backend_commit: str | None = None
+    frontend_commit: str | None = None
+    source_ref: str | None = None
     build_time: str | None = None
     alembic_head: str | None = None
     memory_version: int
