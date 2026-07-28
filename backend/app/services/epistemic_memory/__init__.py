@@ -4,6 +4,12 @@ from app.services.epistemic_memory.epistemic_memory_service import EpistemicMemo
 from app.services.epistemic_memory.memory_integration_service import (
     EpistemicMemoryIntegrationService,
 )
+from app.services.epistemic_memory.memory_region_types import (
+    MemoryClaimView,
+    MemoryEvidenceRef,
+    MemoryRegionRequest,
+    MemoryRegionView,
+)
 from app.services.epistemic_memory.proposal_types import ClaimProposal, EvidenceProposal
 from app.services.epistemic_memory.shadow_persist_result import ShadowPersistResult
 from app.services.epistemic_memory.types import (
@@ -22,6 +28,10 @@ __all__ = [
     "EpistemicMemorySummary",
     "EvidenceLinkView",
     "EvidenceProposal",
+    "MemoryClaimView",
+    "MemoryEvidenceRef",
+    "MemoryRegionRequest",
+    "MemoryRegionView",
     "ObservationRefView",
     "ShadowPersistResult",
 ]

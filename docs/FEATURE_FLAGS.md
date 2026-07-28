@@ -32,6 +32,8 @@ allow_legacy_<surface>                        # deprecation gates
 | `cache_namespace_v2_enabled` | Settings DB column | **false** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Staging cache invalidation validation; after Step 022 manual bump tested | Set Settings `false`; restart not required | Release 0.5 |
 | `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
 
+**Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only and does not affect chat while unwired.
+
 ### `enable_semantic_diagnostics_v2`
 
 **Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/chat_response_builder.py` → `app/api/chat.py`

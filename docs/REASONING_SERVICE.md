@@ -96,4 +96,21 @@ Speech-act **Language** activation is orthogonal: requires
 | **044** | Advisory speech-act selection ✅ |
 | **045** | Language consumes speech acts ✅ (engineering accepted) |
 | **Closure** | Release 0.6 engineering accepted — see [RELEASE-0.6-ACCEPTANCE-REPORT.md](releases/RELEASE-0.6-ACCEPTANCE-REPORT.md) |
-| **Next** | RFC-100 Step 046 (Release 0.7) — not started |
+| **Next** | RFC-100 Step 047 — memory assist (not started) |
+
+## Roadmap (Release 0.7)
+
+| Step | Status |
+|------|--------|
+| **046** | Memory region read views (`read_region`) ✅ — internal only, contract hardened; no chat wiring |
+| **047** | Reasoning activates memory before Evidence Assembly — **not started** |
+
+### Step 047 caller obligations (MemoryRegionView)
+
+Before interpreting claim support/conflict from Step 046 reads:
+
+1. Check `MemoryClaimView.evidence_loaded` is `true`, or confirm `evidence_not_requested` is **not** in `limitations`.
+2. When `evidence_loaded` is `false`, treat `has_support` and `has_conflict` as unknown (`null`).
+3. Respect lifecycle validation: do not send `active_only=False` with `include_superseded=False`.
+4. Use positive `source_id` / `source_ids` only — invalid scope raises `ValueError` before SQL.
+5. Treat exclusion counters as diagnostic only; use `total_matched` and `provenance_summary` for region shape.

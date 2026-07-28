@@ -46,11 +46,30 @@ Provide the database foundation for [Epistemic Memory](../KNOWLEDGE_OS_ARCHITECT
 
 Observation key stable per source: `obs:source:{source_id}:si`. Re-running SI does not duplicate rows. See [ADR-0001](adr/0001-shadow-observation-key-per-source.md) for shadow identity semantics and revisit triggers.
 
-**Not implemented:** merge, supersession, conflict resolution, belief revision, retrieval/chat consumption.
+**Not implemented (pre-0.7 assist):** merge, supersession automation, conflict resolution, belief revision, retrieval/chat consumption.
+
+## Memory region read views (Step 046)
+
+**Internal read-only API:** `EpistemicMemoryService.read_region(MemoryRegionRequest) → MemoryRegionView`
+
+| Concept | Step 046 meaning |
+|---------|------------------|
+| **Region** | Bounded declarative filter over claims for explicit positive `source_id` / `source_ids` — **not** a persisted entity |
+| **Isolation** | Claims match only when linked observations belong to requested sources (`evidence_link → observation_ref.source_id`); `scope_json.source_id` is **not** used for isolation |
+| **Evidence** | `evidence_loaded` + tri-state `has_support` / `has_conflict` (`null` when evidence not requested) |
+| **Lifecycle** | `active_only=False` + `include_superseded=False` is rejected; see Step 046 doc truth table |
+| **Provenance default** | `ProvenanceScope.REAL` — excludes `test` and `fixture` |
+| **Counts** | `provenance_excluded_count` (diagnostic); `provenance_summary` is pre-pagination |
+| **Truth safety** | Claims are propositions (`proposal` status common); `completeness_unknown` always true |
+| **Chat / Reasoning** | **Not wired** — Step 047 will consume views behind `memory_evidence_assist_enabled` |
+
+Code: `backend/app/services/epistemic_memory/memory_region_types.py`, `memory_region_reader.py`
+
+See [0.7-step-046-memory-read-views.md](releases/0.7-step-046-memory-read-views.md) and [0.7-step-046-architecture-review.md](releases/0.7-step-046-architecture-review.md).
 
 ## EpistemicMemoryService
 
-Read methods (Step 028) + `persist_claim_proposals()` write API (Step 030, integration-only).
+Read methods (Step 028) + `read_region()` (Step 046) + `persist_claim_proposals()` write API (Step 030, integration-only).
 
 ## ClaimExtractionFromSI (Step 029)
 

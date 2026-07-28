@@ -15,6 +15,11 @@ from app.models.source import Source
 from app.services.epistemic_memory.epistemic_memory_write_service import (
     EpistemicMemoryWriteService,
 )
+from app.services.epistemic_memory.memory_region_reader import MemoryRegionReader
+from app.services.epistemic_memory.memory_region_types import (
+    MemoryRegionRequest,
+    MemoryRegionView,
+)
 from app.services.epistemic_memory.proposal_types import ClaimProposal
 from app.services.epistemic_memory.shadow_persist_result import ShadowPersistResult
 from app.services.epistemic_memory.types import (
@@ -50,6 +55,10 @@ class EpistemicMemoryService:
             profile=profile,
             observed_at=observed_at,
         )
+
+    def read_region(self, request: MemoryRegionRequest) -> MemoryRegionView:
+        """Bounded read-only claim view for explicit source scope (Step 046)."""
+        return MemoryRegionReader(self.db).read_region(request)
 
     def get_observation_ref(
         self,
