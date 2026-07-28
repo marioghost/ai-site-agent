@@ -38,6 +38,7 @@ echo "==> Release check started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 bash "$ROOT/scripts/release/write-build-info.sh"
 
 run_required "Backend unit tests" bash "$ROOT/scripts/release/test-backend-unit.sh"
+run_required "Deploy rsync excludes" bash "$ROOT/scripts/release/test-deploy-rsync-excludes.sh"
 run_required "Golden parity tests" bash "$ROOT/scripts/release/test-golden.sh"
 
 cd "$ROOT/dashboard"
@@ -53,7 +54,7 @@ if [[ -n "${POSTGRES_TEST_URL:-}" ]]; then
 else
   STEP=$((STEP + 1))
   echo ""
-  echo "[$STEP] Migration test — SKIP (set DATABASE_URL in repo .env or POSTGRES_TEST_URL)"
+  echo "[$STEP] Migration test — SKIP (set disposable POSTGRES_TEST_URL; never uses app DATABASE_URL)"
 fi
 
 STEP=$((STEP + 1))

@@ -14,7 +14,7 @@ else
 fi
 
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-RELEASE="${RELEASE_VERSION:-0.3}"
+RELEASE="${RELEASE_VERSION:-0.6}"
 
 python3 - <<PY
 import json

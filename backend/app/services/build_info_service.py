@@ -13,9 +13,19 @@ from app.repositories.settings_repository import SettingsRepository
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
-# Last *accepted* RFC-100 release. Release 0.6 steps may exist in repo but are
-# not closed — do not claim 0.6 complete.
-APP_RELEASE = "0.5"
+# Last accepted RFC-100 release (engineering closure 2026-07-28).
+APP_RELEASE = "0.6"
+
+# Release 0.6 cognitive pipeline — code present when repo includes Steps 039–045.
+RELEASE_0_6_STEPS = (
+    {"step": "039", "title": "ReasoningService seam", "code": "present"},
+    {"step": "040", "title": "EvidenceAssemblyService seam", "code": "present"},
+    {"step": "041", "title": "Thin RPS coordination", "code": "present"},
+    {"step": "042", "title": "Migration Confidence Gate", "code": "present"},
+    {"step": "043", "title": "Advisory evidence sufficiency", "code": "present"},
+    {"step": "044", "title": "Advisory speech-act selection", "code": "present"},
+    {"step": "045", "title": "Language speech-act rendering", "code": "present"},
+)
 
 _ENV_CAPABILITIES = (
     (
@@ -123,6 +133,8 @@ class BuildInfoService:
                 "default": default,
                 "effect": effect,
                 "rollout": rollout,
+                "active": bool(value),
+                "code_present": supported,
             }
 
         settings_flags: dict[str, bool] = {}
@@ -137,6 +149,8 @@ class BuildInfoService:
                 "default": default,
                 "effect": effect,
                 "rollout": rollout,
+                "active": bool(value),
+                "code_present": True,
             }
 
         release = file_info.get("release") or APP_RELEASE
@@ -155,13 +169,17 @@ class BuildInfoService:
             "env_flags": env_flags,
             "settings_flags": settings_flags,
             "release_status": {
-                "accepted": "0.5",
-                "in_progress": "0.6",
-                "closed_0_6": False,
+                "accepted": "0.6",
+                "in_progress": "0.7",
+                "closed_0_6": True,
+                "engineering_ready": True,
+                "staging_validated": False,
+                "production_ready": False,
+                "steps_039_045": list(RELEASE_0_6_STEPS),
                 "note": (
-                    "Release 0.5 accepted. Release 0.6 steps may exist in the "
-                    "repository; release is not closed. Deployed capability set "
-                    "is reported per process — Step 045 may be missing on older deploys."
+                    "Release 0.6 engineering accepted (Steps 039–045). "
+                    "Migration flags remain OFF at runtime until staging validation. "
+                    "Capability code_present ≠ enabled ≠ active."
                 ),
             },
             "deployed_capabilities": deployed,

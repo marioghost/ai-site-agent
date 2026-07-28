@@ -94,5 +94,6 @@ Speech-act **Language** activation is orthogonal: requires
 | **039–042** | Migration seams ✅ |
 | **043** | Advisory evidence sufficiency ✅ |
 | **044** | Advisory speech-act selection ✅ |
-| **045** | Language consumes speech acts ✅ (await review) |
-| Later | Remaining 0.6 closure items — do not auto-close |
+| **045** | Language consumes speech acts ✅ (engineering accepted) |
+| **Closure** | Release 0.6 engineering accepted — see [RELEASE-0.6-ACCEPTANCE-REPORT.md](releases/RELEASE-0.6-ACCEPTANCE-REPORT.md) |
+| **Next** | RFC-100 Step 046 (Release 0.7) — not started |

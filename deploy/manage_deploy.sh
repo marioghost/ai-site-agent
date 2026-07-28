@@ -2,9 +2,14 @@
 # AI Site Agent — deployment & operations manager for Linux operators (SSH-friendly).
 #
 # Stack: systemd backend + nginx frontend + local Ollama + local Qdrant + PostgreSQL.
-# No Docker. Run interactively over SSH:
+# No Docker. Run interactively over SSH.
 #
+# Preferred (dev → /opt): run from the code checkout so sync is automatic:
+#   cd ~/projects/ai-site-agent && sudo bash deploy/manage_deploy.sh
+#
+# Also supported from /opt when DEV_CHECKOUT is set in deploy.local.conf:
 #   cd /opt/ai-site-agent && sudo bash deploy/manage_deploy.sh
+#   # deploy.local.conf: DEV_CHECKOUT="/home/you/projects/ai-site-agent"
 #
 # Non-interactive deploy:
 #   bash deploy/manage_deploy.sh --mode full|backend|frontend|clean|...
@@ -36,6 +41,12 @@ FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$DASHBOARD_DIR/dist}"
 ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/.env}"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_ROOT/backups}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
+
+# Source of code to rsync into PROJECT_ROOT. Prefer explicit DEV_CHECKOUT when
+# manage_deploy is launched from /opt (REPO_ROOT == PROJECT_ROOT), otherwise
+# use the checkout that contains this script.
+DEV_CHECKOUT="${DEV_CHECKOUT:-}"
+SYNC_SOURCE="$REPO_ROOT"
 
 # PostgreSQL connection (parsed from DATABASE_URL in load_env_overrides).
 PG_HOST="" PG_PORT="" PG_USER="" PG_PASSWORD="" PG_DB=""
@@ -104,6 +115,21 @@ run_root() {
 
 has_sudo() {
   [[ "$(id -u)" -eq 0 ]] || command -v sudo &>/dev/null
+}
+
+resolve_sync_source() {
+  local candidate=""
+  if [[ -n "${DEV_CHECKOUT:-}" ]]; then
+    candidate="$(cd "${DEV_CHECKOUT}" 2>/dev/null && pwd || true)"
+  fi
+  if [[ -n "$candidate" && -d "$candidate/backend" && -d "$candidate/dashboard" ]]; then
+    SYNC_SOURCE="$candidate"
+  else
+    if [[ -n "${DEV_CHECKOUT:-}" ]]; then
+      log_warn "DEV_CHECKOUT=${DEV_CHECKOUT} is missing or incomplete — falling back to script checkout"
+    fi
+    SYNC_SOURCE="$REPO_ROOT"
+  fi
 }
 
 prepend_path_dir() {
@@ -227,6 +253,7 @@ detect_project_root() {
 }
 
 show_banner() {
+  resolve_sync_source
   echo ""
   _color "1;34" "╔══════════════════════════════════════════════════════════╗"
   _color "1;34" "║  AI Site Agent — Deploy & Operations Manager (Linux)      ║"
@@ -235,8 +262,15 @@ show_banner() {
   echo "  Host:     $(hostname -f 2>/dev/null || hostname)"
   echo "  User:     $(whoami)"
   echo "  Project:  $PROJECT_ROOT"
-  if [[ "$(realpath "$REPO_ROOT" 2>/dev/null)" != "$(realpath "$PROJECT_ROOT" 2>/dev/null)" ]]; then
-    echo "  Checkout: $REPO_ROOT  ← deploy will sync here → $PROJECT_ROOT"
+  echo "  Script:   $REPO_ROOT"
+  if paths_differ; then
+    echo "  Sync from: $SYNC_SOURCE  →  $PROJECT_ROOT"
+  else
+    echo "  Sync from: (same as project — no rsync; rebuilds files already here)"
+    if [[ -z "${DEV_CHECKOUT:-}" ]]; then
+      log_warn "No DEV_CHECKOUT set. Running inside $PROJECT_ROOT will NOT pull ~/projects changes."
+      log_warn "Fix: set DEV_CHECKOUT in deploy/deploy.local.conf, or run manage_deploy from the checkout."
+    fi
   fi
   echo "  Backend:  $BACKEND_SERVICE_NAME (systemd)"
   echo "  Frontend: nginx → $FRONTEND_BUILD_DIR"
@@ -467,13 +501,14 @@ print_health_summary() {
 
   log_section "Health probes"
 
-  if curl -sf --max-time 10 "$HEALTHCHECK_URL" -o /tmp/ai-agent-health.json 2>/dev/null; then
+  local health_json="$LOG_DIR/last-health.json"
+  if wait_for_backend_http "$health_json" 5 1; then
     log_ok "Backend API: OK ($HEALTHCHECK_URL)"
     backend_ok=1
-    if command -v python3 &>/dev/null; then
+    if command -v python3 &>/dev/null && [[ -f "$health_json" ]]; then
       local ollama_st qdrant_st
-      ollama_st="$(python3 -c "import json; d=json.load(open('/tmp/ai-agent-health.json')); print(d.get('ollama',{}).get('status','?'))" 2>/dev/null || echo "?")"
-      qdrant_st="$(python3 -c "import json; d=json.load(open('/tmp/ai-agent-health.json')); print(d.get('qdrant',{}).get('status','?'))" 2>/dev/null || echo "?")"
+      ollama_st="$(HEALTH_JSON="$health_json" python3 -c "import json,os; d=json.load(open(os.environ['HEALTH_JSON'])); print(d.get('ollama',{}).get('status','?'))" 2>/dev/null || echo "?")"
+      qdrant_st="$(HEALTH_JSON="$health_json" python3 -c "import json,os; d=json.load(open(os.environ['HEALTH_JSON'])); print(d.get('qdrant',{}).get('status','?'))" 2>/dev/null || echo "?")"
       [[ "$ollama_st" == "ok" ]] && log_ok "Ollama (via API): OK" || log_warn "Ollama (via API): $ollama_st"
       [[ "$qdrant_st" == "ok" ]] && log_ok "Qdrant (via API): OK" || log_warn "Qdrant (via API): $qdrant_st"
     fi
@@ -879,8 +914,8 @@ Common flags:
   --no-git-pull      Deploy current files only (no git pull)
   --backup-db        Force PostgreSQL backup (pg_dump) before deploy
   --use-staging      Sync from \$STAGING_DIR (see deploy/prepare_staging.sh)
-  --sync-from-dev    Copy code from this checkout to PROJECT_ROOT (dev → /opt)
-  --no-sync-from-dev Do not rsync dev checkout to PROJECT_ROOT
+  --sync-from-dev    Copy code from SYNC_SOURCE (DEV_CHECKOUT or this script's checkout) → PROJECT_ROOT
+  --no-sync-from-dev Do not rsync into PROJECT_ROOT
 
 Config: deploy/deploy.conf, deploy/deploy.local.conf
 Logs:   $LOG_DIR/deploy-*.log
@@ -953,9 +988,12 @@ print_plan() {
 }
 
 show_deploy_plan() {
+  resolve_sync_source
   log_section "Resolved deploy configuration"
-  echo "  Checkout:        $REPO_ROOT"
+  echo "  Script checkout: $REPO_ROOT"
+  echo "  Sync source:     $SYNC_SOURCE"
   echo "  Deploy target:   $PROJECT_ROOT"
+  echo "  DEV_CHECKOUT:    ${DEV_CHECKOUT:-"(unset)"}"
   echo "  Backend dir:     $BACKEND_DIR"
   echo "  Dashboard dir:   $DASHBOARD_DIR"
   echo "  Venv:            $VENV_DIR"
@@ -966,11 +1004,11 @@ show_deploy_plan() {
   echo "  Healthcheck:     $HEALTHCHECK_URL"
   echo "  Database:        PostgreSQL @ ${PG_HOST:-?}:${PG_PORT:-?}/${PG_DB:-?} (user ${PG_USER:-?})"
   if paths_differ; then
-    echo "  Code update:     rsync checkout -> deploy target"
+    echo "  Code update:     rsync $SYNC_SOURCE → $PROJECT_ROOT"
   elif [[ "${DO_GIT_PULL:-$GIT_PULL_DEFAULT}" == "yes" && -d "$PROJECT_ROOT/.git" ]]; then
     echo "  Code update:     git pull --ff-only"
   else
-    echo "  Code update:     files already on disk"
+    echo "  Code update:     files already on disk (no sync)"
   fi
   echo ""
   print_plan
@@ -997,31 +1035,53 @@ maintenance() {
 
 paths_differ() {
   local a b
-  a="$(realpath "$REPO_ROOT" 2>/dev/null || echo "$REPO_ROOT")"
+  resolve_sync_source
+  a="$(realpath "$SYNC_SOURCE" 2>/dev/null || echo "$SYNC_SOURCE")"
   b="$(realpath "$PROJECT_ROOT" 2>/dev/null || echo "$PROJECT_ROOT")"
   [[ "$a" != "$b" ]]
 }
 
 sync_from_dev_checkout() {
+  resolve_sync_source
+  if ! paths_differ; then
+    log_info "Sync source and project path are the same ($PROJECT_ROOT) — skip rsync"
+    return 0
+  fi
   log_info "Rsync dev checkout → production (keeps DB, venv, node_modules)..."
-  log_info "  from: $REPO_ROOT"
+  log_info "  from: $SYNC_SOURCE"
   log_info "  to:   $PROJECT_ROOT"
-  rsync -a --delete \
+  # Never overwrite production secrets/state with the dev checkout copy.
+  # (.env cutover to recovery DB was wiped by a full redeploy without this.)
+  if ! rsync -a --delete \
     --exclude '.venv' \
     --exclude 'node_modules' \
     --exclude '__pycache__' \
     --exclude '*.pyc' \
+    --exclude '.env' \
+    --exclude '.env.*' \
     --exclude 'backend/ai_site_agent.db' \
     --exclude 'backend/ai_site_agent.db-*' \
     --exclude 'logs/' \
     --exclude 'backups/' \
+    --exclude '*.dump' \
+    --exclude '*.sql.gz' \
     --exclude '.git' \
-    "$REPO_ROOT/" "$PROJECT_ROOT/"
+    --exclude 'dashboard/dist/' \
+    "$SYNC_SOURCE/" "$PROJECT_ROOT/"; then
+    log_error "rsync failed (often permissions on $PROJECT_ROOT)"
+    log_info "Repair: sudo chown -R \"\$USER:\$USER\" $PROJECT_ROOT"
+    return 1
+  fi
   log_ok "Code synced to $PROJECT_ROOT"
 }
 
 resolve_sync_from_dev() {
+  resolve_sync_source
   if ! paths_differ; then
+    # Running inside /opt without a usable DEV_CHECKOUT — cannot invent a source.
+    if [[ -z "${DEV_CHECKOUT:-}" ]]; then
+      log_warn "No code sync: set DEV_CHECKOUT in deploy.local.conf to your projects checkout"
+    fi
     return 0
   fi
   if [[ -n "${SYNC_FROM_DEV:-}" ]]; then
@@ -1033,9 +1093,9 @@ resolve_sync_from_dev() {
     SYNC_FROM_DEV=no
   elif [[ "$INTERACTIVE" -eq 1 ]]; then
     echo ""
-    log_warn "Production path ($PROJECT_ROOT) differs from this checkout ($REPO_ROOT)"
+    log_warn "Deploy target ($PROJECT_ROOT) differs from sync source ($SYNC_SOURCE)"
     log_warn "Dashboard / UI updates will NOT appear unless you sync."
-    prompt_yn "Sync code from dev checkout → $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
+    prompt_yn "Sync code from $SYNC_SOURCE → $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
   else
     # Non-interactive deploy to a different path (typical dev → /opt): sync by default.
     SYNC_FROM_DEV=yes
@@ -1043,6 +1103,7 @@ resolve_sync_from_dev() {
 }
 
 require_dev_sync_for_ui() {
+  resolve_sync_source
   if ! paths_differ; then
     return 0
   fi
@@ -1051,9 +1112,10 @@ require_dev_sync_for_ui() {
     return 0
   fi
   log_error "Cannot build dashboard UI — code was not synced to $PROJECT_ROOT"
-  log_error "Your changes are in $REPO_ROOT but nginx serves $FRONTEND_BUILD_DIR"
+  log_error "Your changes are in $SYNC_SOURCE but nginx serves $FRONTEND_BUILD_DIR"
   log_error "Fix: re-run deploy and answer Yes to sync, or run:"
   log_error "  sudo bash deploy/manage_deploy.sh --mode frontend --sync-from-dev --yes"
+  log_error "Or set DEV_CHECKOUT in deploy.local.conf when running from /opt."
   return 1
 }
 
@@ -1269,6 +1331,35 @@ stop_backend() {
   fi
 }
 
+# Probe backend HTTP readiness (retries). Writes body to $1 when provided.
+wait_for_backend_http() {
+  local out_file="${1:-}"
+  local attempts="${2:-30}"
+  local delay_s="${3:-1}"
+  local url="${HEALTHCHECK_URL:-http://127.0.0.1:8000/api/health}"
+  local i=0 rc=0 err="" dest
+  dest="$(mktemp "${LOG_DIR:-/tmp}/health-XXXXXX.json" 2>/dev/null || mktemp /tmp/health-XXXXXX.json)"
+  while (( i < attempts )); do
+    i=$((i + 1))
+    err="$(curl -sS --fail --max-time 5 --noproxy '*' "$url" -o "$dest" 2>&1)" && rc=0 || rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+      if [[ -n "$out_file" ]]; then
+        mv -f "$dest" "$out_file" 2>/dev/null || cp -f "$dest" "$out_file"
+      fi
+      rm -f "$dest" 2>/dev/null || true
+      return 0
+    fi
+    sleep "$delay_s"
+  done
+  rm -f "$dest" 2>/dev/null || true
+  if [[ -n "$err" ]]; then
+    log_info "Last curl error (exit $rc): $err"
+  else
+    log_info "curl exit $rc after ${attempts} attempts → $url"
+  fi
+  return "$rc"
+}
+
 start_backend() {
   log_info "Starting backend ($BACKEND_SERVICE_NAME)..."
   install_systemd_unit
@@ -1290,6 +1381,12 @@ start_backend() {
     log_info "Try: sudo journalctl -u $BACKEND_SERVICE_NAME -n 50 --no-pager"
     return 1
   fi
+  # systemd "active" is not the same as accepting HTTP — wait briefly for uvicorn.
+  if wait_for_backend_http "" 15 1; then
+    log_ok "Backend HTTP ready ($HEALTHCHECK_URL)"
+  else
+    log_warn "Backend active but HTTP not ready yet — later health check will retry"
+  fi
 }
 
 restart_backend() {
@@ -1299,8 +1396,15 @@ restart_backend() {
 
 install_systemd_unit() {
   local unit_src="$PROJECT_ROOT/deploy/systemd/ai-agent-backend.service"
+  local unit_dst="/etc/systemd/system/${BACKEND_SERVICE_NAME}.service"
+  local tmp
   [[ -f "$unit_src" ]] || return 0
-  run_root install -m 644 "$unit_src" "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service"
+  tmp="$(mktemp)"
+  # Keep unit User/Group aligned with APP_USER from deploy.local.conf (WSL uses home).
+  sed -e "s/^User=.*/User=${APP_USER}/" -e "s/^Group=.*/Group=${APP_GROUP}/" \
+    "$unit_src" >"$tmp"
+  run_root install -m 644 "$tmp" "$unit_dst"
+  rm -f "$tmp"
   run_root systemctl daemon-reload
 }
 
@@ -1395,10 +1499,17 @@ update_source_code() {
       return 1
     fi
     log_info "Rsync staging → $PROJECT_ROOT (keeps DB + venv)"
+    # Never overwrite production secrets/state (same rules as dev-checkout sync).
     rsync -a --delete \
+      --exclude '.env' \
+      --exclude '.env.*' \
       --exclude 'backend/ai_site_agent.db' \
       --exclude 'backend/ai_site_agent.db-*' \
       --exclude 'backend/.venv' \
+      --exclude 'logs/' \
+      --exclude 'backups/' \
+      --exclude '*.dump' \
+      --exclude '*.sql.gz' \
       "$STAGING_DIR/" "$PROJECT_ROOT/"
     log_ok "Staging sync done"
     return 0
@@ -1411,8 +1522,8 @@ update_source_code() {
   fi
 
   if paths_differ; then
-    log_warn "Deploy target ($PROJECT_ROOT) is not this checkout ($REPO_ROOT)"
-    log_warn "Without sync, new files here (e.g. maintenance.py) will NOT reach /opt"
+    log_warn "Deploy target ($PROJECT_ROOT) differs from sync source ($SYNC_SOURCE)"
+    log_warn "Without sync, new files in $SYNC_SOURCE will NOT reach $PROJECT_ROOT"
     log_info "Re-run and choose sync, or pass --sync-from-dev"
   fi
 
@@ -1434,10 +1545,37 @@ update_source_code() {
 }
 
 fix_ownership() {
-  if id "$APP_USER" &>/dev/null; then
-    run_root chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT" 2>/dev/null || \
-      log_warn "Could not chown to $APP_USER (may need sudo)"
+  if ! id "$APP_USER" &>/dev/null; then
+    return 0
   fi
+  # Never lock out the human who is running the deploy (common WSL footgun when
+  # APP_USER=www-data but the interactive shell is a normal user).
+  local invoke="${SUDO_USER:-${USER:-}}"
+  if [[ "$(id -u)" -ne 0 && -n "$invoke" && "$invoke" != "root" && "$invoke" != "$APP_USER" ]]; then
+    log_warn "Skipping chown to ${APP_USER}:${APP_GROUP} (deploy user is ${invoke}; would break backup/rsync/npm)."
+    log_info "Set APP_USER=${invoke} in deploy/deploy.local.conf for local WSL deploys."
+    return 0
+  fi
+  run_root chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT" 2>/dev/null || \
+    log_warn "Could not chown to $APP_USER (may need sudo)"
+}
+
+ensure_project_writable() {
+  local probe="$BACKUP_DIR"
+  mkdir -p "$probe" 2>/dev/null || true
+  if [[ -w "$PROJECT_ROOT" && -w "$probe" ]]; then
+    return 0
+  fi
+  local me
+  me="$(id -un)"
+  log_warn "$PROJECT_ROOT is not writable by ${me}; repairing ownership..."
+  if run_root chown -R "${me}:$(id -gn)" "$PROJECT_ROOT"; then
+    log_ok "Ownership repaired → ${me}"
+    return 0
+  fi
+  log_error "Cannot write to $PROJECT_ROOT (needed for backup/rsync/npm)."
+  log_info "Run once: sudo chown -R ${me}:${me} $PROJECT_ROOT"
+  return 1
 }
 
 build_frontend() {
@@ -1487,19 +1625,25 @@ reload_nginx() {
 health_checks() {
   log_section "Health checks"
   local backend_ok=0
+  local health_json="$LOG_DIR/last-health.json"
 
-  if curl -sf --max-time 10 "$HEALTHCHECK_URL" -o /tmp/ai-agent-health.json; then
+  # Retry: uvicorn can lag systemd "active", and a single curl -o /tmp/... can
+  # false-fail (permissions / race) even when the API already returned 200.
+  if wait_for_backend_http "$health_json" 20 1; then
     log_ok "Backend: OK ($HEALTHCHECK_URL)"
     backend_ok=1
-    if command -v python3 &>/dev/null; then
+    if command -v python3 &>/dev/null && [[ -f "$health_json" ]]; then
       local ollama_st qdrant_st
-      ollama_st="$(python3 -c "import json; d=json.load(open('/tmp/ai-agent-health.json')); print(d.get('ollama',{}).get('status','?'))" 2>/dev/null || echo "?")"
-      qdrant_st="$(python3 -c "import json; d=json.load(open('/tmp/ai-agent-health.json')); print(d.get('qdrant',{}).get('status','?'))" 2>/dev/null || echo "?")"
+      ollama_st="$(HEALTH_JSON="$health_json" python3 -c "import json,os; d=json.load(open(os.environ['HEALTH_JSON'])); print(d.get('ollama',{}).get('status','?'))" 2>/dev/null || echo "?")"
+      qdrant_st="$(HEALTH_JSON="$health_json" python3 -c "import json,os; d=json.load(open(os.environ['HEALTH_JSON'])); print(d.get('qdrant',{}).get('status','?'))" 2>/dev/null || echo "?")"
       [[ "$ollama_st" == "ok" ]] && log_ok "Ollama: OK" || log_warn "Ollama: $ollama_st (sudo systemctl start $OLLAMA_SERVICE_NAME)"
       [[ "$qdrant_st" == "ok" ]] && log_ok "Qdrant: OK" || log_warn "Qdrant: $qdrant_st (sudo systemctl start $QDRANT_SERVICE_NAME)"
     fi
   else
-    log_error "Backend: FAILED"
+    log_error "Backend: FAILED ($HEALTHCHECK_URL)"
+    if run_root systemctl is-active --quiet "$BACKEND_SERVICE_NAME" 2>/dev/null; then
+      log_warn "systemd says $BACKEND_SERVICE_NAME is active — HTTP probe still failing"
+    fi
     log_info "  sudo systemctl status $BACKEND_SERVICE_NAME"
     log_info "  sudo journalctl -u $BACKEND_SERVICE_NAME -n 50 --no-pager"
   fi
@@ -1553,6 +1697,7 @@ run_cleanup_tasks() {
 
 deploy_backend() {
   log_section "Backend deploy"
+  ensure_project_writable || return 1
   stop_backend || true
   if [[ "${DO_BACKUP_DB:-$BACKUP_DB_DEFAULT}" == "yes" ]]; then
     backup_postgres
@@ -1560,13 +1705,17 @@ deploy_backend() {
   update_source_code || return 1
   ensure_venv || return 1
   run_migrations || return 1
-  fix_ownership
+  # Ownership is applied after frontend build in mode_full so npm is not locked out.
+  if [[ "${SKIP_FIX_OWNERSHIP:-}" != "yes" ]]; then
+    fix_ownership
+  fi
   start_backend || return 1
   check_dependency_services
 }
 
 deploy_frontend() {
   log_section "Frontend deploy"
+  ensure_project_writable || return 1
   update_source_code || return 1
   build_frontend || return 1
   fix_ownership
@@ -1575,8 +1724,11 @@ deploy_frontend() {
 
 mode_full() {
   print_plan
-  deploy_backend || return 1
+  # Build UI before final chown so APP_USER!=deploy-user cannot break npm mid-run.
+  SKIP_FIX_OWNERSHIP=yes deploy_backend || return 1
+  ensure_project_writable || return 1
   build_frontend || return 1
+  fix_ownership
   reload_nginx || return 1
   health_checks
 }
@@ -1670,9 +1822,9 @@ interactive_menu() {
     _color "1;37" "What do you want to do?"
     echo ""
     if paths_differ; then
-      echo "  Deploy   (this checkout → $PROJECT_ROOT: code is rsynced before each deploy)"
+      echo "  Deploy   ($SYNC_SOURCE → $PROJECT_ROOT: code is rsynced before each deploy)"
     else
-      echo "  Deploy"
+      echo "  Deploy   (no DEV_CHECKOUT sync — rebuilds $PROJECT_ROOT as-is)"
     fi
     echo "    1) Full redeploy          backend + frontend (usual update)"
     echo "    2) Backend only           API / Python changes"
@@ -1725,27 +1877,36 @@ interactive_menu() {
     case "$choice" in
       1)
         prompt_yn "Back up PostgreSQL before deploy?" "y" && DO_BACKUP_DB=yes || DO_BACKUP_DB=no
+        resolve_sync_source
         if paths_differ; then
-          prompt_yn "Sync code from $REPO_ROOT to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
+          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
         else
-          prompt_yn "Run git pull for latest code?" "y" && DO_GIT_PULL=yes || DO_GIT_PULL=no
+          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
+          if [[ -z "${DEV_CHECKOUT:-}" ]]; then
+            log_warn "Tip: set DEV_CHECKOUT=/path/to/projects/ai-site-agent in deploy.local.conf"
+          fi
+          prompt_yn "Run git pull for latest code?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
         fi
         run_menu_action "Full redeploy" mode_full
         ;;
       2)
         prompt_yn "Back up PostgreSQL before deploy?" "y" && DO_BACKUP_DB=yes || DO_BACKUP_DB=no
+        resolve_sync_source
         if paths_differ; then
-          prompt_yn "Sync code from $REPO_ROOT to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
+          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
         else
-          prompt_yn "Run git pull?" "y" && DO_GIT_PULL=yes || DO_GIT_PULL=no
+          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
+          prompt_yn "Run git pull?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
         fi
         run_menu_action "Backend deploy" mode_backend
         ;;
       3)
+        resolve_sync_source
         if paths_differ; then
-          prompt_yn "Sync code from $REPO_ROOT to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
+          prompt_yn "Sync code from $SYNC_SOURCE to $PROJECT_ROOT?" "y" && SYNC_FROM_DEV=yes || SYNC_FROM_DEV=no
         else
-          prompt_yn "Run git pull?" "y" && DO_GIT_PULL=yes || DO_GIT_PULL=no
+          log_warn "No separate sync source — will rebuild files already in $PROJECT_ROOT"
+          prompt_yn "Run git pull?" "n" && DO_GIT_PULL=yes || DO_GIT_PULL=no
         fi
         prompt_yn "Run npm install?" "y" && DO_NPM_INSTALL=yes || DO_NPM_INSTALL=no
         prompt_yn "Reload nginx after build?" "y" && DO_RELOAD_NGINX=yes || DO_RELOAD_NGINX=no

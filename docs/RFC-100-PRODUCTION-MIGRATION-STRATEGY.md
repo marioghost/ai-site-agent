@@ -742,7 +742,16 @@ Exact sequence. Each step: **deployable**, **rollback**, **flag OFF** unless sta
 | **044** | Streaming uses same ReasoningService | — |
 | **045** | Release 0.6 | — |
 
-### Release 0.7
+**Release 0.6 implementation note (2026-07-28, engineering closure):** Historical RFC step titles **043–045** above were expanded during implementation without renumbering the frozen roadmap. Delivered engineering scope:
+
+| RFC index | Original table title | Delivered implementation |
+|-----------|---------------------|--------------------------|
+| 043 | Perf compare job in CI | **Advisory evidence sufficiency** (`0.6-step-043`) |
+| 044 | Streaming uses same ReasoningService | **Advisory speech-act selection** (`0.6-step-044`); streaming parity covered in Steps 039–041 |
+| 045 | Release 0.6 closure | **Language speech-act rendering** (`0.6-step-045`) + this closure checkpoint |
+
+Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration flags remain **OFF**. Next numbered step: **046** (Release 0.7).
+
 
 | Step | Title | Detail |
 |------|-------|--------|
