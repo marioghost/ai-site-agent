@@ -25,6 +25,12 @@ ADMIN_USER="${STAGING_ADMIN_USER:-admin}"
 ADMIN_PASSWORD="${STAGING_ADMIN_PASSWORD:-фвьшт}"
 SEED_PASSWORD="фвьшт"
 
+# Per-run temp dir — shared /tmp/staging-*.json breaks under sticky /tmp when
+# smoke alternates between sudo (root) and the interactive user (curl error 23).
+SMOKE_TMP="$(mktemp -d /tmp/ai-site-agent-smoke-XXXXXX)"
+cleanup_smoke_tmp() { rm -rf "$SMOKE_TMP"; }
+trap cleanup_smoke_tmp EXIT
+
 failures=0
 pass() { echo "OK: $*"; }
 warn() { echo "WARN: $*"; }
@@ -50,9 +56,9 @@ curl_json_retry() {
 
 echo "==> Smoke: $BASE"
 
-if curl_json_retry "$BASE/api/health" -o /tmp/staging-health.json; then
+if curl_json_retry "$BASE/api/health" -o "$SMOKE_TMP/health.json"; then
   pass "GET /api/health"
-  python3 -c "import json; d=json.load(open('/tmp/staging-health.json')); assert d.get('app',{}).get('status')=='ok', d"
+  python3 -c "import json; d=json.load(open('$SMOKE_TMP/health.json')); assert d.get('app',{}).get('status')=='ok', d"
 else
   fail "GET /api/health unreachable"
 fi
@@ -63,27 +69,27 @@ else
   fail "GET /api/metrics missing kos_memory_version"
 fi
 
-if curl_json_retry "$BASE/api/metrics/operational" -o /tmp/staging-metrics.json; then
+if curl_json_retry "$BASE/api/metrics/operational" -o "$SMOKE_TMP/metrics.json"; then
   pass "GET /api/metrics/operational"
-  python3 -c "import json; d=json.load(open('/tmp/staging-metrics.json')); assert 'memory_version' in d and 'knowledge_version' in d"
+  python3 -c "import json; d=json.load(open('$SMOKE_TMP/metrics.json')); assert 'memory_version' in d and 'knowledge_version' in d"
 else
   fail "GET /api/metrics/operational"
 fi
 
-if curl_json_retry "$BASE/api/build" -o /tmp/staging-build.json; then
+if curl_json_retry "$BASE/api/build" -o "$SMOKE_TMP/build.json"; then
   pass "GET /api/build"
-  python3 -c "import json; d=json.load(open('/tmp/staging-build.json')); \
+  python3 -c "import json; d=json.load(open('$SMOKE_TMP/build.json')); \
 assert d.get('release') and d.get('alembic_head') and 'memory_version' in d and 'feature_flags' in d"
 else
   fail "GET /api/build"
 fi
 
 TOKEN=""
-LOGIN_HTTP="$(curl -sS -o /tmp/staging-login.json -w '%{http_code}' --max-time 30 -X POST "$BASE/api/auth/login" \
+LOGIN_HTTP="$(curl -sS -o "$SMOKE_TMP/login.json" -w '%{http_code}' --max-time 30 -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASSWORD\"}" || true)"
+  -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASSWORD\"}" 2>/dev/null || true)"
 if [[ "$LOGIN_HTTP" == "200" ]]; then
-  TOKEN="$(python3 -c "import json; print(json.load(open('/tmp/staging-login.json'))['access_token'])")"
+  TOKEN="$(python3 -c "import json; print(json.load(open('$SMOKE_TMP/login.json'))['access_token'])")"
   pass "POST /api/auth/login"
 elif [[ "$LOGIN_HTTP" == "401" ]]; then
   fail "POST /api/auth/login (401 Unauthorized)"
@@ -99,9 +105,9 @@ else
 fi
 
 if [[ -n "$TOKEN" ]]; then
-  if curl_json "$BASE/api/settings" -H "Authorization: Bearer $TOKEN" -o /tmp/staging-settings.json; then
+  if curl_json "$BASE/api/settings" -H "Authorization: Bearer $TOKEN" -o "$SMOKE_TMP/settings.json"; then
     pass "GET /api/settings (authenticated)"
-    python3 -c "import json; d=json.load(open('/tmp/staging-settings.json')); \
+    python3 -c "import json; d=json.load(open('$SMOKE_TMP/settings.json')); \
 assert all(k in d for k in ('knowledge_version','memory_version','cache_namespace_v2_enabled','enable_semantic_diagnostics_v2'))"
   else
     fail "GET /api/settings"
