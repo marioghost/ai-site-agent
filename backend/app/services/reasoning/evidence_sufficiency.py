@@ -232,11 +232,51 @@ def assess_evidence_sufficiency(result: RagResult) -> EvidenceSufficiencyAssessm
     )
 
 
+def enrich_assessment_with_memory_assist(
+    assessment: EvidenceSufficiencyAssessment,
+    memory_assist: object | None,
+) -> EvidenceSufficiencyAssessment:
+    """Advisory enrichment only — never downgrade strong retrieval sufficiency."""
+    if memory_assist is None:
+        return assessment
+    usable = False
+    if isinstance(memory_assist, dict):
+        usable = bool(memory_assist.get("memory_usable_for_evidence"))
+    else:
+        usable = bool(getattr(memory_assist, "usable_for_evidence", False))
+    if not usable:
+        return assessment
+
+    retrieval_weak = (
+        assessment.evidence_sufficient is False
+        or assessment.completeness_risk
+        or assessment.sufficiency_status == "unknown"
+    )
+    if not retrieval_weak:
+        return assessment
+
+    hint = (
+        "Memory reports supporting observations that are not reflected in "
+        "selected retrieval evidence."
+    )
+    reasons = assessment.sufficiency_reasons + ("memory_support_not_in_retrieval",)
+    return EvidenceSufficiencyAssessment(
+        evidence_sufficient=assessment.evidence_sufficient,
+        sufficiency_status=assessment.sufficiency_status,
+        sufficiency_reasons=reasons,
+        evidence_count=assessment.evidence_count,
+        independent_source_count=assessment.independent_source_count,
+        completeness_risk=True,
+        missing_evidence_hint=hint,
+    )
+
+
 def build_reasoning_diagnostics(
     assessment: EvidenceSufficiencyAssessment,
     *,
     reasoning_path: str,
     speech_act: Any | None = None,
+    memory_assist: Any | None = None,
 ) -> dict[str, Any]:
     """Additive diagnostics — decision summaries only, no chain-of-thought."""
     steps: list[dict[str, Any]] = [
@@ -278,6 +318,11 @@ def build_reasoning_diagnostics(
                 ),
             }
         )
+    if memory_assist is not None:
+        if hasattr(memory_assist, "to_diagnostics"):
+            diagnostics["memory_assist"] = memory_assist.to_diagnostics()
+        elif isinstance(memory_assist, dict):
+            diagnostics["memory_assist"] = memory_assist
     return diagnostics
 
 

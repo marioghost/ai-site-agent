@@ -58,6 +58,8 @@ def build_retrieval_namespace(
     *,
     db: Session | None = None,
     speech_acts_active: bool | None = None,
+    memory_assist_active: bool | None = None,
+    corpus_boundary_fingerprint: str | None = None,
 ) -> dict[str, str]:
     profile_json = getattr(settings, "knowledge_profile_json", None) or ""
     rule_hashes = _profile_rules_hash(profile_json)
@@ -87,6 +89,7 @@ def build_retrieval_namespace(
         "short_query_lexical_boost": settings.short_query_lexical_boost,
     }
     active = bool(speech_acts_active)
+    assist_active = bool(memory_assist_active)
     namespace = {
         "index_version": str(settings.knowledge_version or 1),
         "knowledge_profile_version": sha256_hex(profile_json),
@@ -102,8 +105,11 @@ def build_retrieval_namespace(
         # Step 045 — isolate activated speech-act answers from advisory/legacy cache.
         # Only set when Reasoning explicitly activates Language (not env alone).
         "speech_act_language": "v1" if active else "off",
+        "memory_evidence_assist": "v1" if assist_active else "off",
         **rule_hashes,
     }
+    if assist_active and corpus_boundary_fingerprint:
+        namespace["corpus_boundary_fingerprint"] = corpus_boundary_fingerprint
     if cache_namespace_v2_enabled(settings):
         if db is None:
             raise ValueError(

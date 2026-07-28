@@ -51,6 +51,7 @@ def test_flag_off_namespace_matches_legacy_snapshot():
         "context_builder_version",
         "llm_model",
         "speech_act_language",
+        "memory_evidence_assist",
         "document_type_rules_version",
         "content_hint_rules_version",
         "source_priority_rules_version",

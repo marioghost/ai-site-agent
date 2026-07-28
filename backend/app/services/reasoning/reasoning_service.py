@@ -23,13 +23,19 @@ from app.schemas.knowledge_profile import KnowledgeProfile
 from app.services.chat_response_builder import DiagnosticsCollector
 from app.services.feature_flags import (
     evidence_assembly_enabled,
+    memory_evidence_assist_enabled,
     reasoning_speech_acts_enabled,
+)
+from app.services.reasoning.memory_assist_policy import (
+    MemoryAssistPolicy,
+    memory_assist_effective,
 )
 from app.services.rag_service import RagResult, RagService
 from app.services.rag_streaming import RagStreamingService
 from app.services.reasoning.evidence_sufficiency import (
     assess_evidence_sufficiency,
     build_reasoning_diagnostics,
+    enrich_assessment_with_memory_assist,
 )
 from app.services.reasoning.speech_act import SpeechActDecision, select_speech_act
 from app.services.reasoning.types import (
@@ -69,9 +75,12 @@ class ReasoningService:
         (clarify/refuse may skip LLM).
         """
         provider = (
-            self._coordinate_pipeline if evidence_assembly_enabled() else None
+            self._coordinate_pipeline
+            if self._uses_coordination_pipeline()
+            else None
         )
         apply_speech = reasoning_speech_acts_enabled()
+        apply_memory = memory_evidence_assist_enabled(self._settings)
         legacy = self._rag.answer(
             request.message,
             request.session_id,
@@ -83,6 +92,7 @@ class ReasoningService:
             bypass_cache=request.bypass_cache,
             pipeline_provider=provider,
             apply_speech_acts=apply_speech,
+            apply_memory_assist=apply_memory,
         )
         return self._wrap(legacy)
 
@@ -128,9 +138,12 @@ class ReasoningService:
     ) -> Iterator[tuple[str, dict]]:
         """Streaming path — same coordinator rules; stamp diagnostics on final."""
         provider = (
-            self._coordinate_pipeline if evidence_assembly_enabled() else None
+            self._coordinate_pipeline
+            if self._uses_coordination_pipeline()
+            else None
         )
         apply_speech = reasoning_speech_acts_enabled()
+        apply_memory = memory_evidence_assist_enabled(self._settings)
         for event, data in self._streaming.iter_events(
             message,
             session_id,
@@ -143,10 +156,16 @@ class ReasoningService:
             bypass_cache=bypass_cache,
             pipeline_provider=provider,
             apply_speech_acts=apply_speech,
+            apply_memory_assist=apply_memory,
         ):
             if event == "final" and isinstance(data, dict):
                 data = self._stamp_stream_final(data)
             yield event, data
+
+    def _uses_coordination_pipeline(self) -> bool:
+        if evidence_assembly_enabled():
+            return True
+        return memory_evidence_assist_enabled(self._settings)
 
     def _coordinate_pipeline(
         self,
@@ -174,6 +193,8 @@ class ReasoningService:
             query_vector=query_vector,
             profile=profile,
         )
+        memory_assist = MemoryAssistPolicy(self._db).attempt(prepared, self._settings)
+        prepared = prepared.with_memory_assist(memory_assist)
         doc_result = rps.assemble_evidence(prepared)
         return rps.finalize_pipeline(
             prepared,
@@ -190,6 +211,8 @@ class ReasoningService:
             return ReasoningService._wrap_applied(legacy, existing)
 
         assessment = assess_evidence_sufficiency(legacy)
+        memory_assist = getattr(legacy, "memory_assist", None)
+        assessment = enrich_assessment_with_memory_assist(assessment, memory_assist)
         strategy = ""
         if isinstance(legacy.applied_knowledge_config, dict):
             strategy = str(legacy.applied_knowledge_config.get("answer_strategy") or "")
@@ -354,6 +377,10 @@ class ReasoningService:
             applied_knowledge_config=applied if isinstance(applied, dict) else None,
         )
         assessment = assess_evidence_sufficiency(stub)
+        memory_assist = None
+        if isinstance(debug_blob, dict):
+            memory_assist = debug_blob.get("memory_assist")
+        assessment = enrich_assessment_with_memory_assist(assessment, memory_assist)
         strategy = ""
         if isinstance(applied, dict):
             strategy = str(applied.get("answer_strategy") or "")
@@ -363,6 +390,7 @@ class ReasoningService:
             assessment,
             reasoning_path=REASONING_PATH_SERVICE,
             speech_act=decision,
+            memory_assist=memory_assist,
         )
 
         stamped = {**data, "reasoning_path": REASONING_PATH_SERVICE}

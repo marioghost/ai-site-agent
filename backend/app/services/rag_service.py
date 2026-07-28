@@ -106,6 +106,8 @@ class RagResult:
     reasoning_path: str | None = None
     # RFC-100 Step 043 — additive advisory diagnostics; does not affect answer text
     reasoning_diagnostics: dict | None = None
+    # RFC-100 Step 047 — advisory Memory assist (object retained for Reasoning wrap)
+    memory_assist: object | None = None
 
 
 LLM_TIMEOUT_MESSAGE = (
@@ -172,6 +174,7 @@ class RagService:
         bypass_cache: bool = False,
         pipeline_provider=None,
         apply_speech_acts: bool = False,
+        apply_memory_assist: bool = False,
     ) -> RagResult:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -198,9 +201,21 @@ class RagService:
             trace.skip("query_intent", "delegated_to_pipeline")
 
         kv = s.knowledge_version or 1
-        # speech_acts_active only when Reasoning explicitly activates Language.
+        from app.services.reasoning.memory_assist_policy import (
+            corpus_boundary_fingerprint_for_settings,
+            memory_assist_effective,
+        )
+
+        assist_active = apply_memory_assist and memory_assist_effective(s)
+        corpus_fp = (
+            corpus_boundary_fingerprint_for_settings(s) if assist_active else None
+        )
         cache_namespace = build_retrieval_namespace(
-            s, db=self.db, speech_acts_active=apply_speech_acts
+            s,
+            db=self.db,
+            speech_acts_active=apply_speech_acts,
+            memory_assist_active=assist_active,
+            corpus_boundary_fingerprint=corpus_fp,
         )
         cache_info.invalidation_version = cache_namespace.get("index_version")
         cache_info.cache_namespace = cache_namespace
@@ -218,6 +233,7 @@ class RagService:
         retrieval_ms = 0
         retrieval_debug: dict | None = None
         all_hits: list[SearchHit] = []
+        memory_assist: object | None = None
 
         # --- Semantic answer cache ---
         if s.enable_semantic_answer_cache and not bypass_cache:
@@ -363,6 +379,11 @@ class RagService:
             retrieval_ms = int((perf_counter() - t_retr) * 1000)
             pipeline_context = pipe_result.context
             pipeline_diagnostics = pipe_result.diagnostics
+            memory_assist = getattr(pipe_result, "memory_assist", None)
+            if memory_assist is not None and hasattr(memory_assist, "to_diagnostics"):
+                if retrieval_debug is None:
+                    retrieval_debug = {}
+                retrieval_debug["memory_assist"] = memory_assist.to_diagnostics()
             if trace and s.enable_reranking:
                 trace.begin("reranking")
                 trace.end("reranking", details={"count": len(hits)})
@@ -734,6 +755,7 @@ class RagService:
             cache=cache_info,
             prompt_diagnostics=prompt_diagnostics,
             reasoning_diagnostics=speech_language_diag,
+            memory_assist=memory_assist,
         )
 
         if s.enable_semantic_answer_cache and query_vector is not None and not bypass_cache:

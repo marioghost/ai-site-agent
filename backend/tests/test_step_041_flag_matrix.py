@@ -393,8 +393,17 @@ def test_no_version_mutation_during_coordination(monkeypatch):
 @pytest.mark.unit
 def test_reasoning_and_ea_have_no_epistemic_imports():
     forbidden_modules = ("epistemic_memory", "EpistemicMemoryService")
+    allowed_reasoning = frozenset(
+        {
+            "memory_assist_types.py",
+            "memory_assist_policy.py",
+            "memory_request_builder.py",
+        }
+    )
     for pkg in (REASONING_PKG, EA_PKG):
         for path in pkg.rglob("*.py"):
+            if pkg == REASONING_PKG and path.name in allowed_reasoning:
+                continue
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):

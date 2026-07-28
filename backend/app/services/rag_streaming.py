@@ -85,6 +85,8 @@ class _PreparedStream:
     qualify_suffix: str | None = None
     speech_language_diag: dict | None = None
     apply_speech_acts: bool = False
+    memory_assist: object | None = None
+    apply_memory_assist: bool = False
 
 
 class RagStreamingService:
@@ -114,6 +116,7 @@ class RagStreamingService:
         bypass_cache: bool = False,
         pipeline_provider=None,
         apply_speech_acts: bool = False,
+        apply_memory_assist: bool = False,
     ) -> Iterator[tuple[str, dict]]:
         collector = collector or DiagnosticsCollector(
             request_id=request_id,
@@ -144,6 +147,7 @@ class RagStreamingService:
                 bypass_cache,
                 pipeline_provider=pipeline_provider,
                 apply_speech_acts=apply_speech_acts,
+                apply_memory_assist=apply_memory_assist,
             )
             if (
                 prepared.pipeline_diagnostics is not None
@@ -434,6 +438,7 @@ class RagStreamingService:
             cache=prepared.cache_info,
             prompt_diagnostics=prepared.prompt_diagnostics,
             reasoning_diagnostics=prepared.speech_language_diag,
+            memory_assist=prepared.memory_assist,
         )
 
         if (
@@ -442,6 +447,11 @@ class RagStreamingService:
             and not prepared.bypass_cache
         ):
             try:
+                from app.services.reasoning.memory_assist_policy import (
+                    corpus_boundary_fingerprint_for_settings,
+                    memory_assist_effective,
+                )
+
                 self.answer_cache.store(
                     normalized_query=prepared.normalized,
                     query_text=message,
@@ -454,6 +464,14 @@ class RagStreamingService:
                         self.settings,
                         db=self.db,
                         speech_acts_active=prepared.apply_speech_acts,
+                        memory_assist_active=prepared.apply_memory_assist
+                        and memory_assist_effective(self.settings),
+                        corpus_boundary_fingerprint=(
+                            corpus_boundary_fingerprint_for_settings(self.settings)
+                            if prepared.apply_memory_assist
+                            and memory_assist_effective(self.settings)
+                            else None
+                        ),
                     ),
                     used_context=True,
                     fallback_answer=prepared.fallback,
@@ -608,6 +626,7 @@ class RagStreamingService:
         bypass_cache: bool,
         pipeline_provider=None,
         apply_speech_acts: bool = False,
+        apply_memory_assist: bool = False,
     ) -> tuple[_PreparedStream, RagResult | None]:
         s = self.settings
         fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
@@ -633,8 +652,21 @@ class RagStreamingService:
             trace.skip("query_intent", "delegated_to_pipeline")
 
         kv = s.knowledge_version or 1
+        from app.services.reasoning.memory_assist_policy import (
+            corpus_boundary_fingerprint_for_settings,
+            memory_assist_effective,
+        )
+
+        assist_active = apply_memory_assist and memory_assist_effective(s)
+        corpus_fp = (
+            corpus_boundary_fingerprint_for_settings(s) if assist_active else None
+        )
         cache_namespace = build_retrieval_namespace(
-            s, db=self.db, speech_acts_active=apply_speech_acts
+            s,
+            db=self.db,
+            speech_acts_active=apply_speech_acts,
+            memory_assist_active=assist_active,
+            corpus_boundary_fingerprint=corpus_fp,
         )
         cache_info.invalidation_version = cache_namespace.get("index_version")
         cache_info.cache_namespace = cache_namespace
@@ -652,6 +684,7 @@ class RagStreamingService:
         retrieval_ms = 0
         retrieval_debug: dict | None = None
         all_hits: list[SearchHit] = []
+        memory_assist: object | None = None
 
         if s.enable_semantic_answer_cache and not bypass_cache:
             if trace:
@@ -714,6 +747,8 @@ class RagStreamingService:
                         bypass_cache=bypass_cache,
                         debug=debug,
                         apply_speech_acts=apply_speech_acts,
+                        memory_assist=None,
+                        apply_memory_assist=apply_memory_assist,
                     )
                     return prep, early
                 if trace:
@@ -803,6 +838,11 @@ class RagStreamingService:
             retrieval_ms = int((perf_counter() - t_retr) * 1000)
             pipeline_context = pipe_result.context
             pipeline_diagnostics = pipe_result.diagnostics
+            memory_assist = getattr(pipe_result, "memory_assist", None)
+            if memory_assist is not None and hasattr(memory_assist, "to_diagnostics"):
+                if retrieval_debug is None:
+                    retrieval_debug = {}
+                retrieval_debug["memory_assist"] = memory_assist.to_diagnostics()
             if trace and s.enable_reranking:
                 trace.begin("reranking")
                 trace.end("reranking", details={"count": len(hits)})
@@ -909,6 +949,8 @@ class RagStreamingService:
                     qualify_suffix=None,
                     speech_language_diag=speech_language_diag,
                     apply_speech_acts=apply_speech_acts,
+                    memory_assist=memory_assist,
+                    apply_memory_assist=apply_memory_assist,
                 )
                 return prep, early
 
@@ -929,6 +971,7 @@ class RagStreamingService:
                 applied_knowledge_config=applied_config_dict,
                 cache=cache_info,
                 reasoning_diagnostics=speech_language_diag,
+                memory_assist=memory_assist,
             )
             prep = _PreparedStream(
                 message=message,
@@ -966,6 +1009,8 @@ class RagStreamingService:
                 qualify_suffix=None,
                 speech_language_diag=speech_language_diag,
                 apply_speech_acts=apply_speech_acts,
+                memory_assist=memory_assist,
+                apply_memory_assist=apply_memory_assist,
             )
             return prep, early
 
@@ -1072,5 +1117,7 @@ class RagStreamingService:
             qualify_suffix=qualify_suffix,
             speech_language_diag=speech_language_diag,
             apply_speech_acts=apply_speech_acts,
+            memory_assist=memory_assist,
+            apply_memory_assist=apply_memory_assist,
         )
         return prep, None

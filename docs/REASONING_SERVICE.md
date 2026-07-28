@@ -103,7 +103,7 @@ Speech-act **Language** activation is orthogonal: requires
 | Step | Status |
 |------|--------|
 | **046** | Memory region read views (`read_region`) ✅ — internal only, contract hardened; no chat wiring |
-| **047** | Reasoning activates memory before Evidence Assembly — **not started** |
+| **047** | Advisory Memory evidence assist — **implemented**, flag default OFF |
 
 ### Step 047 caller obligations (MemoryRegionView)
 

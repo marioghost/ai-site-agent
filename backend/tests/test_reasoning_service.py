@@ -314,8 +314,17 @@ def test_executive_uses_rag_when_reasoning_flag_off(monkeypatch):
 
 
 @pytest.mark.unit
-def test_reasoning_package_has_no_epistemic_memory_access():
+def test_reasoning_package_epistemic_imports_limited_to_memory_assist():
+    allowed = frozenset(
+        {
+            "memory_assist_types.py",
+            "memory_assist_policy.py",
+            "memory_request_builder.py",
+        }
+    )
     for path in REASONING_PKG.rglob("*.py"):
+        if path.name in allowed or path.name == "__init__.py":
+            continue
         source = path.read_text(encoding="utf-8")
         for banned in (
             "epistemic_memory",
@@ -323,8 +332,6 @@ def test_reasoning_package_has_no_epistemic_memory_access():
             "EvidenceLink",
             "ObservationRef",
             "TensionSurfacing",
-            "memory_version",
-            "knowledge_version",
             "MemoryVersionService",
             "KnowledgeVersionService",
         ):

@@ -63,7 +63,7 @@ Observation key stable per source: `obs:source:{source_id}:si`. Re-running SI do
 | **Lifecycle** | `active_only=False` + `include_superseded=False` is rejected; see Step 046 doc truth table |
 | **Provenance default** | `ProvenanceScope.REAL` — excludes `test` and `fixture` |
 | **Corpus metadata** | `corpus_scope_configured`, `corpus_scope_complete`, `corpus_limitations` — distinct from `completeness_unknown` |
-| **Chat / Reasoning** | **Not wired** — Step 047 will consume views behind `memory_evidence_assist_enabled` (flag not implemented) |
+| **Chat / Reasoning** | Step 047 advisory assist behind `memory_evidence_assist_enabled` (default OFF) |
 
 Code: `memory_region_types.py`, `memory_region_reader.py`, `memory_corpus_resolver.py`
 
@@ -81,7 +81,7 @@ In-memory mapper only — see [0.4-step-029](releases/0.4-step-029-claim-extract
 
 ```bash
 cd backend && .venv/bin/alembic upgrade head
-# head: 0015_memory_shadow_write_enabled
+# head: 0016_memory_evidence_assist_enabled
 ```
 
 ## Tests

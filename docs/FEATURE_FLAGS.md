@@ -173,7 +173,7 @@ Do **not** enable until the release step that introduces them.
 | `claim_extraction_enabled` | 0.4 | SI → claim proposals (optional gate; extraction runs inside shadow hook today) |
 | `tension_surfacing_enabled` | 0.5 | Optional future gate for dashboard. Steps 035–036 ship admin-auth-gated; taxonomy owned by `TensionSurfacingService` ([ADR-0002](adr/0002-tension-taxonomy-ownership.md)). |
 | `memory_canonical_shadow_enabled` | 0.7 | Compare memory vs legacy canonical picks in diagnostics |
-| `memory_evidence_assist_enabled` | 0.7 | Memory-assisted evidence routing — **not implemented** (Step 047; Step 046 provides read facade only) |
+| `memory_evidence_assist_enabled` | 0.7 | Memory-assisted evidence routing — **implemented**, default OFF; requires Reasoning ON + `cache_namespace_v2_enabled` |
 | `maintenance_execution_enabled` | 0.9 | Budgeted active maintenance investigations |
 | `allow_legacy_kp_presets` | 0.8 → 1.0 | Industry preset API (default true until 0.8) |
 

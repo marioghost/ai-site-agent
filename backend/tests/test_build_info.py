@@ -65,7 +65,7 @@ def build_client(monkeypatch, tmp_path: Path) -> TestClient:
     )
     monkeypatch.setattr(
         "app.services.build_info_service.current_db_revision",
-        lambda: "0013_cache_namespace_v2_enabled (head)",
+        lambda: "0016_memory_evidence_assist_enabled (head)",
     )
     monkeypatch.setattr(
         "app.services.build_info_service.get_config",
@@ -89,7 +89,7 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["release"] == "0.3"
     assert body["git_commit"] == "abc123"
     assert body["build_time"] == "2026-07-05T12:00:00Z"
-    assert body["alembic_head"] == "0013_cache_namespace_v2_enabled (head)"
+    assert body["alembic_head"] == "0016_memory_evidence_assist_enabled (head)"
     assert body["memory_version"] == 2
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False

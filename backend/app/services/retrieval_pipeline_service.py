@@ -22,7 +22,7 @@ into EA or Language.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import perf_counter
 
 from sqlalchemy import or_, select
@@ -166,6 +166,7 @@ class PipelineResult:
     intent_result: RetrievalIntentResult
     applied_config: AppliedKnowledgeConfig
     retrieval_ms: int = 0
+    memory_assist: object | None = None
 
 
 @dataclass
@@ -187,6 +188,10 @@ class PreparedRetrieval:
     query_vector: list[float] | None
     candidate_count: int
     t0: float
+    memory_assist: object | None = None
+
+    def with_memory_assist(self, memory_assist: object | None) -> PreparedRetrieval:
+        return replace(self, memory_assist=memory_assist)
 
 
 class RetrievalPipelineService:
@@ -455,6 +460,7 @@ class RetrievalPipelineService:
             intent_result=intent_result,
             applied_config=prepared.applied_config,
             retrieval_ms=int((perf_counter() - t0) * 1000),
+            memory_assist=prepared.memory_assist,
         )
 
     def _inject_broad_pages(

@@ -84,6 +84,13 @@ _SETTINGS_CAPABILITIES = (
         "Persist SI claim proposals to Epistemic Memory (shadow; not used by chat)",
         "Default OFF until 0.7 assist",
     ),
+    (
+        "memory_evidence_assist_enabled",
+        "Memory evidence assist",
+        False,
+        "Advisory Memory region read in Reasoning before Evidence Assembly",
+        "Requires Reasoning ON + cache_namespace_v2; staging NO-GO until coverage gate",
+    ),
 )
 
 
@@ -141,7 +148,7 @@ class BuildInfoService:
         for flag_name, friendly, default, effect, rollout in _SETTINGS_CAPABILITIES:
             value = bool(getattr(settings, flag_name, False))
             settings_flags[flag_name] = value
-            deployed[flag_name] = {
+            entry = {
                 "supported": True,
                 "value": value,
                 "surface": "settings",
@@ -152,6 +159,17 @@ class BuildInfoService:
                 "active": bool(value),
                 "code_present": True,
             }
+            if flag_name == "memory_evidence_assist_enabled":
+                entry["effective"] = bool(
+                    env_flags.get("REASONING_SERVICE_ENABLED", False)
+                    and value
+                    and settings_flags.get("cache_namespace_v2_enabled", False)
+                )
+                if value and not env_flags.get("REASONING_SERVICE_ENABLED", False):
+                    entry["skipped_reason"] = "reasoning_disabled"
+                elif value and not settings_flags.get("cache_namespace_v2_enabled", False):
+                    entry["skipped_reason"] = "cache_namespace_v2_required"
+            deployed[flag_name] = entry
 
         release = file_info.get("release") or APP_RELEASE
         return {

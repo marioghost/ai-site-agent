@@ -41,3 +41,11 @@ def cache_namespace_v2_enabled(settings) -> bool:
 def memory_shadow_write_enabled(settings) -> bool:
     """Persist SI claim proposals to epistemic tables when True (default False, RFC-100 Step 030)."""
     return bool(getattr(settings, "memory_shadow_write_enabled", False))
+
+
+def memory_evidence_assist_enabled(settings) -> bool:
+    """Advisory Memory region read before Evidence Assembly when True (default False, Step 047).
+
+    Effective only when ``REASONING_SERVICE_ENABLED`` and ``cache_namespace_v2_enabled``.
+  """
+    return bool(getattr(settings, "memory_evidence_assist_enabled", False))

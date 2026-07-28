@@ -270,7 +270,16 @@ def test_no_version_mutation():
 
 @pytest.mark.unit
 def test_reasoning_package_no_epistemic_memory_imports():
+    allowed = frozenset(
+        {
+            "memory_assist_types.py",
+            "memory_assist_policy.py",
+            "memory_request_builder.py",
+        }
+    )
     for path in REASONING_PKG.rglob("*.py"):
+        if path.name in allowed:
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
