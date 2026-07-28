@@ -23,6 +23,8 @@ from app.services.answer_polish_service import AnswerPolishService
 from app.services.context_builder_service import BuiltContext, ContextBuilderService
 from app.services.canonical_source_service import CanonicalSourceService
 from app.services.embedding_service import EmbeddingService
+from app.services.reasoning.memory_assist_types import MemoryAssistResult
+from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
 from app.services.retrieval_pipeline_service import RetrievalPipelineService
 from app.services.ollama_service import OllamaError, OllamaService
 from app.services.qdrant_service import QdrantService, SearchHit
@@ -107,7 +109,9 @@ class RagResult:
     # RFC-100 Step 043 — additive advisory diagnostics; does not affect answer text
     reasoning_diagnostics: dict | None = None
     # RFC-100 Step 047 — advisory Memory assist (object retained for Reasoning wrap)
-    memory_assist: object | None = None
+    memory_assist: MemoryAssistResult | None = None
+    # RFC-100 Step 048 — diagnostic Memory vs retrieval shadow (no answer influence)
+    canonical_shadow: MemoryCanonicalShadowResult | None = None
 
 
 LLM_TIMEOUT_MESSAGE = (
@@ -233,7 +237,8 @@ class RagService:
         retrieval_ms = 0
         retrieval_debug: dict | None = None
         all_hits: list[SearchHit] = []
-        memory_assist: object | None = None
+        memory_assist: MemoryAssistResult | None = None
+        canonical_shadow: MemoryCanonicalShadowResult | None = None
 
         # --- Semantic answer cache ---
         if s.enable_semantic_answer_cache and not bypass_cache:
@@ -380,10 +385,15 @@ class RagService:
             pipeline_context = pipe_result.context
             pipeline_diagnostics = pipe_result.diagnostics
             memory_assist = getattr(pipe_result, "memory_assist", None)
+            canonical_shadow = getattr(pipe_result, "canonical_shadow", None)
             if memory_assist is not None and hasattr(memory_assist, "to_diagnostics"):
                 if retrieval_debug is None:
                     retrieval_debug = {}
                 retrieval_debug["memory_assist"] = memory_assist.to_diagnostics()
+            if canonical_shadow is not None and hasattr(canonical_shadow, "to_diagnostics"):
+                if retrieval_debug is None:
+                    retrieval_debug = {}
+                retrieval_debug["memory_canonical_shadow"] = canonical_shadow.to_diagnostics()
             if trace and s.enable_reranking:
                 trace.begin("reranking")
                 trace.end("reranking", details={"count": len(hits)})
@@ -756,6 +766,7 @@ class RagService:
             prompt_diagnostics=prompt_diagnostics,
             reasoning_diagnostics=speech_language_diag,
             memory_assist=memory_assist,
+            canonical_shadow=canonical_shadow,
         )
 
         if s.enable_semantic_answer_cache and query_vector is not None and not bypass_cache:

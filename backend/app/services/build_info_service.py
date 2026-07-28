@@ -14,7 +14,7 @@ from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
 # Last accepted RFC-100 release (engineering closure 2026-07-28).
-APP_RELEASE = "0.6"
+APP_RELEASE = "0.7"
 
 # Release 0.6 cognitive pipeline — code present when repo includes Steps 039–045.
 RELEASE_0_6_STEPS = (
@@ -25,6 +25,14 @@ RELEASE_0_6_STEPS = (
     {"step": "043", "title": "Advisory evidence sufficiency", "code": "present"},
     {"step": "044", "title": "Advisory speech-act selection", "code": "present"},
     {"step": "045", "title": "Language speech-act rendering", "code": "present"},
+)
+
+# Release 0.7 Memory integration — code present; flags default OFF; staging not validated.
+RELEASE_0_7_STEPS = (
+    {"step": "046", "title": "Memory region read views", "code": "present"},
+    {"step": "047", "title": "Advisory Memory evidence assist", "code": "present"},
+    {"step": "048", "title": "Memory canonical shadow comparator", "code": "present"},
+    {"step": "049", "title": "Offline Memory Assist evaluation", "code": "present"},
 )
 
 _ENV_CAPABILITIES = (
@@ -90,6 +98,13 @@ _SETTINGS_CAPABILITIES = (
         False,
         "Advisory Memory region read in Reasoning before Evidence Assembly",
         "Requires Reasoning ON + cache_namespace_v2; staging NO-GO until coverage gate",
+    ),
+    (
+        "memory_canonical_shadow_enabled",
+        "Memory canonical shadow",
+        False,
+        "Diagnostic Memory vs retrieval source-set comparison (shadow only)",
+        "Requires Reasoning ON + assist ON + cache_namespace_v2; skipped on answer cache hit",
     ),
 )
 
@@ -169,6 +184,19 @@ class BuildInfoService:
                     entry["skipped_reason"] = "reasoning_disabled"
                 elif value and not settings_flags.get("cache_namespace_v2_enabled", False):
                     entry["skipped_reason"] = "cache_namespace_v2_required"
+            if flag_name == "memory_canonical_shadow_enabled":
+                entry["effective"] = bool(
+                    env_flags.get("REASONING_SERVICE_ENABLED", False)
+                    and value
+                    and settings_flags.get("memory_evidence_assist_enabled", False)
+                    and settings_flags.get("cache_namespace_v2_enabled", False)
+                )
+                if value and not env_flags.get("REASONING_SERVICE_ENABLED", False):
+                    entry["skipped_reason"] = "reasoning_disabled"
+                elif value and not settings_flags.get("memory_evidence_assist_enabled", False):
+                    entry["skipped_reason"] = "memory_assist_required"
+                elif value and not settings_flags.get("cache_namespace_v2_enabled", False):
+                    entry["skipped_reason"] = "cache_namespace_v2_required"
             deployed[flag_name] = entry
 
         release = file_info.get("release") or APP_RELEASE
@@ -194,9 +222,11 @@ class BuildInfoService:
                 "staging_validated": False,
                 "production_ready": False,
                 "steps_039_045": list(RELEASE_0_6_STEPS),
+                "steps_046_048": list(RELEASE_0_7_STEPS),
                 "note": (
                     "Release 0.6 engineering accepted (Steps 039–045). "
-                    "Migration flags remain OFF at runtime until staging validation. "
+                    "Release 0.7 Steps 046–048 implemented in code; flags default OFF. "
+                    "Staging validation not complete — not production ready. "
                     "Capability code_present ≠ enabled ≠ active."
                 ),
             },

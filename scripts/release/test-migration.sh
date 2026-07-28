@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Apply Alembic migrations on a disposable PostgreSQL database and verify revision.
 #
-# Requires POSTGRES_TEST_URL or STAGING_DATABASE_URL, e.g.:
-#   POSTGRES_TEST_URL=postgresql+psycopg://ai_agent:staging_secret@127.0.0.1:5433/ai_site_agent_staging \
-#     ./scripts/release/test-migration.sh
+# Requires POSTGRES_TEST_URL pointing at a disposable DB (*_test / *_migration_test /
+# *_integration_test). Never uses the application DATABASE_URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -15,7 +14,8 @@ source "$ROOT/scripts/lib/test-db-env.sh"
 
 DB_URL="${STAGING_DATABASE_URL:-${POSTGRES_TEST_URL:-}}"
 if [[ -z "$DB_URL" ]]; then
-  echo "ERROR: set STAGING_DATABASE_URL, POSTGRES_TEST_URL, or DATABASE_URL in repo .env" >&2
+  echo "ERROR: set POSTGRES_TEST_URL (or STAGING_DATABASE_URL) to a disposable test DB" >&2
+  echo "  e.g. POSTGRES_TEST_URL=postgresql+psycopg://ai_agent:secret@127.0.0.1:5432/ai_site_agent_migration_test" >&2
   exit 1
 fi
 
@@ -30,37 +30,43 @@ import os
 import sys
 
 sys.path.insert(0, os.environ["BACKEND"])
-from tests._dbutil import is_usable_postgres_test_url
+from sqlalchemy.engine import make_url
+from tests._dbutil import (
+    assert_destructive_database_allowed,
+    assert_isolated_from_app_database,
+    is_usable_postgres_test_url,
+)
 
 url = os.environ.get("DB_URL", "")
 if not is_usable_postgres_test_url(url):
+    print("ERROR: URL unusable / placeholder", file=sys.stderr)
     sys.exit(1)
+try:
+    assert_isolated_from_app_database(url)
+    assert_destructive_database_allowed(url)
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    sys.exit(2)
+print(make_url(url).database)
 PY
-  echo "ERROR: database URL is unset or looks like a documentation placeholder" >&2
-  echo "  check DATABASE_URL in repo .env (host/db/credentials)" >&2
-  echo "Use a real DSN, e.g.:" >&2
-  echo "  POSTGRES_TEST_URL=postgresql+psycopg://ai_agent:secret@127.0.0.1:5432/ai_site_agent_migration_test" >&2
-  echo "Do not export literal 'postgresql+psycopg://...' from docs." >&2
+  echo "ERROR: migration test refused non-isolated database" >&2
   exit 1
 fi
 
 export DATABASE_URL="$DB_URL"
+export POSTGRES_TEST_URL="$DB_URL"
 
 cd "$BACKEND"
 
-echo "==> Alembic upgrade head"
+echo "==> Alembic upgrade head (isolated DB)"
 "$VENV/bin/alembic" upgrade head
 
 echo "==> Current revision"
 CURRENT="$("$VENV/bin/alembic" current 2>/dev/null | tail -1)"
 echo "$CURRENT"
 
-if [[ "$CURRENT" != *"0015_memory_shadow_write_enabled"* && "$CURRENT" != *"0014_epistemic_memory_tables"* && "$CURRENT" != *"(head)"* ]]; then
-  echo "WARN: expected head 0015_memory_shadow_write_enabled — verify migration chain" >&2
-fi
-
-echo "==> Downgrade one step (rollback smoke) and re-upgrade"
+echo "==> Alembic downgrade -1 then upgrade head"
 "$VENV/bin/alembic" downgrade -1
 "$VENV/bin/alembic" upgrade head
 
-echo "OK: migration upgrade/downgrade/upgrade cycle passed on test database"
+echo "OK: migration test on isolated database"

@@ -84,7 +84,9 @@ class MemoryAssistPolicy:
                 supported_claim_count=0,
                 conflicted_claim_count=0,
                 source_ids=(),
+                support_source_ids=(),
                 observation_ref_ids=(),
+                support_observation_ref_ids=(),
                 topic_hints=(),
                 page_role_hints=(),
                 limitations=(),
@@ -115,7 +117,9 @@ class MemoryAssistPolicy:
                 supported_claim_count=0,
                 conflicted_claim_count=0,
                 source_ids=(),
+                support_source_ids=(),
                 observation_ref_ids=(),
+                support_observation_ref_ids=(),
                 topic_hints=request.normalized_topic_key() and (request.normalized_topic_key(),) or (),
                 page_role_hints=request.normalized_page_roles() and tuple(sorted(request.normalized_page_roles())) or (),
                 limitations=("memory_read_timeout",),
@@ -144,7 +148,9 @@ class MemoryAssistPolicy:
                 supported_claim_count=0,
                 conflicted_claim_count=0,
                 source_ids=(),
+                support_source_ids=(),
                 observation_ref_ids=(),
+                support_observation_ref_ids=(),
                 topic_hints=(),
                 page_role_hints=(),
                 limitations=(f"memory_read_error:{type(exc).__name__}",),
@@ -186,7 +192,9 @@ class MemoryAssistPolicy:
         supported = 0
         conflicted = 0
         source_ids: set[int] = set()
+        support_source_ids: set[int] = set()
         observation_ids: set[int] = set()
+        support_observation_ids: set[int] = set()
         claim_ids: list[int] = []
 
         for claim in view.matched_claims:
@@ -201,6 +209,10 @@ class MemoryAssistPolicy:
                 if ref.source_id is not None:
                     source_ids.add(ref.source_id)
                 observation_ids.add(ref.observation_ref_id)
+                if ref.role == "support":
+                    if ref.source_id is not None:
+                        support_source_ids.add(ref.source_id)
+                    support_observation_ids.add(ref.observation_ref_id)
 
         usable = supported > 0 and bool(observation_ids)
         limitations = tuple(view.limitations)
@@ -231,7 +243,9 @@ class MemoryAssistPolicy:
             supported_claim_count=supported,
             conflicted_claim_count=conflicted,
             source_ids=tuple(sorted(source_ids)),
+            support_source_ids=tuple(sorted(support_source_ids)),
             observation_ref_ids=tuple(sorted(observation_ids)),
+            support_observation_ref_ids=tuple(sorted(support_observation_ids)),
             topic_hints=topic_hints,
             page_role_hints=page_role_hints,
             limitations=limitations,

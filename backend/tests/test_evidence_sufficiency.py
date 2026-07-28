@@ -12,9 +12,11 @@ from app.services.reasoning import (
     REASONING_PATH_SERVICE,
     ReasoningRequest,
     ReasoningService,
+)
+from app.services.reasoning.evidence_sufficiency import (
+    EvidenceSufficiencyAssessment,
     assess_evidence_sufficiency,
 )
-from app.services.reasoning.evidence_sufficiency import EvidenceSufficiencyAssessment
 
 REASONING_PKG = Path(__file__).resolve().parents[1] / "app" / "services" / "reasoning"
 

@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from app.services.rag_service import RagResult, RagSource
+from app.services.reasoning.memory_assist_types import MemoryAssistResult
+from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
 
 SufficiencyStatus = Literal["sufficient", "insufficient", "unknown"]
 
@@ -234,7 +236,7 @@ def assess_evidence_sufficiency(result: RagResult) -> EvidenceSufficiencyAssessm
 
 def enrich_assessment_with_memory_assist(
     assessment: EvidenceSufficiencyAssessment,
-    memory_assist: object | None,
+    memory_assist: MemoryAssistResult | dict[str, object] | None,
 ) -> EvidenceSufficiencyAssessment:
     """Advisory enrichment only — never downgrade strong retrieval sufficiency."""
     if memory_assist is None:
@@ -276,7 +278,8 @@ def build_reasoning_diagnostics(
     *,
     reasoning_path: str,
     speech_act: Any | None = None,
-    memory_assist: Any | None = None,
+    memory_assist: MemoryAssistResult | dict[str, object] | None = None,
+    canonical_shadow: MemoryCanonicalShadowResult | dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Additive diagnostics — decision summaries only, no chain-of-thought."""
     steps: list[dict[str, Any]] = [
@@ -323,6 +326,11 @@ def build_reasoning_diagnostics(
             diagnostics["memory_assist"] = memory_assist.to_diagnostics()
         elif isinstance(memory_assist, dict):
             diagnostics["memory_assist"] = memory_assist
+    if canonical_shadow is not None:
+        if hasattr(canonical_shadow, "to_diagnostics"):
+            diagnostics["memory_canonical_shadow"] = canonical_shadow.to_diagnostics()
+        elif isinstance(canonical_shadow, dict):
+            diagnostics["memory_canonical_shadow"] = canonical_shadow
     return diagnostics
 
 

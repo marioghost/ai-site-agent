@@ -9,6 +9,7 @@ import {
 import type { OllamaModel, Settings } from "../types";
 import SettingsAdvancedSection from "../components/settings/SettingsAdvancedSection";
 import SettingsHelpAccordion from "../components/settings/SettingsHelpAccordion";
+import MigrationFlagsPanel from "../components/settings/MigrationFlagsPanel";
 import OllamaModelsPanel from "../components/settings/OllamaModelsPanel";
 import { useTranslation } from "../i18n";
 import type { UiLanguage } from "../i18n";
@@ -291,6 +292,8 @@ export default function SettingsPage() {
         onClearCache={handleClearCache}
         cacheBusy={cacheBusy}
       />
+
+      <MigrationFlagsPanel />
 
       <SettingsHelpAccordion t={t} />
     </PageLayout>

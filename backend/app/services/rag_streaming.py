@@ -28,6 +28,7 @@ from app.services.query_normalization_service import QueryNormalizationService
 from app.services.response_validator_service import ResponseValidatorService
 from app.services.retrieval_cache_service import CachedRetrievalResult, RetrievalCacheService
 from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
+from app.services.reasoning.memory_assist_types import MemoryAssistResult
 from app.services.retrieval_pipeline_service import RetrievalPipelineService
 from app.services.settings_flags import setting_bool
 from app.services.source_formatting_service import SourceFormattingService
@@ -85,7 +86,7 @@ class _PreparedStream:
     qualify_suffix: str | None = None
     speech_language_diag: dict | None = None
     apply_speech_acts: bool = False
-    memory_assist: object | None = None
+    memory_assist: MemoryAssistResult | None = None
     apply_memory_assist: bool = False
 
 
@@ -684,7 +685,7 @@ class RagStreamingService:
         retrieval_ms = 0
         retrieval_debug: dict | None = None
         all_hits: list[SearchHit] = []
-        memory_assist: object | None = None
+        memory_assist: MemoryAssistResult | None = None
 
         if s.enable_semantic_answer_cache and not bypass_cache:
             if trace:

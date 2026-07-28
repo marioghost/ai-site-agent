@@ -33,6 +33,8 @@ from app.models.source import Source
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig, KnowledgeProfile
 from app.services.canonical_source_service import CanonicalSourceService
+from app.services.reasoning.memory_assist_types import MemoryAssistResult
+from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
 from app.services.context_builder_service import BuiltContext, ContextBuilderService
 from app.services.evidence_assembly import (
     EVIDENCE_ASSEMBLY_PATH_LEGACY,
@@ -166,7 +168,13 @@ class PipelineResult:
     intent_result: RetrievalIntentResult
     applied_config: AppliedKnowledgeConfig
     retrieval_ms: int = 0
-    memory_assist: object | None = None
+    memory_assist: MemoryAssistResult | None = None
+    canonical_shadow: MemoryCanonicalShadowResult | None = None
+
+    def with_canonical_shadow(
+        self, canonical_shadow: MemoryCanonicalShadowResult | None
+    ) -> PipelineResult:
+        return replace(self, canonical_shadow=canonical_shadow)
 
 
 @dataclass
@@ -188,9 +196,11 @@ class PreparedRetrieval:
     query_vector: list[float] | None
     candidate_count: int
     t0: float
-    memory_assist: object | None = None
+    memory_assist: MemoryAssistResult | None = None
 
-    def with_memory_assist(self, memory_assist: object | None) -> PreparedRetrieval:
+    def with_memory_assist(
+        self, memory_assist: MemoryAssistResult | None
+    ) -> PreparedRetrieval:
         return replace(self, memory_assist=memory_assist)
 
 

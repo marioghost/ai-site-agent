@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models.source import Source
 from app.services.epistemic_memory.memory_region_types import MemoryCorpusScope
+from app.utils.hashing import sha256_hex
 from app.utils.url_utils import get_domain, is_allowed_domain
 
 if TYPE_CHECKING:
@@ -37,8 +38,6 @@ class MemoryCorpusBoundary:
 
     def fingerprint(self) -> str:
         """Deterministic boundary fingerprint for Step 047 cache identity."""
-        import hashlib
-
         payload = "|".join(
             [
                 CORPUS_BOUNDARY_VERSION,
@@ -46,7 +45,7 @@ class MemoryCorpusBoundary:
                 ",".join(self.hosts),
             ]
         )
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return sha256_hex(payload)
 
 
 def normalize_allowed_host_entry(raw: str) -> str | None:

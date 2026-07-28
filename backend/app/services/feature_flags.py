@@ -49,3 +49,21 @@ def memory_evidence_assist_enabled(settings) -> bool:
     Effective only when ``REASONING_SERVICE_ENABLED`` and ``cache_namespace_v2_enabled``.
   """
     return bool(getattr(settings, "memory_evidence_assist_enabled", False))
+
+
+def memory_canonical_shadow_enabled(settings) -> bool:
+    """Diagnostic Memory vs retrieval shadow when True (default False, Step 048).
+
+    Effective only when Reasoning, assist, and cache namespace v2 are also ON.
+    """
+    return bool(getattr(settings, "memory_canonical_shadow_enabled", False))
+
+
+def memory_canonical_shadow_effective(settings) -> bool:
+    """True when shadow comparison is configured to run (all prerequisites ON)."""
+    return (
+        reasoning_service_enabled()
+        and memory_evidence_assist_enabled(settings)
+        and cache_namespace_v2_enabled(settings)
+        and memory_canonical_shadow_enabled(settings)
+    )

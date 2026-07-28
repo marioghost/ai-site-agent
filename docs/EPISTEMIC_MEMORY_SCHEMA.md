@@ -81,7 +81,7 @@ In-memory mapper only — see [0.4-step-029](releases/0.4-step-029-claim-extract
 
 ```bash
 cd backend && .venv/bin/alembic upgrade head
-# head: 0016_memory_evidence_assist_enabled
+# head: 0017_memory_canonical_shadow_enabled
 ```
 
 ## Tests

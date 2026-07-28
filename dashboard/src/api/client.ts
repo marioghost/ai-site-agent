@@ -36,6 +36,7 @@ import type {
   TimeseriesPoint,
   TopicDistributionRow,
   TensionList,
+  BuildInfo,
   UnansweredQuery,
   UserCreatePayload,
   UserRecord,
@@ -104,6 +105,9 @@ export const listUnderstandingTensions = async (params?: {
   claim_limit?: number;
 }): Promise<TensionList> =>
   (await api.get("/api/understanding/tensions", { params })).data;
+
+export const getBuildInfo = async (): Promise<BuildInfo> =>
+  (await api.get("/api/build")).data;
 
 export const createUser = async (payload: UserCreatePayload): Promise<UserRecord> =>
   (await api.post("/api/users", payload)).data;

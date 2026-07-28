@@ -235,6 +235,39 @@ export interface TensionList {
   page_size: number;
 }
 
+export interface DeployedCapability {
+  supported: boolean;
+  value: boolean | null;
+  surface: string;
+  friendly_name: string;
+  default: boolean;
+  effect: string;
+  rollout: string;
+}
+
+export interface ReleaseStatus {
+  accepted: string;
+  in_progress: string | null;
+  closed_0_6: boolean;
+  note: string;
+}
+
+export interface BuildInfo {
+  app_version: string;
+  release: string;
+  git_commit: string | null;
+  git_commit_short: string | null;
+  build_time: string | null;
+  alembic_head: string | null;
+  memory_version: number;
+  knowledge_version: number;
+  feature_flags: Record<string, boolean>;
+  env_flags: Record<string, boolean>;
+  settings_flags: Record<string, boolean>;
+  release_status: ReleaseStatus | null;
+  deployed_capabilities: Record<string, DeployedCapability>;
+}
+
 export interface SourceList {
   items: Source[];
   total: number;

@@ -12,11 +12,12 @@ from app.services.reasoning import (
     REASONING_PATH_SERVICE,
     ReasoningRequest,
     ReasoningService,
-    assess_evidence_sufficiency,
-    select_speech_act,
 )
-from app.services.reasoning.evidence_sufficiency import EvidenceSufficiencyAssessment
-from app.services.reasoning.speech_act import SpeechActDecision
+from app.services.reasoning.evidence_sufficiency import (
+    EvidenceSufficiencyAssessment,
+    assess_evidence_sufficiency,
+)
+from app.services.reasoning.speech_act import SpeechActDecision, select_speech_act
 
 REASONING_PKG = Path(__file__).resolve().parents[1] / "app" / "services" / "reasoning"
 FORBIDDEN_IMPORT_STEMS = frozenset(
@@ -233,8 +234,16 @@ def test_stream_preserves_event_order_and_stamps_speech_act(monkeypatch):
 
 @pytest.mark.unit
 def test_no_epistemic_memory_imports_in_reasoning_package():
+    """Step 047 allows epistemic imports only in memory assist modules."""
+    allowed = frozenset(
+        {
+            "memory_assist_types.py",
+            "memory_assist_policy.py",
+            "memory_request_builder.py",
+        }
+    )
     for path in REASONING_PKG.rglob("*.py"):
-        if path.name == "__pycache__":
+        if path.name in allowed or path.name == "__init__.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):

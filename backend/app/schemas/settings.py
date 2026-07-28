@@ -145,6 +145,7 @@ class SettingsBase(BaseModel):
     cache_namespace_v2_enabled: bool = False
     memory_shadow_write_enabled: bool = False
     memory_evidence_assist_enabled: bool = False
+    memory_canonical_shadow_enabled: bool = False
     max_trace_retention_days: int = Field(default=30, ge=1, le=3650)
 
     max_concurrent_chat_requests: int = Field(default=20, ge=1, le=1000)

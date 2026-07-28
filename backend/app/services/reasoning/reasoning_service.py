@@ -26,9 +26,9 @@ from app.services.feature_flags import (
     memory_evidence_assist_enabled,
     reasoning_speech_acts_enabled,
 )
-from app.services.reasoning.memory_assist_policy import (
-    MemoryAssistPolicy,
-    memory_assist_effective,
+from app.services.reasoning.memory_assist_policy import MemoryAssistPolicy
+from app.services.reasoning.memory_canonical_shadow_comparator import (
+    MemoryCanonicalShadowComparator,
 )
 from app.services.rag_service import RagResult, RagService
 from app.services.rag_streaming import RagStreamingService
@@ -196,13 +196,21 @@ class ReasoningService:
         memory_assist = MemoryAssistPolicy(self._db).attempt(prepared, self._settings)
         prepared = prepared.with_memory_assist(memory_assist)
         doc_result = rps.assemble_evidence(prepared)
-        return rps.finalize_pipeline(
+        pipe_result = rps.finalize_pipeline(
             prepared,
             doc_result,
             debug=debug,
             trace=trace,
             retrieval_coordinator=RETRIEVAL_COORDINATOR_REASONING,
         )
+        shadow = MemoryCanonicalShadowComparator().compare_pipeline(
+            self._settings,
+            memory_assist,
+            prepared,
+            doc_result,
+            pipe_result,
+        )
+        return pipe_result.with_canonical_shadow(shadow)
 
     @staticmethod
     def _wrap(legacy: RagResult) -> ReasoningResult:
@@ -212,6 +220,7 @@ class ReasoningService:
 
         assessment = assess_evidence_sufficiency(legacy)
         memory_assist = getattr(legacy, "memory_assist", None)
+        canonical_shadow = getattr(legacy, "canonical_shadow", None)
         assessment = enrich_assessment_with_memory_assist(assessment, memory_assist)
         strategy = ""
         if isinstance(legacy.applied_knowledge_config, dict):
@@ -222,6 +231,8 @@ class ReasoningService:
             assessment,
             reasoning_path=REASONING_PATH_SERVICE,
             speech_act=decision,
+            memory_assist=memory_assist,
+            canonical_shadow=canonical_shadow,
         )
         legacy.reasoning_path = REASONING_PATH_SERVICE
         legacy.reasoning_diagnostics = diagnostics
@@ -378,8 +389,10 @@ class ReasoningService:
         )
         assessment = assess_evidence_sufficiency(stub)
         memory_assist = None
+        canonical_shadow = None
         if isinstance(debug_blob, dict):
             memory_assist = debug_blob.get("memory_assist")
+            canonical_shadow = debug_blob.get("memory_canonical_shadow")
         assessment = enrich_assessment_with_memory_assist(assessment, memory_assist)
         strategy = ""
         if isinstance(applied, dict):
@@ -391,6 +404,7 @@ class ReasoningService:
             reasoning_path=REASONING_PATH_SERVICE,
             speech_act=decision,
             memory_assist=memory_assist,
+            canonical_shadow=canonical_shadow,
         )
 
         stamped = {**data, "reasoning_path": REASONING_PATH_SERVICE}

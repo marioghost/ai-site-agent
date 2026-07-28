@@ -25,7 +25,9 @@ class MemoryAssistResult:
     supported_claim_count: int
     conflicted_claim_count: int
     source_ids: tuple[int, ...]
+    support_source_ids: tuple[int, ...]
     observation_ref_ids: tuple[int, ...]
+    support_observation_ref_ids: tuple[int, ...]
     topic_hints: tuple[str, ...]
     page_role_hints: tuple[str, ...]
     limitations: tuple[str, ...]
@@ -51,7 +53,9 @@ class MemoryAssistResult:
             supported_claim_count=0,
             conflicted_claim_count=0,
             source_ids=(),
+            support_source_ids=(),
             observation_ref_ids=(),
+            support_observation_ref_ids=(),
             topic_hints=(),
             page_role_hints=(),
             limitations=(),
@@ -73,7 +77,9 @@ class MemoryAssistResult:
             supported_claim_count=0,
             conflicted_claim_count=0,
             source_ids=(),
+            support_source_ids=(),
             observation_ref_ids=(),
+            support_observation_ref_ids=(),
             topic_hints=(),
             page_role_hints=(),
             limitations=(),
@@ -115,6 +121,10 @@ class MemoryAssistResult:
             )
         if self.source_ids:
             payload["memory_source_ids"] = list(self.source_ids[:_DEBUG_ID_CAP])
+        if self.support_source_ids:
+            payload["memory_support_source_ids"] = list(
+                self.support_source_ids[:_DEBUG_ID_CAP]
+            )
         if self.corpus_boundary_fingerprint:
             payload["memory_corpus_boundary_fingerprint"] = self.corpus_boundary_fingerprint
         return payload
