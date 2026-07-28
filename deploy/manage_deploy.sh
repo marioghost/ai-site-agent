@@ -23,6 +23,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# shellcheck source=deploy/lib/deploy_guard.sh
+source "$SCRIPT_DIR/lib/deploy_guard.sh"
+
 export PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 # shellcheck source=deploy.conf
@@ -1046,6 +1049,16 @@ sync_from_dev_checkout() {
   if ! paths_differ; then
     log_info "Sync source and project path are the same ($PROJECT_ROOT) — skip rsync"
     return 0
+  fi
+  if [[ "${ALLOW_DIRTY_SYNC:-0}" != "1" ]]; then
+    if ! deploy_guard_assert_clean_worktree "$SYNC_SOURCE" "sync source"; then
+      log_error "Refusing rsync from dirty tree: $SYNC_SOURCE"
+      log_error "Use: sudo bash deploy/deploy_from_main.sh  (clean origin/main worktree)"
+      log_error "Unsafe override: ALLOW_DIRTY_SYNC=1 (logged below)"
+      return 1
+    fi
+  else
+    log_warn "ALLOW_DIRTY_SYNC=1 — rsyncing from potentially dirty tree: $SYNC_SOURCE"
   fi
   log_info "Rsync dev checkout → production (keeps DB, venv, node_modules)..."
   log_info "  from: $SYNC_SOURCE"

@@ -18,4 +18,5 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PROJECT_ROOT="${PROJECT_ROOT:-/opt/ai-site-agent}"
 
-exec bash "$SCRIPT_DIR/manage_deploy.sh" --mode full --sync-from-dev --yes "$@"
+# Release deploy: always from clean origin/main worktree (never dirty dev checkout).
+exec bash "$SCRIPT_DIR/deploy_from_main.sh" "$@"
