@@ -13,6 +13,35 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=deploy/lib/deploy_guard.sh
 source "$SCRIPT_DIR/lib/deploy_guard.sh"
 
+# shellcheck source=deploy.conf
+source "$SCRIPT_DIR/deploy.conf"
+if [[ -f "$SCRIPT_DIR/deploy.local.conf" ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/deploy.local.conf"
+fi
+
+npm_cmd() {
+  if [[ -n "${NPM_BIN:-}" && -x "$NPM_BIN" ]]; then
+    echo "$NPM_BIN"
+  elif command -v npm &>/dev/null; then
+    command -v npm
+  else
+    local owner home nvm_bin
+    owner="${SUDO_USER:-${USER:-}}"
+    if [[ -n "$owner" && "$owner" != "root" ]]; then
+      home="$(getent passwd "$owner" 2>/dev/null | cut -d: -f6 || true)"
+      if [[ -n "$home" && -d "$home/.nvm/versions/node" ]]; then
+        nvm_bin="$(ls -1d "$home/.nvm/versions/node/"*/bin/npm 2>/dev/null | sort -V | tail -1 || true)"
+        if [[ -x "$nvm_bin" ]]; then
+          echo "$nvm_bin"
+          return 0
+        fi
+      fi
+    fi
+    return 1
+  fi
+}
+
 PROJECT_ROOT="${PROJECT_ROOT:-/opt/ai-site-agent}"
 DEPLOY_COMMIT="${DEPLOY_COMMIT:-}"
 ALLOW_DIRTY_SYNC="${ALLOW_DIRTY_SYNC:-0}"
@@ -65,13 +94,14 @@ log "writing .build-info.json (release 0.7 @ $COMMIT)"
 RELEASE_VERSION=0.7 ROOT="$WORKTREE" bash "$WORKTREE/scripts/release/write-build-info.sh"
 
 log "building dashboard from commit $COMMIT"
+NPM="$(npm_cmd)" || die "npm not found — set NPM_BIN in deploy/deploy.local.conf (sudo drops nvm from PATH)"
 cd "$WORKTREE/dashboard"
 if [[ ! -d node_modules ]]; then
-  npm ci --silent
+  "$NPM" ci --silent
 else
-  npm install --silent
+  "$NPM" install --silent
 fi
-npm run build
+"$NPM" run build
 
 if [[ ! -f "$WORKTREE/dashboard/dist/index.html" ]]; then
   die "frontend build missing at $WORKTREE/dashboard/dist/index.html"
@@ -85,6 +115,8 @@ log "deploying worktree → $PROJECT_ROOT (preserves .env, backups, logs)"
 export PROJECT_ROOT
 export DEV_CHECKOUT="$WORKTREE"
 export ALLOW_DIRTY_SYNC="$ALLOW_DIRTY_SYNC"
+# Propagate machine overrides — worktree lacks gitignored deploy.local.conf.
+export NPM_BIN NODE_BIN APP_USER APP_GROUP
 exec bash "$WORKTREE/deploy/manage_deploy.sh" \
   --mode full \
   --sync-from-dev \
