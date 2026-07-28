@@ -66,6 +66,8 @@ export const en: TranslationDict = {
   "knowledge_profile.advanced_json": "Advanced JSON editor",
   "knowledge_profile.presets.title": "Presets",
   "knowledge_profile.presets.load": "Load preset",
+  "knowledge_profile.presets.disabled_banner":
+    "Legacy Knowledge Profile presets are disabled. Existing profiles remain active. You can edit or import a profile manually.",
   "knowledge_profile.identity.title": "Site identity",
   "knowledge_profile.identity.display_name": "Site display name",
   "knowledge_profile.identity.organization": "Organization name",

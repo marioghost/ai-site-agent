@@ -187,6 +187,7 @@ class Settings(Base):
     memory_shadow_write_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     memory_evidence_assist_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     memory_canonical_shadow_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_legacy_kp_presets: Mapped[bool] = mapped_column(Boolean, default=False)
     max_trace_retention_days: Mapped[int] = mapped_column(Integer, default=30)
 
     max_concurrent_chat_requests: Mapped[int] = mapped_column(Integer, default=20)

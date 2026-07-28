@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import KnowledgeProfileGenerateWizard from "../components/knowledge-profile/KnowledgeProfileGenerateWizard";
 import KnowledgeProfileLegacyBanner from "../components/knowledge-profile/KnowledgeProfileLegacyBanner";
+import { isLegacyKpPresetsDisabledError } from "../lib/legacyKpPresetsDisabled";
 import type { KnowledgeProfile, KnowledgeProfilePreset } from "../types";
 import { useTranslation } from "../i18n";
 import {
@@ -39,6 +40,7 @@ export default function KnowledgeProfilePage() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<KnowledgeProfile | null>(null);
   const [presets, setPresets] = useState<KnowledgeProfilePreset[]>([]);
+  const [presetsUnavailable, setPresetsUnavailable] = useState(false);
   const [advancedJson, setAdvancedJson] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReindexWarn, setShowReindexWarn] = useState(false);
@@ -52,7 +54,17 @@ export default function KnowledgeProfilePage() {
       setProfile(p);
       setAdvancedJson(JSON.stringify(p, null, 2));
     });
-    getKnowledgeProfilePresets().then(setPresets).catch(() => setPresets([]));
+    getKnowledgeProfilePresets()
+      .then((list) => {
+        setPresets(list);
+        setPresetsUnavailable(false);
+      })
+      .catch((err: unknown) => {
+        setPresets([]);
+        if (isLegacyKpPresetsDisabledError(err)) {
+          setPresetsUnavailable(true);
+        }
+      });
   }, []);
 
   if (!profile) {
@@ -98,9 +110,16 @@ export default function KnowledgeProfilePage() {
     try {
       const loaded = await loadKnowledgeProfilePreset(presetId);
       update(loaded);
+      setPresetsUnavailable(false);
       setMessage(t("knowledge_profile.preset_loaded"));
-    } catch {
-      setMessage(t("knowledge_profile.error_preset"));
+    } catch (err: unknown) {
+      if (isLegacyKpPresetsDisabledError(err)) {
+        setPresetsUnavailable(true);
+        setPresets([]);
+        setMessage(t("knowledge_profile.presets.disabled_banner"));
+      } else {
+        setMessage(t("knowledge_profile.error_preset"));
+      }
     } finally {
       setBusy(false);
     }
@@ -125,51 +144,53 @@ export default function KnowledgeProfilePage() {
     setMessage(t("knowledge_profile.imported"));
   };
 
+  const disabledBanner = t("knowledge_profile.presets.disabled_banner");
+  const messageVariant =
+    message === t("knowledge_profile.saved") ||
+    message === t("knowledge_profile.imported") ||
+    message === t("knowledge_profile.preset_loaded") ||
+    message === t("knowledge_profile.generate.applied")
+      ? "success"
+      : message === disabledBanner
+        ? "info"
+        : "error";
+
   return (
     <PageLayout>
       <PageHeader title={t("knowledge_profile.title")} subtitle={t("knowledge_profile.subtitle")} />
 
       <KnowledgeProfileLegacyBanner />
 
+      {presetsUnavailable ? <Alert variant="info">{disabledBanner}</Alert> : null}
+
       {showReindexWarn ? (
         <Alert variant="warning">{t("knowledge_profile.reindex_warning")}</Alert>
       ) : null}
 
-      {message ? (
-        <Alert
-          variant={
-            message === t("knowledge_profile.saved") ||
-            message === t("knowledge_profile.imported") ||
-            message === t("knowledge_profile.preset_loaded") ||
-            message === t("knowledge_profile.generate.applied")
-              ? "success"
-              : "error"
-          }
-        >
-          {message}
-        </Alert>
-      ) : null}
+      {message ? <Alert variant={messageVariant}>{message}</Alert> : null}
 
       <SectionCard title={t("knowledge_profile.presets.title")}>
-        <FormGrid columns={2}>
-          <Field label={t("knowledge_profile.presets.load")}>
-            <Select
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) onLoadPreset(e.target.value);
-                e.target.value = "";
-              }}
-              disabled={busy}
-            >
-              <option value="">{t("knowledge_profile.presets.load")}</option>
-              {presets.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </FormGrid>
+        {!presetsUnavailable ? (
+          <FormGrid columns={2}>
+            <Field label={t("knowledge_profile.presets.load")}>
+              <Select
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) onLoadPreset(e.target.value);
+                  e.target.value = "";
+                }}
+                disabled={busy}
+              >
+                <option value="">{t("knowledge_profile.presets.load")}</option>
+                {presets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </FormGrid>
+        ) : null}
         <div className="ds-action-toolbar" style={{ marginTop: "var(--ds-space-4)" }}>
           <div className="ds-action-toolbar__start">
             <Button type="button" variant="secondary" size="sm" onClick={onExport}>

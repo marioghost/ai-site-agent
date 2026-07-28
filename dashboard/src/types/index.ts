@@ -110,6 +110,11 @@ export interface Settings {
   enable_request_metadata_logging: boolean;
   enable_chat_debug_payload: boolean;
   enable_semantic_diagnostics_v2: boolean;
+  cache_namespace_v2_enabled?: boolean;
+  memory_shadow_write_enabled?: boolean;
+  memory_evidence_assist_enabled?: boolean;
+  memory_canonical_shadow_enabled?: boolean;
+  allow_legacy_kp_presets?: boolean;
   max_trace_retention_days: number;
   max_concurrent_chat_requests: number;
   max_concurrent_llm_requests: number;
