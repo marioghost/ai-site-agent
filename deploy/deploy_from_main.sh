@@ -36,10 +36,18 @@ fi
 COMMIT="$(deploy_guard_resolve_commit "$REPO_ROOT" "$DEPLOY_COMMIT")"
 log "target commit: $COMMIT"
 
-deploy_guard_assert_commit_on_main "$REPO_ROOT" "$COMMIT" || die "commit not on origin/main"
-
-if [[ -z "$DEPLOY_COMMIT" ]]; then
-  deploy_guard_assert_local_main_matches_origin "$REPO_ROOT" || die "local main out of sync with origin/main"
+if [[ "${DEPLOY_LOCAL_MAIN:-0}" == "1" ]]; then
+  LOCAL_MAIN="$(deploy_guard_local_main_hash "$REPO_ROOT")"
+  if [[ "$COMMIT" != "$LOCAL_MAIN" ]]; then
+    die "DEPLOY_LOCAL_MAIN=1 requires DEPLOY_COMMIT unset and main at $LOCAL_MAIN (got $COMMIT)"
+  fi
+  log "WARN: DEPLOY_LOCAL_MAIN=1 — deploying local main without origin/main verification"
+  log "WARN: push origin/main before production operators rely on remote baseline"
+else
+  deploy_guard_assert_commit_on_main "$REPO_ROOT" "$COMMIT" || die "commit not on origin/main"
+  if [[ -z "$DEPLOY_COMMIT" ]]; then
+    deploy_guard_assert_local_main_matches_origin "$REPO_ROOT" || die "local main out of sync with origin/main"
+  fi
 fi
 
 WORKTREE="$(mktemp -d /tmp/ai-site-agent-deploy-XXXXXX)"
