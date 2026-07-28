@@ -30,6 +30,7 @@ _RETRIEVAL_SETTING_FIELDS = (
     "enable_reranking",
     "enable_intent_aware_retrieval",
     "enable_canonical_source_selection",
+    "legacy_doc_type_canonical_enabled",
     "enable_broad_question_mode",
     "enable_context_builder",
     "retrieval_candidate_count",
@@ -122,6 +123,9 @@ def _to_read(model: Settings) -> SettingsRead:
             model, "memory_canonical_shadow_enabled", False
         ),
         allow_legacy_kp_presets=getattr(model, "allow_legacy_kp_presets", False),
+        legacy_doc_type_canonical_enabled=getattr(
+            model, "legacy_doc_type_canonical_enabled", False
+        ),
         max_trace_retention_days=model.max_trace_retention_days,
         max_concurrent_chat_requests=model.max_concurrent_chat_requests,
         max_concurrent_llm_requests=model.max_concurrent_llm_requests,
@@ -314,6 +318,7 @@ def update_settings(
     settings.memory_evidence_assist_enabled = payload.memory_evidence_assist_enabled
     settings.memory_canonical_shadow_enabled = payload.memory_canonical_shadow_enabled
     settings.allow_legacy_kp_presets = payload.allow_legacy_kp_presets
+    settings.legacy_doc_type_canonical_enabled = payload.legacy_doc_type_canonical_enabled
     settings.max_trace_retention_days = payload.max_trace_retention_days
     settings.max_concurrent_chat_requests = payload.max_concurrent_chat_requests
     settings.max_concurrent_llm_requests = payload.max_concurrent_llm_requests

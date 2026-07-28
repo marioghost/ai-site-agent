@@ -41,7 +41,10 @@ from app.services.evidence_assembly import (
     EvidenceAssemblyRequest,
     EvidenceAssemblyService,
 )
-from app.services.feature_flags import evidence_assembly_enabled
+from app.services.feature_flags import (
+    evidence_assembly_enabled,
+    legacy_doc_type_canonical_enabled,
+)
 from app.services.retrieval_engine.context_builder import RetrievalContextBuilder
 from app.services.retrieval_engine.diagnostics_builder import DiagnosticsBuilder
 from app.services.retrieval_engine.pipeline import (
@@ -65,6 +68,11 @@ from app.services.trace_service import TraceBuilder
 
 RETRIEVAL_COORDINATOR_RAG = "rag"
 RETRIEVAL_COORDINATOR_REASONING = "reasoning"
+
+# Step 055 — diagnostic values for legacy doc-type canonical path.
+LEGACY_DOC_TYPE_CANONICAL_PATH_ENABLED = "enabled"
+LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_FLAG_OFF = "skipped_flag_off"
+LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_GLOBAL_OFF = "skipped_global_canonical_off"
 
 
 @dataclass
@@ -113,6 +121,8 @@ class RetrievalDiagnostics:
     evidence_assembly_path: str = EVIDENCE_ASSEMBLY_PATH_LEGACY
     # Additive Step 041: who ordered prepare→assemble→finalize.
     retrieval_coordinator: str = RETRIEVAL_COORDINATOR_RAG
+    # Step 055: legacy CanonicalSourceService doc-type path status.
+    legacy_doc_type_canonical_path: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -157,6 +167,7 @@ class RetrievalDiagnostics:
             "retrieval_pipeline_stages": self.retrieval_pipeline_stages,
             "evidence_assembly_path": self.evidence_assembly_path,
             "retrieval_coordinator": self.retrieval_coordinator,
+            "legacy_doc_type_canonical_path": self.legacy_doc_type_canonical_path,
         }
 
 
@@ -400,10 +411,19 @@ class RetrievalPipelineService:
                 diag.broad_injected = [h.url for h in injected]
                 hits = self._merge_hits(injected, hits)
 
-        if setting_bool(s, "enable_canonical_source_selection"):
+        if not setting_bool(s, "enable_canonical_source_selection"):
+            diag.legacy_doc_type_canonical_path = (
+                LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_GLOBAL_OFF
+            )
+        elif not legacy_doc_type_canonical_enabled(s):
+            diag.legacy_doc_type_canonical_path = (
+                LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_FLAG_OFF
+            )
+        else:
             hits = CanonicalSourceService.select_context(
                 hits, legacy_intent, candidate_count, s, profile=prepared.profile
             )
+            diag.legacy_doc_type_canonical_path = LEGACY_DOC_TYPE_CANONICAL_PATH_ENABLED
 
         hits, lang_excluded = ContextBuilderService.dedupe_bilingual_hits_with_report(
             hits, query_language

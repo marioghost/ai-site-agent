@@ -15,6 +15,7 @@ const FLAG_ORDER = [
   "memory_evidence_assist_enabled",
   "memory_canonical_shadow_enabled",
   "allow_legacy_kp_presets",
+  "legacy_doc_type_canonical_enabled",
 ] as const;
 
 function valueLabel(
@@ -115,7 +116,13 @@ export default function MigrationFlagsPanel() {
                 <td>
                   <code>{key}</code>
                 </td>
-                <td>{cap.friendly_name || key}</td>
+                <td>
+                  {(() => {
+                    const labelKey = `migration_flags.flag.${key}`;
+                    const localized = t(labelKey);
+                    return localized !== labelKey ? localized : cap.friendly_name || key;
+                  })()}
+                </td>
                 <td>
                   <StatusBadge
                     variant={
