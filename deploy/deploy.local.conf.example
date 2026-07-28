@@ -1,19 +1,25 @@
 # Per-server overrides — copy to deploy/deploy.local.conf on the production host.
 #
-# Typical SSH session:
-#   ssh user@your-server
+# Preferred (editable code → live install):
+#   cd ~/projects/ai-site-agent
+#   sudo bash deploy/manage_deploy.sh
+#
+# Or from the live install when DEV_CHECKOUT points at your checkout:
 #   cd /opt/ai-site-agent
 #   sudo bash deploy/manage_deploy.sh
 #
 # Uncomment and adjust:
 
 PROJECT_ROOT="/opt/ai-site-agent"
+# Required when you run manage_deploy FROM /opt — path to the editable checkout:
+# DEV_CHECKOUT="/home/you/projects/ai-site-agent"
+
 BACKUP_DIR="/opt/ai-site-agent/backups"
 LOG_DIR="/opt/ai-site-agent/logs"
 APP_USER="www-data"
 HEALTHCHECK_URL="http://127.0.0.1:8000/api/health"
 
-# If you deploy without git on the server (rsync/staging from dev machine):
+# If you deploy without git on the server (rsync from DEV_CHECKOUT / staging):
 # GIT_PULL_DEFAULT=no
 # USE_STAGING=yes
 # STAGING_DIR=/tmp/ai-site-agent-deploy
@@ -30,3 +36,4 @@ HEALTHCHECK_URL="http://127.0.0.1:8000/api/health"
 # If `sudo bash deploy/manage_deploy.sh` warns "npm not found" but npm works for your user
 # (typical with nvm), either install Node system-wide or set:
 # NPM_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/npm"
+# NODE_BIN="/home/you/.nvm/versions/node/v20.20.2/bin/node"
