@@ -80,12 +80,34 @@ def cmd_clear_qdrant(*, main: bool, answer_cache: bool) -> int:
     return 0
 
 
-def cmd_reset_db() -> int:
+def cmd_reset_db(*, confirm: str | None = None, i_understand: bool = False) -> int:
     """Drop all application tables and rebuild the schema via Alembic.
 
     Destructive: removes ALL data in the configured PostgreSQL database.
+    Requires ``--i-understand-destructive`` and ``--confirm=<database_name>``.
+    Refuses disposable-looking mistakes only by requiring exact DB name match.
     """
-    print("Dropping all application tables (PostgreSQL)...")
+    from sqlalchemy.engine import make_url
+
+    from app.core.config import get_config
+
+    cfg = get_config()
+    db_name = make_url(cfg.database_url).database or ""
+    if not i_understand:
+        print(
+            "ERROR: refuse reset-db without --i-understand-destructive",
+            file=sys.stderr,
+        )
+        return 2
+    if confirm != db_name:
+        print(
+            f"ERROR: refuse reset-db — pass --confirm={db_name} (exact database name)",
+            file=sys.stderr,
+        )
+        return 2
+    # Extra guard: never allow reset against names that look like recovery DBs
+    # unless the operator typed that exact name as confirm (already checked).
+    print(f"Dropping all application tables in database {db_name!r} (PostgreSQL)...")
     Base.metadata.drop_all(bind=engine)
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -94,7 +116,19 @@ def cmd_reset_db() -> int:
     return 0
 
 
-def cmd_trigger_reindex() -> int:
+def cmd_trigger_reindex(*, confirm: str | None = None, i_understand: bool = False) -> int:
+    from sqlalchemy.engine import make_url
+
+    from app.core.config import get_config
+
+    db_name = make_url(get_config().database_url).database or ""
+    if not i_understand or confirm != db_name:
+        print(
+            "ERROR: refuse trigger-reindex without "
+            f"--i-understand-destructive --confirm={db_name}",
+            file=sys.stderr,
+        )
+        return 2
     with SessionLocal() as db:
         if indexing_worker.is_running():
             print("ERROR: indexing job already running", file=sys.stderr)
@@ -151,10 +185,32 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("clear-retrieval-cache", help="Clear retrieval cache only")
     sub.add_parser("clear-answer-cache", help="Clear answer cache only")
     sub.add_parser("migrate", help="Run Alembic migrations (upgrade head)")
-    sub.add_parser(
+    reset = sub.add_parser(
         "reset-db", help="DROP all tables and rebuild schema via Alembic (destructive)"
     )
-    sub.add_parser("trigger-reindex", help="Clear sources and start full reindex")
+    reset.add_argument(
+        "--i-understand-destructive",
+        action="store_true",
+        help="Required acknowledgement for reset-db",
+    )
+    reset.add_argument(
+        "--confirm",
+        default=None,
+        help="Must equal the target database name from DATABASE_URL",
+    )
+    reindex = sub.add_parser(
+        "trigger-reindex", help="Clear sources and start full reindex (destructive)"
+    )
+    reindex.add_argument(
+        "--i-understand-destructive",
+        action="store_true",
+        help="Required acknowledgement for trigger-reindex",
+    )
+    reindex.add_argument(
+        "--confirm",
+        default=None,
+        help="Must equal the target database name from DATABASE_URL",
+    )
     sub.add_parser("status", help="Print maintenance-related status")
 
     qd = sub.add_parser("clear-qdrant", help="Delete Qdrant collection(s)")
@@ -174,9 +230,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "clear-qdrant":
         return cmd_clear_qdrant(main=args.main, answer_cache=args.answer_cache)
     if args.command == "reset-db":
-        return cmd_reset_db()
+        return cmd_reset_db(
+            confirm=args.confirm,
+            i_understand=bool(args.i_understand_destructive),
+        )
     if args.command == "trigger-reindex":
-        return cmd_trigger_reindex()
+        return cmd_trigger_reindex(
+            confirm=args.confirm,
+            i_understand=bool(args.i_understand_destructive),
+        )
     if args.command == "migrate":
         return cmd_migrate()
     if args.command == "status":
