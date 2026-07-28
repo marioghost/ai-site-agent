@@ -35,6 +35,10 @@ def list_sources(
     source_type: str | None = Query(None),
     url_contains: str | None = Query(None),
     date_range: str | None = Query(None),
+    exclude_fixtures: bool = Query(
+        True,
+        description="Exclude fixture.example / fixture.* URLs from real-data views.",
+    ),
     db: Session = Depends(get_db),
     _user=Depends(require_operator),
 ) -> SourceListResponse:
@@ -47,6 +51,7 @@ def list_sources(
         search=search,
         url_contains=url_contains,
         date_range=date_range,
+        exclude_fixtures=exclude_fixtures,
     )
     return SourceListResponse(
         items=[SourceRead.model_validate(i) for i in items],

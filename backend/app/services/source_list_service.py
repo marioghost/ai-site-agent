@@ -45,6 +45,7 @@ class SourceListService:
         source_type: str | None = None,
         url_contains: str | None = None,
         date_range: str | None = None,
+        exclude_fixtures: bool = True,
     ) -> tuple[list[dict], int]:
         chunk_counts = dict(
             self.db.execute(
@@ -53,6 +54,11 @@ class SourceListService:
         )
 
         stmt = select(Source)
+        if exclude_fixtures:
+            stmt = stmt.where(
+                ~Source.url.ilike("%fixture.example%"),
+                ~Source.url.ilike("fixture.%"),
+            )
         if search:
             like = f"%{search.strip()}%"
             stmt = stmt.where(
