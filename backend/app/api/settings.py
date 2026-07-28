@@ -100,11 +100,6 @@ def _to_read(model: Settings) -> SettingsRead:
         knowledge_version=model.knowledge_version,
         memory_version=getattr(model, "memory_version", 1),
         retrieval_mode=model.retrieval_mode,
-        homepage_boost_enabled=model.homepage_boost_enabled,
-        title_match_boost=model.title_match_boost,
-        heading_match_boost=model.heading_match_boost,
-        homepage_boost_value=model.homepage_boost_value,
-        short_query_lexical_boost=model.short_query_lexical_boost,
         enable_query_expansion=model.enable_query_expansion,
         enable_retrieval_debug=model.enable_retrieval_debug,
         enable_intent_aware_retrieval=model.enable_intent_aware_retrieval,
@@ -249,11 +244,9 @@ def update_settings(
     )
     settings.max_cached_answers = payload.max_cached_answers
     settings.retrieval_mode = payload.retrieval_mode
-    settings.homepage_boost_enabled = payload.homepage_boost_enabled
-    settings.title_match_boost = payload.title_match_boost
-    settings.heading_match_boost = payload.heading_match_boost
-    settings.homepage_boost_value = payload.homepage_boost_value
-    settings.short_query_lexical_boost = payload.short_query_lexical_boost
+    # Step 052: do not map deprecated boost fields from SettingsUpdate.
+    # Legacy clients may still send them; SettingsUpdate(extra="ignore") drops them
+    # so ORM homepage/title/heading/short_query boost columns stay unchanged.
     settings.enable_query_expansion = payload.enable_query_expansion
     settings.enable_retrieval_debug = payload.enable_retrieval_debug
     settings.enable_intent_aware_retrieval = payload.enable_intent_aware_retrieval
