@@ -112,5 +112,9 @@ Before interpreting claim support/conflict from Step 046 reads:
 1. Check `MemoryClaimView.evidence_loaded` is `true`, or confirm `evidence_not_requested` is **not** in `limitations`.
 2. When `evidence_loaded` is `false`, treat `has_support` and `has_conflict` as unknown (`null`).
 3. Respect lifecycle validation: do not send `active_only=False` with `include_superseded=False`.
-4. Use positive `source_id` / `source_ids` only — invalid scope raises `ValueError` before SQL.
-5. Treat exclusion counters as diagnostic only; use `total_matched` and `provenance_summary` for region shape.
+4. Use **deployment corpus isolation** for production: `MemoryIsolationScope(corpus_scope=MemoryCorpusScope.DEPLOYMENT)` — Reasoning must not resolve source IDs or import `memory_corpus_resolver`.
+5. Explicit `source_id` / `source_ids` remain for engineering diagnostics only.
+6. Treat exclusion counters as diagnostic only; use `total_matched` and `provenance_summary` for region shape.
+7. Check `corpus_scope_configured` and `corpus_limitations` before treating an empty region as “no knowledge.”
+
+See [0.7-step-047-architecture-review.md](releases/0.7-step-047-architecture-review.md).

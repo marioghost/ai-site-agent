@@ -11,6 +11,7 @@ EPISTEMIC_PKG = APP_ROOT / "services" / "epistemic_memory"
 STEP046_MODULES = (
     "memory_region_types.py",
     "memory_region_reader.py",
+    "memory_corpus_resolver.py",
 )
 
 FORBIDDEN_IMPORT_STEMS = frozenset(
@@ -67,9 +68,13 @@ def test_chat_paths_do_not_import_memory_region_views():
     forbidden_tokens = (
         "MemoryRegionView",
         "MemoryRegionRequest",
+        "MemoryCorpusScope",
+        "MemoryIsolationScope",
+        "MemoryCorpusBoundary",
         "read_region",
         "memory_region_reader",
         "memory_region_types",
+        "memory_corpus_resolver",
     )
     violations: list[str] = []
     for path in CHAT_PATHS:

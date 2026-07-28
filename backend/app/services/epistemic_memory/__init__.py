@@ -6,7 +6,9 @@ from app.services.epistemic_memory.memory_integration_service import (
 )
 from app.services.epistemic_memory.memory_region_types import (
     MemoryClaimView,
+    MemoryCorpusScope,
     MemoryEvidenceRef,
+    MemoryIsolationScope,
     MemoryRegionRequest,
     MemoryRegionView,
 )
@@ -29,7 +31,9 @@ __all__ = [
     "EvidenceLinkView",
     "EvidenceProposal",
     "MemoryClaimView",
+    "MemoryCorpusScope",
     "MemoryEvidenceRef",
+    "MemoryIsolationScope",
     "MemoryRegionRequest",
     "MemoryRegionView",
     "ObservationRefView",

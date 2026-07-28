@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from types import MappingProxyType
 from typing import Any
 
@@ -23,6 +24,14 @@ LIMIT_LANGUAGE_FILTER_UNAVAILABLE = "language_filter_unavailable"
 LIMIT_MALFORMED_SCOPE_ROWS_EXCLUDED = "malformed_scope_rows_excluded"
 LIMIT_EVIDENCE_NOT_REQUESTED = "evidence_not_requested"
 LIMIT_NO_MATCHING_CLAIMS = "no_matching_claims"
+LIMIT_CORPUS_SCOPE_UNCONFIGURED = "corpus_scope_unconfigured"
+LIMIT_CORPUS_SCOPE_INVALID = "corpus_scope_invalid"
+LIMIT_CORPUS_SCOPE_EMPTY = "corpus_scope_empty"
+LIMIT_CORPUS_SCOPE_INCOMPLETE = "corpus_scope_incomplete"
+
+
+class MemoryCorpusScope(str, Enum):
+    DEPLOYMENT = "deployment"
 
 
 def _coerce_positive_source_id(value: object, *, field: str) -> int:
@@ -38,22 +47,49 @@ def _coerce_positive_source_id(value: object, *, field: str) -> int:
 
 
 def readonly_mapping(data: dict[str, Any] | None) -> Mapping[str, Any] | None:
-    """Shallow read-only copy of a mapping for DTO safety.
-
-  Nested dict/list values inside ``scope_json`` remain mutable if present;
-  only top-level keys are protected via ``MappingProxyType``.
-    """
+    """Shallow read-only copy of a mapping for DTO safety."""
     if data is None:
         return None
     return MappingProxyType(dict(data))
 
 
 @dataclass(frozen=True)
-class MemoryRegionRequest:
-    """Bounded filter for reading claims linked to explicit source scope."""
+class MemoryIsolationScope:
+    """Isolation boundary — exactly one of corpus_scope or source_ids."""
 
-    source_id: int | None = None
+    corpus_scope: MemoryCorpusScope | None = None
     source_ids: tuple[int, ...] | None = None
+
+    def validate(self) -> None:
+        has_corpus = self.corpus_scope is not None
+        has_sources = bool(self.source_ids)
+        if has_corpus and has_sources:
+            raise ValueError(
+                "MemoryIsolationScope requires exactly one of corpus_scope or source_ids"
+            )
+        if not has_corpus and not has_sources:
+            raise ValueError(
+                "MemoryIsolationScope requires exactly one of corpus_scope or source_ids"
+            )
+        if self.corpus_scope is not None and self.corpus_scope is not MemoryCorpusScope.DEPLOYMENT:
+            raise ValueError(
+                f"unsupported corpus_scope={self.corpus_scope!r}; expected deployment"
+            )
+        if self.source_ids:
+            for index, sid in enumerate(self.source_ids):
+                _coerce_positive_source_id(sid, field=f"source_ids[{index}]")
+
+    def normalized_source_ids(self) -> tuple[int, ...]:
+        self.validate()
+        if self.source_ids:
+            return tuple(sorted(set(self.source_ids)))
+        return ()
+
+
+@dataclass(frozen=True)
+class MemoryRegionRequest:
+    """Bounded filter for reading claims within an isolation scope."""
+
     information_need: str | None = None
     topic_key: str | None = None
     language: str | None = None
@@ -67,8 +103,20 @@ class MemoryRegionRequest:
     offset: int = 0
     include_evidence: bool = True
     include_superseded: bool = False
+    isolation: MemoryIsolationScope | None = None
+    # Legacy compatibility — use isolation=MemoryIsolationScope(source_ids=...) instead.
+    source_id: int | None = None
+    source_ids: tuple[int, ...] | None = None
 
-    def normalized_source_ids(self) -> tuple[int, ...]:
+    def normalized_isolation(self) -> MemoryIsolationScope:
+        if self.isolation is not None:
+            if self.source_id is not None or self.source_ids:
+                raise ValueError(
+                    "MemoryRegionRequest cannot combine isolation with source_id/source_ids"
+                )
+            self.isolation.validate()
+            return self.isolation
+
         ids: list[int] = []
         if self.source_id is not None:
             ids.append(_coerce_positive_source_id(self.source_id, field="source_id"))
@@ -78,8 +126,21 @@ class MemoryRegionRequest:
                     _coerce_positive_source_id(sid, field=f"source_ids[{index}]")
                 )
         if not ids:
-            raise ValueError("MemoryRegionRequest requires source_id or source_ids")
-        return tuple(sorted(set(ids)))
+            raise ValueError(
+                "MemoryRegionRequest requires isolation or source_id/source_ids"
+            )
+        scope = MemoryIsolationScope(source_ids=tuple(sorted(set(ids))))
+        scope.validate()
+        return scope
+
+    def normalized_source_ids(self) -> tuple[int, ...]:
+        """Legacy helper — explicit source isolation only."""
+        isolation = self.normalized_isolation()
+        if isolation.corpus_scope is not None:
+            raise ValueError(
+                "normalized_source_ids() requires explicit source_ids isolation"
+            )
+        return isolation.normalized_source_ids()
 
     def normalized_limit(self) -> int:
         return max(1, min(int(self.limit), MAX_REGION_LIMIT))
@@ -113,7 +174,6 @@ class MemoryRegionRequest:
         return self.topic_key.strip().lower()
 
     def validate_lifecycle(self) -> None:
-        """Reject ambiguous active_only / include_superseded combinations."""
         if not self.active_only and not self.include_superseded:
             raise ValueError(
                 "ambiguous lifecycle: active_only=False with include_superseded=False; "
@@ -121,7 +181,6 @@ class MemoryRegionRequest:
             )
 
     def include_superseded_claims(self) -> bool:
-        """Whether superseded claims are included after lifecycle validation."""
         self.validate_lifecycle()
         if self.include_superseded:
             return True
@@ -173,12 +232,37 @@ class MemoryRegionView:
     provenance_summary: Mapping[str, int]
     page_provenance_summary: Mapping[str, int]
     limitations: tuple[str, ...]
+    isolation_scope_echo: MemoryIsolationScope
+    corpus_scope: MemoryCorpusScope | None
+    corpus_hosts: tuple[str, ...]
+    corpus_anchor_source_ids: tuple[int, ...]
+    corpus_anchor_source_count: int
+    corpus_scope_configured: bool
+    corpus_scope_complete: bool
+    corpus_limitations: tuple[str, ...]
     completeness_unknown: bool = True
 
     @property
     def excluded_test_count(self) -> int:
-        """Deprecated alias for :attr:`provenance_excluded_count`."""
         return self.provenance_excluded_count
 
     def limitation_set(self) -> frozenset[str]:
         return frozenset(self.limitations)
+
+    def corpus_boundary_fingerprint(self) -> str | None:
+        if self.corpus_scope is None or not self.corpus_scope_configured:
+            return None
+        from app.services.epistemic_memory.memory_corpus_resolver import (
+            CORPUS_BOUNDARY_VERSION,
+            MemoryCorpusBoundary,
+        )
+
+        boundary = MemoryCorpusBoundary(
+            corpus_scope=self.corpus_scope,
+            hosts=self.corpus_hosts,
+            configured=self.corpus_scope_configured,
+            invalid_entries=(),
+            settings_row_id=None,
+            complete=self.corpus_scope_complete,
+        )
+        return boundary.fingerprint()

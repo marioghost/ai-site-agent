@@ -9,8 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.epistemic_memory import EpistemicClaim, EvidenceLink, ObservationRef
+from app.repositories.settings_repository import SettingsRepository
+from app.services.epistemic_memory.memory_corpus_resolver import (
+    bounded_diagnostic_source_ids,
+    resolve_corpus_source_ids,
+    resolve_deployment_boundary,
+)
 from app.services.epistemic_memory.memory_region_types import (
     LIMIT_COMPLETENESS_UNKNOWN,
+    LIMIT_CORPUS_SCOPE_EMPTY,
+    LIMIT_CORPUS_SCOPE_INCOMPLETE,
+    LIMIT_CORPUS_SCOPE_INVALID,
+    LIMIT_CORPUS_SCOPE_UNCONFIGURED,
     LIMIT_EVIDENCE_NOT_REQUESTED,
     LIMIT_LANGUAGE_FILTER_UNAVAILABLE,
     LIMIT_MALFORMED_SCOPE_ROWS_EXCLUDED,
@@ -18,7 +28,9 @@ from app.services.epistemic_memory.memory_region_types import (
     LIMIT_SPARSE_MEMORY,
     SPARSE_MEMORY_THRESHOLD,
     MemoryClaimView,
+    MemoryCorpusScope,
     MemoryEvidenceRef,
+    MemoryIsolationScope,
     MemoryRegionRequest,
     MemoryRegionView,
     readonly_mapping,
@@ -73,14 +85,14 @@ def _provenance_counter(rows: list[EpistemicClaim]) -> dict[str, int]:
 
 
 class MemoryRegionReader:
-    """Deterministic bounded claim reads for explicit source scope."""
+    """Deterministic bounded claim reads for explicit isolation scope."""
 
     def __init__(self, db: Session) -> None:
         self._db = db
 
     def read_region(self, request: MemoryRegionRequest) -> MemoryRegionView:
         request.validate_lifecycle()
-        source_ids = request.normalized_source_ids()
+        isolation = request.normalized_isolation()
         limit = request.normalized_limit()
         offset = request.normalized_offset()
         page_roles = request.normalized_page_roles()
@@ -91,10 +103,61 @@ class MemoryRegionReader:
         include_superseded = request.include_superseded_claims()
 
         limitations: list[str] = [LIMIT_COMPLETENESS_UNKNOWN]
+        corpus_limitations: list[str] = []
         if not request.include_evidence:
             limitations.append(LIMIT_EVIDENCE_NOT_REQUESTED)
         if request.language and request.language.strip():
             limitations.append(LIMIT_LANGUAGE_FILTER_UNAVAILABLE)
+
+        corpus_scope: MemoryCorpusScope | None = None
+        corpus_hosts: tuple[str, ...] = ()
+        corpus_anchor_source_ids: tuple[int, ...] = ()
+        corpus_anchor_source_count = 0
+        corpus_scope_configured = False
+        corpus_scope_complete = True
+
+        if isolation.corpus_scope == MemoryCorpusScope.DEPLOYMENT:
+            corpus_scope = MemoryCorpusScope.DEPLOYMENT
+            settings = SettingsRepository(self._db).get()
+            boundary = resolve_deployment_boundary(settings)
+            corpus_hosts = boundary.hosts
+            if boundary.invalid_entries:
+                corpus_limitations.append(LIMIT_CORPUS_SCOPE_INVALID)
+            if not boundary.configured:
+                corpus_limitations.append(LIMIT_CORPUS_SCOPE_UNCONFIGURED)
+                return self._empty_corpus_view(
+                    request=request,
+                    isolation=isolation,
+                    corpus_scope=corpus_scope,
+                    corpus_hosts=corpus_hosts,
+                    corpus_limitations=tuple(dict.fromkeys(corpus_limitations)),
+                    limitations=limitations,
+                )
+            corpus_scope_configured = True
+            corpus_anchor_source_ids = resolve_corpus_source_ids(self._db, boundary)
+            corpus_anchor_source_count = len(corpus_anchor_source_ids)
+            if not corpus_anchor_source_ids:
+                corpus_limitations.append(LIMIT_CORPUS_SCOPE_EMPTY)
+                limitations.append(LIMIT_NO_MATCHING_CLAIMS)
+                return self._empty_corpus_view(
+                    request=request,
+                    isolation=isolation,
+                    corpus_scope=corpus_scope,
+                    corpus_hosts=corpus_hosts,
+                    corpus_anchor_source_ids=(),
+                    corpus_anchor_source_count=0,
+                    corpus_scope_configured=True,
+                    corpus_scope_complete=boundary.complete,
+                    corpus_limitations=tuple(dict.fromkeys(corpus_limitations)),
+                    limitations=limitations,
+                )
+            if not boundary.complete:
+                corpus_limitations.append(LIMIT_CORPUS_SCOPE_INCOMPLETE)
+                corpus_scope_complete = False
+            source_ids = corpus_anchor_source_ids
+        else:
+            source_ids = isolation.normalized_source_ids()
+            corpus_scope_complete = True
 
         malformed_scope_seen = False
 
@@ -232,6 +295,8 @@ class MemoryRegionReader:
                 )
             )
 
+        diagnostic_ids = bounded_diagnostic_source_ids(corpus_anchor_source_ids)
+
         return MemoryRegionView(
             request_echo=request,
             matched_claims=tuple(claim_views),
@@ -242,6 +307,49 @@ class MemoryRegionReader:
             provenance_summary=provenance_summary,
             page_provenance_summary=page_provenance_summary,
             limitations=tuple(dict.fromkeys(limitations)),
+            isolation_scope_echo=isolation,
+            corpus_scope=corpus_scope,
+            corpus_hosts=corpus_hosts,
+            corpus_anchor_source_ids=diagnostic_ids,
+            corpus_anchor_source_count=corpus_anchor_source_count,
+            corpus_scope_configured=corpus_scope_configured,
+            corpus_scope_complete=corpus_scope_complete,
+            corpus_limitations=tuple(dict.fromkeys(corpus_limitations)),
+            completeness_unknown=True,
+        )
+
+    def _empty_corpus_view(
+        self,
+        *,
+        request: MemoryRegionRequest,
+        isolation: MemoryIsolationScope,
+        corpus_scope: MemoryCorpusScope | None,
+        corpus_hosts: tuple[str, ...],
+        corpus_limitations: tuple[str, ...],
+        limitations: list[str],
+        corpus_anchor_source_ids: tuple[int, ...] = (),
+        corpus_anchor_source_count: int = 0,
+        corpus_scope_configured: bool = False,
+        corpus_scope_complete: bool = False,
+    ) -> MemoryRegionView:
+        return MemoryRegionView(
+            request_echo=request,
+            matched_claims=(),
+            total_matched=0,
+            provenance_excluded_count=0,
+            excluded_superseded_count=0,
+            excluded_scope_mismatch_count=0,
+            provenance_summary=readonly_mapping({}),
+            page_provenance_summary=readonly_mapping({}),
+            limitations=tuple(dict.fromkeys(limitations)),
+            isolation_scope_echo=isolation,
+            corpus_scope=corpus_scope,
+            corpus_hosts=corpus_hosts,
+            corpus_anchor_source_ids=bounded_diagnostic_source_ids(corpus_anchor_source_ids),
+            corpus_anchor_source_count=corpus_anchor_source_count,
+            corpus_scope_configured=corpus_scope_configured,
+            corpus_scope_complete=corpus_scope_complete,
+            corpus_limitations=corpus_limitations,
             completeness_unknown=True,
         )
 

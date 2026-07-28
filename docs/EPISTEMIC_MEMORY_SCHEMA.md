@@ -54,16 +54,18 @@ Observation key stable per source: `obs:source:{source_id}:si`. Re-running SI do
 
 | Concept | Step 046 meaning |
 |---------|------------------|
-| **Region** | Bounded declarative filter over claims for explicit positive `source_id` / `source_ids` — **not** a persisted entity |
-| **Isolation** | Claims match only when linked observations belong to requested sources (`evidence_link → observation_ref.source_id`); `scope_json.source_id` is **not** used for isolation |
+| **Isolation scope** | Exactly one of `MemoryCorpusScope.DEPLOYMENT` (deployment corpus) or explicit positive `source_ids` — see `MemoryIsolationScope` |
+| **Cognitive filters** | `topic_key`, `page_roles`, `document_types`, `proposal_kinds`, provenance, lifecycle, pagination — applied **inside** the isolation boundary |
+| **Deployment corpus** | Host boundary from canonical Settings (`allowed_domains_json` → `site_url` fallback); fail-closed when unconfigured |
+| **Region** | Bounded declarative filter over claims — **not** a persisted entity |
+| **Claim isolation** | Claims match only when linked observations belong to corpus sources (`evidence_link → observation_ref.source_id`); `scope_json.source_id` is **not** used for isolation |
 | **Evidence** | `evidence_loaded` + tri-state `has_support` / `has_conflict` (`null` when evidence not requested) |
 | **Lifecycle** | `active_only=False` + `include_superseded=False` is rejected; see Step 046 doc truth table |
 | **Provenance default** | `ProvenanceScope.REAL` — excludes `test` and `fixture` |
-| **Counts** | `provenance_excluded_count` (diagnostic); `provenance_summary` is pre-pagination |
-| **Truth safety** | Claims are propositions (`proposal` status common); `completeness_unknown` always true |
-| **Chat / Reasoning** | **Not wired** — Step 047 will consume views behind `memory_evidence_assist_enabled` |
+| **Corpus metadata** | `corpus_scope_configured`, `corpus_scope_complete`, `corpus_limitations` — distinct from `completeness_unknown` |
+| **Chat / Reasoning** | **Not wired** — Step 047 will consume views behind `memory_evidence_assist_enabled` (flag not implemented) |
 
-Code: `backend/app/services/epistemic_memory/memory_region_types.py`, `memory_region_reader.py`
+Code: `memory_region_types.py`, `memory_region_reader.py`, `memory_corpus_resolver.py`
 
 See [0.7-step-046-memory-read-views.md](releases/0.7-step-046-memory-read-views.md) and [0.7-step-046-architecture-review.md](releases/0.7-step-046-architecture-review.md).
 

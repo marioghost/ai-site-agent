@@ -45,6 +45,8 @@ echo "==> Backend unit tests (excluding golden parity)"
   tests/test_memory_region_read.py \
   tests/test_memory_region_boundaries.py \
   tests/test_memory_region_integration.py \
+  tests/test_memory_corpus_scope.py \
+  tests/test_memory_corpus_integration.py \
   tests/test_claim_extraction_from_si.py \
   tests/test_epistemic_memory_shadow_write.py \
   tests/test_epistemic_shadow_memory_version_bump.py \
