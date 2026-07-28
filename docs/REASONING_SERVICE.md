@@ -96,14 +96,16 @@ Speech-act **Language** activation is orthogonal: requires
 | **044** | Advisory speech-act selection ✅ |
 | **045** | Language consumes speech acts ✅ (engineering accepted) |
 | **Closure** | Release 0.6 engineering accepted — see [RELEASE-0.6-ACCEPTANCE-REPORT.md](releases/RELEASE-0.6-ACCEPTANCE-REPORT.md) |
-| **Next** | RFC-100 Step 047 — memory assist (not started) |
 
 ## Roadmap (Release 0.7)
 
 | Step | Status |
 |------|--------|
-| **046** | Memory region read views (`read_region`) ✅ — internal only, contract hardened; no chat wiring |
-| **047** | Advisory Memory evidence assist — **implemented**, flag default OFF |
+| **046** | Memory region read views (`read_region`) ✅ — internal contract; no chat wiring |
+| **047** | Advisory Memory evidence assist ✅ — flag default OFF |
+| **048** | Memory canonical shadow comparator ✅ — flag default OFF; diagnostic only |
+| **049** | Offline Memory Assist eval (Operations) ✅ — no flag; fixture-based; see [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-eval.md) |
+| **050** | Release 0.7 closure — not started |
 
 ### Step 047 caller obligations (MemoryRegionView)
 
@@ -117,4 +119,25 @@ Before interpreting claim support/conflict from Step 046 reads:
 6. Treat exclusion counters as diagnostic only; use `total_matched` and `provenance_summary` for region shape.
 7. Check `corpus_scope_configured` and `corpus_limitations` before treating an empty region as “no knowledge.”
 
-See [0.7-step-047-architecture-review.md](releases/0.7-step-047-architecture-review.md).
+See [0.7-step-047-architecture-review.md](releases/0.7-step-047-architecture-review.md) and [0.7-step-048-memory-canonical-shadow.md](releases/0.7-step-048-memory-canonical-shadow.md).
+
+## Flag matrix (Memory assist + shadow)
+
+| Reasoning | Assist | Cache v2 | Shadow | Assist runs | Shadow runs |
+|-----------|--------|----------|--------|-------------|-------------|
+| OFF | * | * | * | ❌ | ❌ |
+| ON | OFF | * | * | ❌ | ❌ |
+| ON | ON | OFF | * | ❌ skipped | ❌ skipped |
+| ON | ON | ON | OFF | ✅ | ❌ |
+| ON | ON | ON | ON | ✅ | ✅ compare |
+
+Neither assist nor shadow changes retrieval, prompts, or answers when enabled.
+
+## Diagnostic field naming
+
+| DTO field | Diagnostics key | Notes |
+|-----------|-----------------|-------|
+| `MemoryAssistResult.corpus_boundary_fingerprint` | `memory_corpus_boundary_fingerprint` | Intentional prefix in assist diagnostics |
+| `MemoryAssistResult.support_source_ids` | `memory_support_source_ids` | Support-role evidence sources only |
+| `MemoryCanonicalShadowResult.path` | `memory_canonical_shadow_path` | Shadow-specific prefix |
+| `EvidenceSufficiencyAssessment.*` | under `evidence_sufficiency` | Nested in `reasoning_diagnostics` |

@@ -757,10 +757,9 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 |------|-------|--------|
 | **046** | Memory read views: claims by region | — |
 | **047** | Reasoning activates memory before Evidence Assembly | Flag `memory_evidence_assist_enabled` |
-| **048** | Shadow compare legacy vs memory source picks in diagnostics | — |
-| **049** | Offline eval script + report | Gate for default assist |
-| **050** | Canonical shadow (`memory_canonical_shadow_enabled`) | — |
-| **051** | Release 0.7 | — |
+| **048** | Memory canonical shadow (`memory_canonical_shadow_enabled`) | Diagnostic compare Memory assist vs retrieval source sets |
+| **049** | Offline eval script + report | Gate for staging assist candidacy — **implemented** (ops/evaluation; no flag); see `0.7-step-049-offline-memory-eval.md` |
+| **050** | Release 0.7 engineering closure | — |
 
 ### Release 0.8
 

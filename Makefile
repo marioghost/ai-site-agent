@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 
 .PHONY: help dev deploy smoke deploy-smoke test test-backend test-dashboard test-migration \
-        migrate release-check release-0.3 ci test-backend-benchmarks \
+        migrate release-check release-0.3 ci test-backend-benchmarks test-memory-eval \
         deploy-staging smoke-staging rollback-staging init-staging
 
 help:
@@ -23,6 +23,7 @@ help:
 	@echo "  make test-backend    — RFC unit suite (~272 tests)"
 	@echo "  make test-backend-benchmarks — optional wall-clock benchmarks (not in release-check)"
 	@echo "  make test-dashboard  — vitest + tsc + build"
+	@echo "  make test-memory-eval — Step 049 offline Memory Assist eval (fixtures only)"
 	@echo "  make test-migration  — alembic up/down/up (POSTGRES_TEST_URL)"
 	@echo "  make migrate         — alembic upgrade head (local DATABASE_URL)"
 
@@ -48,6 +49,9 @@ test-backend:
 
 test-backend-benchmarks:
 	@bash scripts/release/test-backend-benchmarks.sh
+
+test-memory-eval:
+	@bash scripts/release/test-memory-eval.sh
 
 test-dashboard:
 	@bash scripts/release/test-dashboard.sh

@@ -31,8 +31,10 @@ allow_legacy_<surface>                        # deprecation gates
 | `enable_semantic_diagnostics_v2` | Settings DB column | **false** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Staging diagnostics validation; Step 015 dashboard | Set Settings `false`; restart not required | Release 1.0 |
 | `cache_namespace_v2_enabled` | Settings DB column | **false** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Staging cache invalidation validation; after Step 022 manual bump tested | Set Settings `false`; restart not required | Release 0.5 |
 | `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
+| `memory_evidence_assist_enabled` | Settings DB column | **false** | Advisory Memory region read in Reasoning before Evidence Assembly (Step 047) | Reasoning ON + `cache_namespace_v2_enabled`; staging NO-GO until Memory coverage gate | Set Settings `false`; restart not required | Release 1.0 |
+| `memory_canonical_shadow_enabled` | Settings DB column | **false** | Diagnostic Memory vs retrieval source-set comparison (Step 048); no answer influence | Reasoning ON + assist ON + cache v2 ON; skipped on answer cache hit | Set Settings `false`; restart not required | Release 1.0 |
 
-**Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only and does not affect chat while unwired.
+**Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
 ### `enable_semantic_diagnostics_v2`
 
@@ -172,10 +174,46 @@ Do **not** enable until the release step that introduces them.
 |------|---------|---------|
 | `claim_extraction_enabled` | 0.4 | SI → claim proposals (optional gate; extraction runs inside shadow hook today) |
 | `tension_surfacing_enabled` | 0.5 | Optional future gate for dashboard. Steps 035–036 ship admin-auth-gated; taxonomy owned by `TensionSurfacingService` ([ADR-0002](adr/0002-tension-taxonomy-ownership.md)). |
-| `memory_canonical_shadow_enabled` | 0.7 | Compare memory vs legacy canonical picks in diagnostics |
-| `memory_evidence_assist_enabled` | 0.7 | Memory-assisted evidence routing — **implemented**, default OFF; requires Reasoning ON + `cache_namespace_v2_enabled` |
 | `maintenance_execution_enabled` | 0.9 | Budgeted active maintenance investigations |
 | `allow_legacy_kp_presets` | 0.8 → 1.0 | Industry preset API (default true until 0.8) |
+
+---
+
+### `memory_evidence_assist_enabled` (Step 047)
+
+**Code:** `memory_assist_policy.py` → `ReasoningService._coordinate_pipeline` → `cache_namespace_service.py`
+
+**Effective when:** `REASONING_SERVICE_ENABLED` + flag ON + `cache_namespace_v2_enabled`.
+
+**Behavior when OFF (default):** Zero Memory reads on chat path; assist diagnostics absent.
+
+**Does not:** Change retrieval ranking, canonical selection, prompts, LLM inputs, or answers.
+
+**Deploy:** migration `0016_memory_evidence_assist_enabled`.
+
+See [0.7-step-047-memory-evidence-assist.md](releases/0.7-step-047-memory-evidence-assist.md).
+
+---
+
+### Step 049 — no feature flag
+
+Offline Memory Assist evaluation (`app/services/evaluation/`) introduces **no** Settings or env flag. It consumes frozen diagnostics only and never enables assist/shadow.
+
+See [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-eval.md).
+
+### `memory_canonical_shadow_enabled` (Step 048)
+
+**Code:** `memory_canonical_shadow_comparator.py` → `ReasoningService._coordinate_pipeline`
+
+**Effective when:** Reasoning ON + assist ON + cache v2 ON + shadow flag ON.
+
+**Behavior when OFF (default):** Comparator returns `path=off`; zero shadow diagnostics.
+
+**Does not:** Perform retrieval, Memory reads, or influence answers. Skipped on answer cache hit.
+
+**Deploy:** migration `0017_memory_canonical_shadow_enabled`.
+
+See [0.7-step-048-memory-canonical-shadow.md](releases/0.7-step-048-memory-canonical-shadow.md).
 
 ---
 

@@ -1,0 +1,17 @@
+{
+  "sources": 100,
+  "chunks": 500,
+  "claims": 40,
+  "observations": 80,
+  "evidence_links": 80,
+  "real_claims": 40,
+  "test_claims": 0,
+  "active_claims": 40,
+  "supported_claims": 30,
+  "conflicted_claims": 2,
+  "distinct_real_source_ids": 15,
+  "knowledge_version": 1,
+  "memory_version": 50,
+  "memory_shadow_write_enabled": true,
+  "corpus_scope_configured": true
+}

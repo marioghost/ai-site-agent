@@ -1,0 +1,65 @@
+{
+  "turns": [
+    {
+      "query_id": "",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      }
+    },
+    {
+      "query_id": "t18-malformed",
+      "query_text": "SHOULD BE STRIPPED",
+      "answer": "SHOULD BE STRIPPED",
+      "proposition": "SHOULD BE STRIPPED",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 1,
+        "memory_supported_claim_count": 1,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          1
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 1,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 1,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "aligned",
+        "divergence_codes": [
+          "canonical_aligned"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    }
+  ]
+}

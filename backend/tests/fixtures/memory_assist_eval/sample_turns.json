@@ -1,0 +1,869 @@
+{
+  "turns": [
+    {
+      "query_id": "t01-assist-off",
+      "query_hash": "h01",
+      "effective_flags": {
+        "reasoning_service_enabled": false,
+        "memory_evidence_assist_enabled": false,
+        "cache_namespace_v2_enabled": false,
+        "memory_canonical_shadow_enabled": false
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "off",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "off",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      },
+      "knowledge_version": 1,
+      "memory_version": 10
+    },
+    {
+      "query_id": "t02-reasoning-disabled",
+      "query_hash": "h02",
+      "effective_flags": {
+        "reasoning_service_enabled": false,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": false
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "skipped",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "skipped",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t03-cache-v2-missing",
+      "query_hash": "h03",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": false,
+        "memory_canonical_shadow_enabled": false
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "skipped",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "skipped",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t04-corpus-unconfigured",
+      "query_hash": "h04",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "empty",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [
+          "corpus_scope_unconfigured"
+        ],
+        "memory_scope_configured": false,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "empty_memory",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [
+          "corpus_scope_unconfigured",
+          "memory_empty"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t05-empty-memory",
+      "query_hash": "h05",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "empty",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "empty_memory",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 2,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [
+          "memory_empty"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t06-sparse-memory",
+      "query_hash": "h06",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "sparse",
+        "memory_region_source_count": 1,
+        "memory_claim_count": 1,
+        "memory_supported_claim_count": 1,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 1,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          1
+        ],
+        "memory_claim_ids": [
+          10
+        ],
+        "memory_observation_ref_ids": [
+          100
+        ],
+        "memory_support_source_ids": [
+          1
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 1,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 1,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": true,
+        "page_role_hint_match": true,
+        "canonical_alignment": "aligned",
+        "divergence_codes": [
+          "memory_sparse",
+          "canonical_aligned"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t07-usable",
+      "query_hash": "h07",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 2,
+        "memory_claim_count": 3,
+        "memory_supported_claim_count": 2,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 2,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          1,
+          2
+        ],
+        "memory_claim_ids": [
+          11,
+          12,
+          13
+        ],
+        "memory_observation_ref_ids": [
+          101,
+          102
+        ],
+        "memory_support_source_ids": [
+          1,
+          2
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 2,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 2,
+        "support_observation_count": 2,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": true,
+        "page_role_hint_match": true,
+        "canonical_alignment": "aligned",
+        "divergence_codes": [
+          "canonical_aligned"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t08-unsupported",
+      "query_hash": "h08",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 1,
+        "memory_claim_count": 2,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          3
+        ],
+        "memory_claim_ids": [
+          20,
+          21
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 0,
+        "memory_only_count": 1,
+        "retrieval_only_count": 2,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "divergent",
+        "divergence_codes": [
+          "no_overlap",
+          "memory_only_source_observed",
+          "memory_assist_not_usable"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t09-conflict",
+      "query_hash": "h09",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 2,
+        "memory_claim_count": 2,
+        "memory_supported_claim_count": 1,
+        "memory_conflicted_claim_count": 1,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 2,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          4,
+          5
+        ],
+        "memory_claim_ids": [
+          30,
+          31
+        ],
+        "memory_observation_ref_ids": [
+          200,
+          201
+        ],
+        "memory_support_source_ids": [
+          4
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 1,
+        "memory_only_count": 1,
+        "retrieval_only_count": 1,
+        "context_overlap_count": 1,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": false,
+        "page_role_hint_match": true,
+        "canonical_alignment": "partial",
+        "divergence_codes": [
+          "partial_overlap"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t10-perfect-overlap",
+      "query_hash": "h10",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 2,
+        "memory_claim_count": 2,
+        "memory_supported_claim_count": 2,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 2,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          6,
+          7
+        ],
+        "memory_claim_ids": [
+          40,
+          41
+        ],
+        "memory_observation_ref_ids": [
+          300,
+          301
+        ],
+        "memory_support_source_ids": [
+          6,
+          7
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 2,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 2,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": true,
+        "page_role_hint_match": true,
+        "canonical_alignment": "aligned",
+        "divergence_codes": [
+          "canonical_aligned",
+          "topic_hint_aligned",
+          "page_role_hint_aligned"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t11-partial",
+      "query_hash": "h11",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 2,
+        "memory_claim_count": 2,
+        "memory_supported_claim_count": 2,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 2,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          8,
+          9
+        ],
+        "memory_support_source_ids": [
+          8
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 1,
+        "memory_only_count": 1,
+        "retrieval_only_count": 1,
+        "context_overlap_count": 1,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 1,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "partial",
+        "divergence_codes": [
+          "partial_overlap",
+          "memory_source_missing_from_context"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t12-no-overlap",
+      "query_hash": "h12",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 1,
+        "memory_claim_count": 1,
+        "memory_supported_claim_count": 1,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 1,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          10
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 0,
+        "memory_only_count": 1,
+        "retrieval_only_count": 3,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "divergent",
+        "divergence_codes": [
+          "no_overlap",
+          "memory_only_source_observed",
+          "retrieval_source_not_in_memory"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t13-memory-only",
+      "query_hash": "h13",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 1,
+        "memory_claim_count": 1,
+        "memory_supported_claim_count": 1,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 1,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          11
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 0,
+        "memory_only_count": 1,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "divergent",
+        "divergence_codes": [
+          "memory_only_source_observed",
+          "memory_source_missing_from_context"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t14-retrieval-only",
+      "query_hash": "h14",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "sparse",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 1,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 4,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [
+          "retrieval_source_not_in_memory",
+          "memory_sparse"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t15-support-missing",
+      "query_hash": "h15",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "used",
+        "memory_region_source_count": 2,
+        "memory_claim_count": 2,
+        "memory_supported_claim_count": 2,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 2,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": true,
+        "memory_region_found": true,
+        "memory_read_duration_ms": 5,
+        "memory_source_ids": [
+          12,
+          13
+        ],
+        "memory_support_source_ids": [
+          12,
+          13
+        ]
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "compared",
+        "overlap_count": 1,
+        "memory_only_count": 1,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 1,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 1,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "partial",
+        "divergence_codes": [
+          "partial_overlap",
+          "memory_support_missing_from_context"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    },
+    {
+      "query_id": "t16-cache-hit",
+      "query_hash": "h16",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": true,
+      "assist_diagnostics": null,
+      "shadow_diagnostics": null
+    },
+    {
+      "query_id": "t17-failed",
+      "query_hash": "h17",
+      "effective_flags": {
+        "reasoning_service_enabled": true,
+        "memory_evidence_assist_enabled": true,
+        "cache_namespace_v2_enabled": true,
+        "memory_canonical_shadow_enabled": true
+      },
+      "cache_hit": false,
+      "assist_diagnostics": {
+        "memory_assist_path": "failed",
+        "memory_region_source_count": 0,
+        "memory_claim_count": 0,
+        "memory_supported_claim_count": 0,
+        "memory_conflicted_claim_count": 0,
+        "memory_completeness_unknown": true,
+        "memory_limitations": [
+          "memory_read_timeout"
+        ],
+        "memory_corpus_limitations": [],
+        "memory_scope_configured": true,
+        "memory_scope_complete": false,
+        "memory_version": 10,
+        "memory_observation_hints_count": 0,
+        "memory_affected_evidence_assembly": false,
+        "memory_usable_for_evidence": false,
+        "memory_region_found": false,
+        "memory_read_duration_ms": 5
+      },
+      "shadow_diagnostics": {
+        "memory_canonical_shadow_path": "failed",
+        "overlap_count": 0,
+        "memory_only_count": 0,
+        "retrieval_only_count": 0,
+        "context_overlap_count": 0,
+        "support_observation_count": 0,
+        "support_missing_from_context_count": 0,
+        "topic_hint_match": null,
+        "page_role_hint_match": null,
+        "canonical_alignment": "not_evaluable",
+        "divergence_codes": [
+          "shadow_comparison_failed"
+        ],
+        "limitations": [],
+        "comparison_duration_ms": 1,
+        "memory_version": 10
+      }
+    }
+  ]
+}
