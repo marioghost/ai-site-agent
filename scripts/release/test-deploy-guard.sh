@@ -103,6 +103,14 @@ if ! grep -q 'md_cli_main' "$MANAGE"; then
   echo "FAIL: manage_deploy.sh must dispatch CLI commands" >&2
   exit 1
 fi
+if ! grep -q 'md_migrate_release\|migrate release' "$CLI"; then
+  echo "FAIL: cli must expose migrate release" >&2
+  exit 1
+fi
+if [[ ! -f "$ROOT/deploy/lib/migrate_release.sh" ]]; then
+  echo "FAIL: missing migrate_release.sh" >&2
+  exit 1
+fi
 if [[ ! -f "$FROM_MAIN" ]] || ! grep -q 'manage_deploy.sh deploy full' "$FROM_MAIN"; then
   echo "FAIL: deploy_from_main.sh must wrap manage_deploy deploy full" >&2
   exit 1

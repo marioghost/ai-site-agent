@@ -187,19 +187,35 @@ Blocked on Staging Validated and broader ops production criteria.
 
 ## 15. Deploy / migration plan (separate ops action)
 
-Documented in [0.8-step-057-release-closure.md](0.8-step-057-release-closure.md) and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). **Not executed here.**
+Documented in [0.8-step-057-release-closure.md](0.8-step-057-release-closure.md), [RELEASE-0.8-PRE-DEPLOY-PLAN.md](../operations/RELEASE-0.8-PRE-DEPLOY-PLAN.md), and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). **Not executed here.**
 
-Public operator entry point only:
+**HARD SAFETY:** Do **not** run `deploy full` until `migrate release` exits successfully and proves repository head **0019**, live DB post revision **0019**, and both new Settings columns. If not: **STOP. Do not deploy.**
+
+Canonical Release 0.8 sequence (identical everywhere):
+
+```text
+status → backup db → migrate release → verify schema head
+→ deploy full → health → build-info → smoke → verify-release
+```
 
 ```bash
 bash deploy/manage_deploy.sh status
 bash deploy/manage_deploy.sh backup db
+bash deploy/manage_deploy.sh migrate release
 sudo bash deploy/manage_deploy.sh deploy full
+bash deploy/manage_deploy.sh health
+bash deploy/manage_deploy.sh build-info
 bash deploy/manage_deploy.sh smoke
 bash deploy/manage_deploy.sh verify-release
-# when separately approved:
-bash deploy/manage_deploy.sh migrate
 ```
+
+| Command | Role |
+|---------|------|
+| `migrate` / `migrate live` | `/opt` tree only — **not** schema-first; insufficient while `/opt` lacks 0018/0019 |
+| `migrate release` | **Only** supported schema-first path (origin/main worktree → live DB) |
+| `deploy full` inner `run_migrations` | Post-sync idempotent defense-in-depth (expected no-op after successful `migrate release`) |
+
+Do **not** use `deploy full` → bare `migrate`. Do **not** skip `migrate release` when `/opt` does not yet contain the required migration files.
 
 Live `/api/build` may remain stale until approved deploy + backend restart.
 

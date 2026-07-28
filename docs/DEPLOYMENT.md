@@ -113,9 +113,13 @@ Same as production — no separate worker service.
 | Policy | Detail |
 |--------|--------|
 | **Primary release path** | Linux VPS: systemd + nginx + host Postgres/Qdrant/Ollama via `deploy/manage_deploy.sh` |
-| **Makefile gates** | `make release-check`, `make deploy`, `make smoke` — no Docker required |
+| **Public operator entry** | `bash deploy/manage_deploy.sh <command>` only (`help` for syntax) |
+| **Schema-first cutover** | `status` → `backup db` → `migrate release` → verify schema head → `deploy full` → `health` → `build-info` → `smoke` → `verify-release` (see [RELEASE-CHECKLIST.md](releases/RELEASE-CHECKLIST.md)) |
+| **Migrate commands** | `migrate` / `migrate live` = live `/opt` tree only; `migrate release` = only supported schema-first path (clean **origin/main** worktree → live `/opt` DB) |
+| **`deploy full` + Alembic** | Still runs post-sync `run_migrations` (idempotent no-op after successful `migrate release`; defense-in-depth; not a substitute for schema-first) |
+| **Makefile gates** | `make release-check` (CI/dev). Do **not** use Makefile as the public deploy workflow |
 | **Docker role** | Optional validation/staging path (`deploy/Dockerfile.validate`, CI). Not the production architecture |
-| **Do not** | Redesign deployment around Docker; require Docker for releases; block staging validation when Docker is missing |
+| **Do not** | Redesign deployment around Docker; require Docker for releases; block staging validation when Docker is missing; use ad-hoc DEV_CHECKOUT migrate; skip `migrate release` when `/opt` lacks required migrations; use `deploy full` → bare `migrate` |
 
 ---
 | Staging deploy | `make deploy` | Linux server + sudo |

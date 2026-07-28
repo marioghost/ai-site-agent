@@ -15,20 +15,25 @@ Hardening notes: `docs/releases/RELEASE-ENGINEERING-HARDENING.md`
 ## Canonical deploy entry
 
 ```bash
+# When origin/main has migrations not yet in /opt (schema-first):
+bash deploy/manage_deploy.sh migrate release
 sudo bash deploy/manage_deploy.sh deploy full
 bash deploy/manage_deploy.sh verify-release
 ```
 
 Never deploy feature branches, dirty trees, or local-only commits.
+Do not skip `migrate release` when `/opt` lacks required migration files.
+`deploy full` still runs post-sync Alembic (idempotent no-op after successful schema-first).
 
 ## Lifecycle
 
-Architecture Review → Implementation → Tests → Review → Fixes → Acceptance → Merge `main` → Validate → Push `origin/main` → Deploy → Verify
+Architecture Review → Implementation → Tests → Review → Fixes → Acceptance → Merge `main` → Validate → Push `origin/main` → (schema-first `migrate release` when required) → Deploy → Verify
 
 ## Hard rules
 
 - Never merge or `git push origin main` without explicit user approval (ask separately).
 - Never use `ALLOW_DIRTY_SYNC` / `DEPLOY_LOCAL_MAIN` / `--no-backup-db` for normal release deploys.
 - Identity chain must match: origin/main == build-info == frontend identity == /api/build == APP_RELEASE.
-- Release deploy stages: backup → build → deploy → verify → restart → smoke.
+- Release deploy stages: backup → build → deploy (incl. post-sync migrate) → verify → restart → smoke.
+- Schema-first cutover: status → backup db → migrate release → verify schema head → deploy full → health → build-info → smoke → verify-release.
 - New deploy/release features go into `manage_deploy.sh` only (no new standalone deploy scripts except bootstrap/recovery).
