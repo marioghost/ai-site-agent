@@ -43,6 +43,17 @@ KNOWN_FORBIDDEN_BEHAVIORS = {
     "invented_enumeration_without_evidence",
 }
 
+# Industry PRESET ids must not configure the golden fixture_profile field.
+# Non-golden unit tests may still use these PRESETS freely.
+INDUSTRY_FIXTURE_PROFILE_IDS = {
+    "bank_financial",
+    "ecommerce",
+    "saas",
+    "documentation_portal",
+    "government",
+    "university",
+}
+
 
 @pytest.fixture()
 def golden_data() -> dict:
@@ -57,6 +68,14 @@ def test_golden_queries_file_exists_and_loads():
         data = json.load(f)
     assert data["suite"] == "smoke"
     assert data["fixture_profile"] == "generic_corporate"
+    assert data["fixture_profile"] not in INDUSTRY_FIXTURE_PROFILE_IDS
+
+
+@pytest.mark.unit
+def test_golden_fixture_profile_is_not_industry_preset(golden_data):
+    profile = golden_data["fixture_profile"]
+    assert profile == "generic_corporate"
+    assert profile not in INDUSTRY_FIXTURE_PROFILE_IDS
 
 
 @pytest.mark.unit

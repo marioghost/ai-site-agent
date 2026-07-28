@@ -2,14 +2,26 @@
 
 RFC-100 migration safety net. These queries test **architectural invariants**, not exact answer text or legacy retrieval quirks.
 
+## Generic profile only (Step 056)
+
+| Rule | Detail |
+|------|--------|
+| Required | `queries.json` must set `"fixture_profile": "generic_corporate"` |
+| Loader | `parity_runner.load_golden_smoke()` **fails closed** if the field is missing, null, empty, or any other value |
+| Schema | `test_golden_queries_schema.py` also asserts `generic_corporate` (defense in depth) |
+| Scope | CI / golden tests only — production Knowledge Profiles are unaffected |
+| Mocked parity | Unit golden parity builds a fixture `RagResult`; it does **not** exercise a live Knowledge Profile or apply industry `PRESETS` |
+| Outside golden | Non-golden unit tests may still use industry `PRESETS` (`bank_financial`, `ecommerce`, etc.) |
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `queries.json` | Smoke suite (**30 queries**, Release 0.2) for CI |
+| `parity_runner.py` | Loader + fixture `RagResult` + invariant checks |
 | `README.md` | This guide |
 
-`tests/test_golden_chat_parity.py` loads this file and runs parity checks against a **generic corporate fixture site**.
+`tests/test_golden_chat_parity.py` loads this file via `load_golden_smoke()` and runs parity checks against a **generic corporate fixture site**.
 
 ## CI smoke gate
 
@@ -35,7 +47,7 @@ pytest tests/test_golden_chat_parity.py -m integration
 
 ## Design principles
 
-1. **Generic fixture only** — queries and URL patterns must work on `generic_corporate` profile sites (e.g. `https://example.com`), not bank- or customer-specific content.
+1. **Generic fixture only** — `fixture_profile` must be `generic_corporate`; queries and URL patterns must work on generic corporate sites (e.g. `https://example.com`), not bank- or customer-specific content. The loader fails closed on any other profile.
 2. **Structural expectations** — response shape, evidence linkage, diagnostics presence, forbidden anti-patterns.
 3. **No exact answer text** — answers evolve; invariants do not.
 4. **No brittle scores** — do not assert retrieval scores, boost values, or document-type ordering.

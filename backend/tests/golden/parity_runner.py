@@ -23,11 +23,21 @@ class GoldenInvariantViolation(Exception):
     """Raised when a golden structural invariant fails."""
 
 
+REQUIRED_FIXTURE_PROFILE = "generic_corporate"
+
+
 def load_golden_smoke() -> dict[str, Any]:
+    """Load golden smoke suite; fail closed unless fixture_profile is generic_corporate."""
     with GOLDEN_PATH.open(encoding="utf-8") as f:
         data = json.load(f)
     if data.get("suite") != "smoke":
         raise ValueError("expected smoke golden suite")
+    profile = data.get("fixture_profile")
+    if profile != REQUIRED_FIXTURE_PROFILE:
+        raise ValueError(
+            "Golden smoke requires fixture_profile="
+            f"{REQUIRED_FIXTURE_PROFILE!r}; got {profile!r}."
+        )
     return data
 
 

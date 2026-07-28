@@ -772,7 +772,7 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **053** | Dashboard: remove title/heading boost inputs | — **done** |
 | **054** | `allow_legacy_kp_presets` default false | Preset 410 — **implemented** (code; not applied to live DB until approved deploy); see `0.8-step-054-implementation.md` |
 | **055** | CanonicalSourceService: disable doc-type path when memory canonical on | Flag — **implemented** as `legacy_doc_type_canonical_enabled` default false; see `0.8-step-055-implementation.md` |
-| **056** | Golden on generic profile only in CI | — |
+| **056** | Golden on generic profile only in CI | Loader fail-closed on `fixture_profile=generic_corporate` — **implemented** (CI/tests only); see `0.8-step-056-implementation.md` |
 | **057** | Release 0.8 | — |
 
 ### Release 0.9
