@@ -52,7 +52,6 @@ const SECTIONS: Section[] = [
     titleKey: "settings.docs.section.retrieval",
     bodyKeys: [
       "settings.docs.retrieval.mode",
-      "settings.docs.retrieval.boosts",
       "settings.docs.retrieval.intent",
       "settings.docs.retrieval.context",
       "settings.docs.retrieval.reindex",

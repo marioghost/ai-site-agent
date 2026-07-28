@@ -25,6 +25,15 @@ describe("settingsPresets semantic retrieval UI", () => {
     expect(next.intent_profiles_json).toBe("");
   });
 
+  it("does not inject deprecated Settings boost fields", () => {
+    const next = applyAgentPreset(baseSettings, "balanced");
+    expect("homepage_boost_enabled" in next).toBe(false);
+    expect("title_match_boost" in next).toBe(false);
+    expect("heading_match_boost" in next).toBe(false);
+    expect("homepage_boost_value" in next).toBe(false);
+    expect("short_query_lexical_boost" in next).toBe(false);
+  });
+
   it("does not expose content priority helpers", async () => {
     const mod = await import("./settingsPresets");
     expect("applyContentPriority" in mod).toBe(false);

@@ -50,7 +50,6 @@ export function applyAgentPreset(settings: Settings, preset: AgentPreset): Setti
     enable_reranking: true,
     enable_context_builder: true,
     enable_broad_question_mode: true,
-    homepage_boost_enabled: true,
     document_priorities_json: "",
     intent_profiles_json: "",
     scoring_weights_json: "",

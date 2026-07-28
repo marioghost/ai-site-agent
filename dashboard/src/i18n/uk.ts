@@ -1007,17 +1007,10 @@ export const uk: TranslationDict = {
   "settings.retrieval.mode.dense": "Векторний",
   "settings.retrieval.mode.lexical": "Ключові слова",
   "settings.retrieval.mode.hybrid": "Гібридний",
-  "settings.retrieval.homepage_boost": "Підсилювати головну сторінку",
   "settings.retrieval.query_expansion": "Розширення пошукового запиту",
   "settings.retrieval.debug": "Режим діагностики пошуку",
-  "settings.retrieval.title_boost": "Підсилення збігу в назві сторінки",
-  "settings.retrieval.heading_boost": "Підсилення збігу в заголовку секції",
-  "settings.retrieval.homepage_boost_value": "Підсилення для головної сторінки",
-  "settings.retrieval.short_query_boost": "Підсилення ключових слів для коротких запитів",
   "settings.retrieval.intent_detection": "Визначення наміру запиту",
   "settings.retrieval.broad_mode": "Режим широких питань (homepage/about)",
-  "settings.retrieval.about_boost": "Підсилення сторінок «Про нас»",
-  "settings.retrieval.metadata_boost": "Підсилення за категоріями контенту",
   "settings.retrieval.context_builder": "Групувати контекст за сторінками",
   "settings.retrieval.candidate_count": "Кандидатів на етапі 1",
   "settings.retrieval.final_chunks": "Фрагментів у фінальному контексті",
@@ -1165,14 +1158,12 @@ export const uk: TranslationDict = {
     "Текст, коли в базі знань нічого не знайдено вище порогу релевантності.",
   "settings.docs.retrieval.mode":
     "Режим пошуку: векторний (semantics), ключові слова (lexical) або гібридний (рекомендовано).",
-  "settings.docs.retrieval.boosts":
-    "Boost заголовка/heading (advanced) — дрібні метадані; вони не замінюють семантичне ранжування.",
   "settings.docs.retrieval.intent":
     "Intent запиту та профілі Source Intelligence визначають придатність сторінок — без таблиць ваг document_type.",
   "settings.docs.retrieval.context":
     "Скільки кандидатів і сторінок потрапляє в контекст LLM після пошуку.",
   "settings.docs.retrieval.reindex":
-    "Після зміни підсилень або режиму пошуку бажано переіндексувати або переобробити джерела.",
+    "Після зміни режиму пошуку або налаштувань індексації бажано переіндексувати або переобробити джерела.",
   "settings.docs.intelligence.what":
     "Source Intelligence зберігає семантичний профіль сторінки: тема, purpose, підтримувані intents, suitability. Retrieval використовує це для автоматичного ранжування.",
   "settings.docs.intelligence.routing":
