@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
+  Stethoscope,
   Sun,
   TriangleAlert,
   Users,
@@ -20,18 +21,46 @@ import { useTranslation } from "../../i18n";
 import { canAccessRoute } from "../../lib/permissions";
 import { Avatar, NavigationItem, Sidebar, useTheme } from "../../ui";
 
-const navItems = [
-  { to: "/overview", key: "nav.overview", Icon: LayoutDashboard },
-  { to: "/indexing", key: "nav.indexing", Icon: RefreshCw },
-  { to: "/sources", key: "nav.sources", Icon: FileStack },
-  { to: "/chat", key: "nav.chat_test", Icon: MessageSquare },
-  { to: "/analytics", key: "nav.analytics", Icon: BarChart3 },
-  { to: "/logs", key: "nav.logs", Icon: ScrollText },
-  { to: "/understanding", key: "nav.understanding", Icon: TriangleAlert },
-  { to: "/users", key: "nav.users", Icon: Users },
-  { to: "/knowledge-profile", key: "nav.knowledge_profile", Icon: Brain },
-  { to: "/settings", key: "nav.agent_settings", Icon: Settings },
-] as const;
+type NavEntry =
+  | {
+      kind: "item";
+      to: string;
+      key: string;
+      Icon: typeof LayoutDashboard;
+    }
+  | {
+      kind: "section";
+      key: string;
+      items: Array<{
+        to: string;
+        key: string;
+        Icon: typeof LayoutDashboard;
+      }>;
+    };
+
+const navEntries: NavEntry[] = [
+  { kind: "item", to: "/overview", key: "nav.overview", Icon: LayoutDashboard },
+  { kind: "item", to: "/indexing", key: "nav.indexing", Icon: RefreshCw },
+  { kind: "item", to: "/sources", key: "nav.sources", Icon: FileStack },
+  { kind: "item", to: "/chat", key: "nav.chat_test", Icon: MessageSquare },
+  { kind: "item", to: "/analytics", key: "nav.analytics", Icon: BarChart3 },
+  { kind: "item", to: "/logs", key: "nav.logs", Icon: ScrollText },
+  {
+    kind: "section",
+    key: "nav.diagnostics",
+    items: [
+      {
+        to: "/diagnostics/epistemic-health",
+        key: "nav.epistemic_health",
+        Icon: TriangleAlert,
+      },
+      { to: "/chat", key: "nav.chat_diagnostics", Icon: Stethoscope },
+    ],
+  },
+  { kind: "item", to: "/users", key: "nav.users", Icon: Users },
+  { kind: "item", to: "/knowledge-profile", key: "nav.knowledge_profile", Icon: Brain },
+  { kind: "item", to: "/settings", key: "nav.agent_settings", Icon: Settings },
+];
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -46,9 +75,7 @@ export default function AppSidebar() {
   const { collapsed } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const visibleNav = navItems.filter(({ to }) =>
-    user ? canAccessRoute(user.role, to) : false
-  );
+  const role = user?.role;
 
   async function onLogout() {
     setMenuOpen(false);
@@ -91,7 +118,9 @@ export default function AppSidebar() {
                       {user.display_name || t("app.administrator")}
                     </span>
                     <span className="ds-sidebar__user-role">
-                      {hasRole("admin") ? user.username : t(`users.role.${user.role}` as "users.role.admin")}
+                      {hasRole("admin")
+                        ? user.username
+                        : t(`users.role.${user.role}` as "users.role.admin")}
                     </span>
                   </span>
                 )}
@@ -101,7 +130,11 @@ export default function AppSidebar() {
                   <button type="button" className="ds-menu__item" disabled>
                     {t("auth.profile")}
                   </button>
-                  <button type="button" className="ds-menu__item" onClick={() => void onLogout()}>
+                  <button
+                    type="button"
+                    className="ds-menu__item"
+                    onClick={() => void onLogout()}
+                  >
                     {t("auth.log_out")}
                   </button>
                 </div>
@@ -111,15 +144,43 @@ export default function AppSidebar() {
         </>
       }
     >
-      {visibleNav.map(({ to, key, Icon }) => (
-        <NavigationItem
-          key={to}
-          to={to}
-          collapsed={collapsed}
-          icon={<Icon size={18} strokeWidth={1.75} />}
-          label={t(key)}
-        />
-      ))}
+      {navEntries.map((entry) => {
+        if (entry.kind === "item") {
+          if (!role || !canAccessRoute(role, entry.to)) return null;
+          const { to, key, Icon } = entry;
+          return (
+            <NavigationItem
+              key={to === "/chat" ? "nav-chat-main" : to}
+              to={to}
+              collapsed={collapsed}
+              icon={<Icon size={18} strokeWidth={1.75} />}
+              label={t(key)}
+            />
+          );
+        }
+
+        const visibleItems = entry.items.filter(
+          (item) => role && canAccessRoute(role, item.to)
+        );
+        if (visibleItems.length === 0) return null;
+
+        return (
+          <div key={entry.key} className="ds-sidebar__section">
+            {!collapsed ? (
+              <div className="ds-sidebar__section-label">{t(entry.key)}</div>
+            ) : null}
+            {visibleItems.map(({ to, key, Icon }) => (
+              <NavigationItem
+                key={`${entry.key}-${to}-${key}`}
+                to={to}
+                collapsed={collapsed}
+                icon={<Icon size={18} strokeWidth={1.75} />}
+                label={t(key)}
+              />
+            ))}
+          </div>
+        );
+      })}
     </Sidebar>
   );
 }

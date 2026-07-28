@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { en } from "../i18n/en";
 import { uk } from "../i18n/uk";
+import { EPISTEMIC_HEALTH_PAGE_I18N_KEYS } from "../pages/epistemicHealthPageKeys";
 import { UNDERSTANDING_PAGE_I18N_KEYS } from "../pages/understandingPageKeys";
 import {
   UNDERSTANDING_WRITE_ACTION_TOKENS,
@@ -21,6 +22,9 @@ const sampleDeficit: TensionLike = {
   observation_ref_ids: [],
   evidence_link_ids: [],
   summary: "Possible support deficit: active claim has no supporting evidence",
+  provenance_scope: "real",
+  claim_provenance_kinds: ["source"],
+  is_test_data: false,
 };
 
 const sampleConflict: TensionLike = {
@@ -29,6 +33,9 @@ const sampleConflict: TensionLike = {
   observation_ref_ids: [9],
   evidence_link_ids: [4, 5],
   summary: "Possible conflict: observation 9 supports claim 1 and conflicts with claim 2",
+  provenance_scope: "test",
+  claim_provenance_kinds: ["test"],
+  is_test_data: true,
 };
 
 describe("Understanding tensions helpers", () => {
@@ -42,7 +49,7 @@ describe("Understanding tensions helpers", () => {
   });
 
   it("builds stable row keys from provenance", () => {
-    expect(tensionRowKey(sampleConflict)).toBe("conflict|1-2|9|4-5");
+    expect(tensionRowKey(sampleConflict)).toBe("conflict|1-2|9|4-5|test|test");
   });
 
   it("counts empty response as zeros", () => {
@@ -91,7 +98,6 @@ describe("Understanding tensions helpers", () => {
   });
 
   it("changing filter conceptually resets to page 1 via caller contract", () => {
-    // Documented page contract: callers must set page=1 when filter changes.
     const filtered = filterTensions([sampleDeficit, sampleConflict], "conflict");
     const paged = paginateTensions(filtered, 1, 25);
     expect(paged.page).toBe(1);
@@ -101,23 +107,34 @@ describe("Understanding tensions helpers", () => {
   it("builds API-shaped diagnostic JSON for expanded provenance", () => {
     const json = tensionDiagnosticJson(sampleConflict);
     const parsed = JSON.parse(json) as TensionLike;
-    expect(parsed).toEqual(sampleConflict);
+    expect(parsed.tension_type).toBe(sampleConflict.tension_type);
+    expect(parsed.claim_ids).toEqual(sampleConflict.claim_ids);
+    expect(parsed.provenance_scope).toBe("test");
+    expect(parsed.is_test_data).toBe(true);
+    expect(parsed.claim_provenance_kinds).toEqual(["test"]);
     expect(json).toContain("Possible conflict");
     expect(json).not.toContain("EpistemicClaim");
     expect(json).not.toContain("session");
   });
 
-  it("fetchAllTensions aggregates API pages", async () => {
+  it("fetchAllTensions aggregates API pages and passes provenance_scope", async () => {
     const pages = [
       { items: [sampleDeficit], total: 2, page: 1, page_size: 1 },
       { items: [sampleConflict], total: 2, page: 2, page_size: 1 },
     ];
     let calls = 0;
-    const all = await fetchAllTensions(async ({ page }) => {
-      calls += 1;
-      return pages[page - 1];
-    }, 1);
+    const scopes: string[] = [];
+    const all = await fetchAllTensions(
+      async ({ page, provenance_scope }) => {
+        calls += 1;
+        scopes.push(provenance_scope ?? "");
+        return pages[page - 1];
+      },
+      1,
+      "real"
+    );
     expect(calls).toBe(2);
+    expect(scopes).toEqual(["real", "real"]);
     expect(all).toEqual([sampleDeficit, sampleConflict]);
   });
 
@@ -203,6 +220,37 @@ describe("Understanding page i18n uncertainty wording", () => {
   });
 });
 
+describe("Epistemic Health page i18n", () => {
+  for (const key of EPISTEMIC_HEALTH_PAGE_I18N_KEYS) {
+    it(`en defines ${key}`, () => {
+      const value = en[key];
+      expect(value).toBeTruthy();
+      expect(value).not.toBe(key);
+    });
+
+    it(`uk defines ${key}`, () => {
+      const value = uk[key];
+      expect(value).toBeTruthy();
+      expect(value).not.toBe(key);
+    });
+  }
+
+  it("uses natural Ukrainian product labels", () => {
+    expect(uk["epistemic_health.title"]).toBe("Епістемічний стан");
+    expect(uk["epistemic_health.badge.diagnostic_only"]).toBe("Лише для діагностики");
+    expect(uk["epistemic_health.badge.experimental"]).toBe("Експериментально");
+    expect(uk["epistemic_health.type.support_deficit"]).toBe(
+      "Можливий дефіцит підтверджень"
+    );
+  });
+
+  it("nav no longer presents Understanding as the primary diagnostics label", () => {
+    expect(en["nav.epistemic_health"].toLowerCase()).toContain("epistemic health");
+    expect(en["nav.epistemic_health"].toLowerCase()).toContain("experimental");
+    expect(uk["nav.epistemic_health"]).toContain("Епістемічний стан");
+  });
+});
+
 describe("Understanding page is presentation-only", () => {
   it("documents banned write/action tokens for this surface", () => {
     expect(UNDERSTANDING_WRITE_ACTION_TOKENS).toEqual(
@@ -211,17 +259,18 @@ describe("Understanding page is presentation-only", () => {
   });
 
   it("page module is a default export presentation surface", async () => {
-    const mod = await import("../pages/UnderstandingPage");
+    const mod = await import("../pages/EpistemicHealthPage");
     expect(typeof mod.default).toBe("function");
   });
 });
 
 describe("existing dashboard routes remain registered", () => {
-  it("permissions gate understanding as admin-only alongside users", async () => {
+  it("permissions gate epistemic health as admin-only alongside users", async () => {
     const { canAccessRoute } = await import("./permissions");
+    expect(canAccessRoute("admin", "/diagnostics/epistemic-health")).toBe(true);
+    expect(canAccessRoute("operator", "/diagnostics/epistemic-health")).toBe(false);
+    expect(canAccessRoute("viewer", "/diagnostics/epistemic-health")).toBe(false);
     expect(canAccessRoute("admin", "/understanding")).toBe(true);
-    expect(canAccessRoute("operator", "/understanding")).toBe(false);
-    expect(canAccessRoute("viewer", "/understanding")).toBe(false);
     expect(canAccessRoute("admin", "/users")).toBe(true);
     expect(canAccessRoute("admin", "/overview")).toBe(true);
   });

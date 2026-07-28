@@ -36,7 +36,9 @@ import type {
   TimeseriesPoint,
   TopicDistributionRow,
   TensionList,
+  EpistemicHealthSummary,
   BuildInfo,
+  ProvenanceScope,
   UnansweredQuery,
   UserCreatePayload,
   UserRecord,
@@ -103,8 +105,12 @@ export const listUnderstandingTensions = async (params?: {
   page?: number;
   page_size?: number;
   claim_limit?: number;
+  provenance_scope?: ProvenanceScope;
 }): Promise<TensionList> =>
   (await api.get("/api/understanding/tensions", { params })).data;
+
+export const getEpistemicHealthSummary = async (): Promise<EpistemicHealthSummary> =>
+  (await api.get("/api/understanding/summary")).data;
 
 export const getBuildInfo = async (): Promise<BuildInfo> =>
   (await api.get("/api/build")).data;
@@ -192,7 +198,12 @@ export const listSources = async (
 ): Promise<SourceList> =>
   (
     await api.get("/api/sources", {
-      params: { page: 1, page_size: 50, ...filters },
+      params: {
+        page: 1,
+        page_size: 50,
+        exclude_fixtures: true,
+        ...filters,
+      },
     })
   ).data;
 

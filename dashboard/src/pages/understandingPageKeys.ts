@@ -1,4 +1,4 @@
-/** i18n keys required by the Understanding (tensions) page — Step 036. */
+/** i18n keys required by the Understanding (tensions) page — Step 036 (legacy keys retained). */
 export const UNDERSTANDING_PAGE_I18N_KEYS = [
   "nav.understanding",
   "understanding.title",
@@ -32,3 +32,5 @@ export const UNDERSTANDING_PAGE_I18N_KEYS = [
   "understanding.copy_ok",
   "understanding.copy_fail",
 ] as const;
+
+export { EPISTEMIC_HEALTH_PAGE_I18N_KEYS } from "./epistemicHealthPageKeys";

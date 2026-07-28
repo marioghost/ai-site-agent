@@ -220,12 +220,17 @@ export interface SourceDetail extends Source {
   llm_summary?: string;
 }
 
+export type ProvenanceScope = "real" | "test" | "all";
+
 export interface TensionRecord {
   tension_type: string;
   claim_ids: number[];
   observation_ref_ids: number[];
   evidence_link_ids: number[];
   summary: string;
+  provenance_scope?: string;
+  claim_provenance_kinds?: string[];
+  is_test_data?: boolean;
 }
 
 export interface TensionList {
@@ -233,6 +238,30 @@ export interface TensionList {
   total: number;
   page: number;
   page_size: number;
+  provenance_scope?: ProvenanceScope;
+}
+
+export interface EpistemicHealthSummary {
+  real_claims: number;
+  test_claims: number;
+  real_active_claims: number;
+  test_active_claims: number;
+  real_superseded_claims: number;
+  test_superseded_claims: number;
+  real_observations: number;
+  test_observations: number;
+  real_evidence_links: number;
+  test_evidence_links: number;
+  source_intelligence_claims: number;
+  real_support_deficit_tensions: number;
+  real_conflict_tensions: number;
+  real_open_tensions: number;
+  test_open_tensions: number;
+  memory_version: number;
+  memory_shadow_write_enabled: boolean;
+  chat_impact: "not_active";
+  diagnostic_only: boolean;
+  experimental: boolean;
 }
 
 export interface DeployedCapability {
@@ -284,6 +313,7 @@ export interface SourceListFilters {
   url_contains?: string;
   date_range?: string;
   status?: string;
+  exclude_fixtures?: boolean;
 }
 
 export interface IndexLogEntry {
