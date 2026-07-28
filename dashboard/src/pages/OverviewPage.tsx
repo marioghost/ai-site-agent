@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getAnalyticsSummary,
   getAnalyticsTimeseries,
+  getBuildInfo,
+  getEpistemicHealthSummary,
   getHealth,
   getIndexStatus,
   getIntentDistribution,
@@ -14,6 +16,7 @@ import {
 import AnalyticsPreviewRow from "../components/overview/AnalyticsPreviewRow";
 
 import KnowledgeBaseStatusCard from "../components/overview/KnowledgeBaseStatusCard";
+import OverviewKnowledgeOsPanel from "../components/overview/OverviewKnowledgeOsPanel";
 import LlmRuntimePanel from "../components/settings/LlmRuntimePanel";
 
 import OverviewFooterNote from "../components/overview/OverviewFooterNote";
@@ -47,12 +50,17 @@ import {
 
 } from "../components/overview/icons";
 
+import { useAuth } from "../context/AuthContext";
 import { useTranslation } from "../i18n";
 import { intentLabel } from "../lib/intentLabel";
-import { Alert, PageLayout } from "../ui";
+import { Alert, PageLayout, Tag } from "../ui";
 import type {
 
   AnalyticsSummary,
+
+  BuildInfo,
+
+  EpistemicHealthSummary,
 
   HealthResponse,
 
@@ -73,6 +81,7 @@ import type {
 export default function OverviewPage() {
 
   const { t, healthStatusLabel, jobStatusLabel, lang } = useTranslation();
+  const { hasRole } = useAuth();
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
@@ -90,6 +99,12 @@ export default function OverviewPage() {
 
   const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([]);
 
+  const [build, setBuild] = useState<BuildInfo | null>(null);
+
+  const [epistemicSummary, setEpistemicSummary] = useState<EpistemicHealthSummary | null>(
+    null
+  );
+
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +117,8 @@ export default function OverviewPage() {
 
     try {
 
-      const [h, s, j, srcs, summary, ts, overview, intents] = await Promise.all([
+      const [h, s, j, srcs, summary, ts, overview, intents, buildInfo, epistemic] =
+        await Promise.all([
 
         getHealth(),
 
@@ -119,6 +135,12 @@ export default function OverviewPage() {
         getOverview().catch(() => null),
 
         getIntentDistribution(1).catch(() => [] as IntentDistributionRow[]),
+
+        getBuildInfo().catch(() => null),
+
+        hasRole("admin")
+          ? getEpistemicHealthSummary().catch(() => null)
+          : Promise.resolve(null),
 
       ]);
 
@@ -138,6 +160,10 @@ export default function OverviewPage() {
 
       setTimeseries(ts);
 
+      setBuild(buildInfo);
+
+      setEpistemicSummary(epistemic);
+
       setUpdatedAt(new Date());
 
       setErrorKey(null);
@@ -148,7 +174,7 @@ export default function OverviewPage() {
 
     }
 
-  }, []);
+  }, [hasRole]);
 
 
 
@@ -321,9 +347,38 @@ export default function OverviewPage() {
 
       {errorText && <Alert variant="error">{errorText}</Alert>}
 
+      {build ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.4rem",
+            marginBottom: "0.5rem",
+          }}
+        >
+          <Tag>
+            {t("overview.kos.release_accepted", {
+              version: build.release_status?.accepted ?? build.release,
+            })}
+          </Tag>
+          <Tag>
+            {t("overview.kos.memory_version")}: {build.memory_version}
+          </Tag>
+          <Tag>
+            {t("overview.kos.knowledge_version")}: {build.knowledge_version}
+          </Tag>
+        </div>
+      ) : null}
+
 
 
       {knowledgeBase && <KnowledgeBaseStatusCard data={knowledgeBase} t={t} />}
+
+      <OverviewKnowledgeOsPanel
+        build={build}
+        summary={epistemicSummary}
+        isAdmin={hasRole("admin")}
+      />
 
 
 

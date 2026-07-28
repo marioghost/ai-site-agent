@@ -8,9 +8,15 @@ problem signal inside Epistemic Memory.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.services.epistemic_memory import EpistemicMemoryService
+from app.services.epistemic_memory.provenance_scope import (
+    ProvenanceScope,
+    classify_tension_scope,
+    is_test_claim,
+    tension_matches_scope,
+)
 from app.services.epistemic_memory.types import ClaimView, EvidenceLinkView
 from app.services.tension_surfacing.tension_types import (
     TENSION_CONFLICT,
@@ -19,26 +25,18 @@ from app.services.tension_surfacing.tension_types import (
 )
 
 DEFAULT_CLAIM_LIMIT = 500
-# Engineering safety bound for operator scrapes / summarize_counts — not a
-# cognitive limit on how many tensions can exist in Epistemic Memory. Matches
-# DEFAULT_CLAIM_LIMIT so metrics and detection share the same scan ceiling.
-# Raising it increases per-scrape DB work (claims + evidence-link lists).
 METRICS_CLAIM_SCAN_LIMIT = DEFAULT_CLAIM_LIMIT
 
 
 @dataclass(frozen=True)
 class TensionCountSummary:
-    """Bounded count of epistemic hypotheses — not confirmed knowledge errors.
-
-    ``open_tensions`` is the number of surfaced TensionView rows after a scan of
-    at most ``claim_scan_limit`` active claims. With the current type set
-    (support_deficit + conflict) it equals the sum of the typed counters.
-    """
+    """Bounded count of epistemic hypotheses — not confirmed knowledge errors."""
 
     open_tensions: int
     support_deficit_tensions: int
     conflict_tensions: int
     claim_scan_limit: int
+    provenance_scope: str = ProvenanceScope.ALL.value
 
 
 class TensionSurfacingService:
@@ -47,13 +45,29 @@ class TensionSurfacingService:
     def __init__(self, memory: EpistemicMemoryService) -> None:
         self._memory = memory
 
-    def surface_tensions(self, *, claim_limit: int | None = None) -> list[TensionView]:
+    def surface_tensions(
+        self,
+        *,
+        claim_limit: int | None = None,
+        provenance_scope: ProvenanceScope | str = ProvenanceScope.ALL,
+    ) -> list[TensionView]:
         """Return conservative in-memory tensions for active claims."""
+        if isinstance(provenance_scope, str):
+            provenance_scope = ProvenanceScope(provenance_scope)
         limit = claim_limit if claim_limit is not None else DEFAULT_CLAIM_LIMIT
-        claims, _ = self._memory.list_claims(active_only=True, limit=limit)
+        claims, _ = self._memory.list_claims(
+            active_only=True,
+            limit=limit,
+            provenance_scope=provenance_scope
+            if provenance_scope is not ProvenanceScope.ALL
+            else ProvenanceScope.ALL,
+        )
+        # When filtering real/test, still load matching claims only.
+        # For ALL, list_claims without scope filter (ALL).
         if not claims:
             return []
 
+        claim_by_id = {c.id: c for c in claims}
         claim_links: dict[int, list[EvidenceLinkView]] = {}
         obs_index: dict[int, list[tuple[int, EvidenceLinkView]]] = {}
 
@@ -75,14 +89,17 @@ class TensionSurfacingService:
                 self._append(
                     tensions,
                     seen,
-                    TensionView(
-                        tension_type=TENSION_SUPPORT_DEFICIT,
-                        claim_ids=(claim.id,),
-                        observation_ref_ids=tuple(
-                            sorted({link.observation_ref_id for link in links})
+                    self._annotate(
+                        TensionView(
+                            tension_type=TENSION_SUPPORT_DEFICIT,
+                            claim_ids=(claim.id,),
+                            observation_ref_ids=tuple(
+                                sorted({link.observation_ref_id for link in links})
+                            ),
+                            evidence_link_ids=tuple(sorted(link.id for link in links)),
+                            summary=_support_deficit_summary(claim),
                         ),
-                        evidence_link_ids=tuple(sorted(link.id for link in links)),
-                        summary=_support_deficit_summary(claim),
+                        claim_by_id,
                     ),
                 )
 
@@ -90,12 +107,15 @@ class TensionSurfacingService:
                 self._append(
                     tensions,
                     seen,
-                    TensionView(
-                        tension_type=TENSION_CONFLICT,
-                        claim_ids=(claim.id,),
-                        observation_ref_ids=(link.observation_ref_id,),
-                        evidence_link_ids=(link.id,),
-                        summary=_intra_claim_conflict_summary(claim, link),
+                    self._annotate(
+                        TensionView(
+                            tension_type=TENSION_CONFLICT,
+                            claim_ids=(claim.id,),
+                            observation_ref_ids=(link.observation_ref_id,),
+                            evidence_link_ids=(link.id,),
+                            summary=_intra_claim_conflict_summary(claim, link),
+                        ),
+                        claim_by_id,
                     ),
                 )
 
@@ -111,23 +131,34 @@ class TensionSurfacingService:
                     self._append(
                         tensions,
                         seen,
-                        TensionView(
-                            tension_type=TENSION_CONFLICT,
-                            claim_ids=pair,
-                            observation_ref_ids=(obs_id,),
-                            evidence_link_ids=(
-                                link.id,
-                                next(
-                                    entry_link.id
-                                    for cid, entry_link in entries
-                                    if cid == supported_id and entry_link.role == "support"
+                        self._annotate(
+                            TensionView(
+                                tension_type=TENSION_CONFLICT,
+                                claim_ids=pair,
+                                observation_ref_ids=(obs_id,),
+                                evidence_link_ids=(
+                                    link.id,
+                                    next(
+                                        entry_link.id
+                                        for cid, entry_link in entries
+                                        if cid == supported_id
+                                        and entry_link.role == "support"
+                                    ),
+                                ),
+                                summary=_cross_claim_conflict_summary(
+                                    supported_id, claim_id, obs_id
                                 ),
                             ),
-                            summary=_cross_claim_conflict_summary(
-                                supported_id, claim_id, obs_id
-                            ),
+                            claim_by_id,
                         ),
                     )
+
+        if provenance_scope is not ProvenanceScope.ALL:
+            tensions = [
+                t
+                for t in tensions
+                if tension_matches_scope(t.provenance_scope, provenance_scope)
+            ]
 
         return sorted(
             tensions,
@@ -139,17 +170,25 @@ class TensionSurfacingService:
             ),
         )
 
-    def summarize_counts(self, *, claim_limit: int | None = None) -> TensionCountSummary:
+    def summarize_counts(
+        self,
+        *,
+        claim_limit: int | None = None,
+        provenance_scope: ProvenanceScope | str = ProvenanceScope.ALL,
+    ) -> TensionCountSummary:
         """Return bounded hypothesis counts for operators/metrics.
 
-        Uses the same detection path as ``surface_tensions`` (no rule changes).
-        Default scan is capped at ``METRICS_CLAIM_SCAN_LIMIT`` active claims —
-        not an unbounded Epistemic Memory walk.
+        Default ``provenance_scope=all`` preserves historical metric continuity.
+        Epistemic Health API uses ``real`` explicitly.
         """
+        if isinstance(provenance_scope, str):
+            provenance_scope = ProvenanceScope(provenance_scope)
         limit = (
             claim_limit if claim_limit is not None else METRICS_CLAIM_SCAN_LIMIT
         )
-        tensions = self.surface_tensions(claim_limit=limit)
+        tensions = self.surface_tensions(
+            claim_limit=limit, provenance_scope=provenance_scope
+        )
         support = sum(1 for t in tensions if t.tension_type == TENSION_SUPPORT_DEFICIT)
         conflict = sum(1 for t in tensions if t.tension_type == TENSION_CONFLICT)
         return TensionCountSummary(
@@ -157,6 +196,34 @@ class TensionSurfacingService:
             support_deficit_tensions=support,
             conflict_tensions=conflict,
             claim_scan_limit=limit,
+            provenance_scope=provenance_scope.value,
+        )
+
+    @staticmethod
+    def _annotate(
+        tension: TensionView, claim_by_id: dict[int, ClaimView]
+    ) -> TensionView:
+        kinds: list[str] = []
+        test_flags: list[bool] = []
+        for cid in tension.claim_ids:
+            claim = claim_by_id.get(cid)
+            if claim is None:
+                kinds.append("unknown")
+                test_flags.append(False)
+                continue
+            kinds.append(claim.provenance_kind)
+            test_flags.append(
+                is_test_claim(
+                    provenance_kind=claim.provenance_kind,
+                    attributed_to=claim.attributed_to,
+                )
+            )
+        scope = classify_tension_scope(test_flags)
+        return replace(
+            tension,
+            provenance_scope=scope,
+            claim_provenance_kinds=tuple(kinds),
+            is_test_data=scope == ProvenanceScope.TEST.value,
         )
 
     @staticmethod

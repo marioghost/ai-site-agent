@@ -15,7 +15,7 @@ const ChatTestPage = lazy(() => import("./pages/ChatTestPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const KnowledgeProfilePage = lazy(() => import("./pages/KnowledgeProfilePage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
-const UnderstandingPage = lazy(() => import("./pages/UnderstandingPage"));
+const EpistemicHealthPage = lazy(() => import("./pages/EpistemicHealthPage"));
 
 function RouteFallback() {
   const { t } = useTranslation();
@@ -108,12 +108,16 @@ export default function App() {
               }
             />
             <Route
-              path="/understanding"
+              path="/diagnostics/epistemic-health"
               element={
                 <LazyPage>
-                  <UnderstandingPage />
+                  <EpistemicHealthPage />
                 </LazyPage>
               }
+            />
+            <Route
+              path="/understanding"
+              element={<Navigate to="/diagnostics/epistemic-health" replace />}
             />
             <Route
               path="/users"

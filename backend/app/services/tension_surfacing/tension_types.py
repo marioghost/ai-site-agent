@@ -33,6 +33,9 @@ class TensionView:
     observation_ref_ids: tuple[int, ...]
     evidence_link_ids: tuple[int, ...]
     summary: str
+    provenance_scope: str = "all"
+    claim_provenance_kinds: tuple[str, ...] = ()
+    is_test_data: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -41,4 +44,7 @@ class TensionView:
             "observation_ref_ids": list(self.observation_ref_ids),
             "evidence_link_ids": list(self.evidence_link_ids),
             "summary": self.summary,
+            "provenance_scope": self.provenance_scope,
+            "claim_provenance_kinds": list(self.claim_provenance_kinds),
+            "is_test_data": self.is_test_data,
         }

@@ -1,4 +1,6 @@
-/** Pure helpers for Understanding / Epistemic Health tensions panel (Step 036). */
+/** Pure helpers for Understanding / Epistemic Health tensions panel (Step 036+). */
+
+import type { ProvenanceScope } from "../types";
 
 export type TensionFilter = "all" | "support_deficit" | "conflict";
 
@@ -8,6 +10,9 @@ export type TensionLike = {
   observation_ref_ids: number[];
   evidence_link_ids: number[];
   summary: string;
+  provenance_scope?: string;
+  claim_provenance_kinds?: string[];
+  is_test_data?: boolean;
 };
 
 export type TensionCounts = {
@@ -28,6 +33,8 @@ export function tensionRowKey(item: TensionLike): string {
     item.claim_ids.join("-"),
     item.observation_ref_ids.join("-"),
     item.evidence_link_ids.join("-"),
+    item.provenance_scope ?? "",
+    item.is_test_data ? "test" : "real",
   ].join("|");
 }
 
@@ -76,6 +83,9 @@ export function tensionDiagnosticJson(item: TensionLike): string {
       observation_ref_ids: item.observation_ref_ids,
       evidence_link_ids: item.evidence_link_ids,
       summary: item.summary,
+      provenance_scope: item.provenance_scope ?? null,
+      claim_provenance_kinds: item.claim_provenance_kinds ?? [],
+      is_test_data: item.is_test_data ?? false,
     },
     null,
     2
@@ -87,6 +97,7 @@ export type ListTensionsPage = {
   total: number;
   page: number;
   page_size: number;
+  provenance_scope?: ProvenanceScope;
 };
 
 /** Fetch all pages from the Step 035 API contract (max page_size 200). */
@@ -94,14 +105,16 @@ export async function fetchAllTensions(
   listFn: (params: {
     page: number;
     page_size: number;
+    provenance_scope?: ProvenanceScope;
   }) => Promise<ListTensionsPage>,
-  pageSize = 200
+  pageSize = 200,
+  provenance_scope: ProvenanceScope = "real"
 ): Promise<TensionLike[]> {
   const all: TensionLike[] = [];
   let page = 1;
   let total = Infinity;
   while (all.length < total) {
-    const res = await listFn({ page, page_size: pageSize });
+    const res = await listFn({ page, page_size: pageSize, provenance_scope });
     total = res.total;
     all.push(...res.items);
     if (res.items.length === 0 || all.length >= total) break;

@@ -21,12 +21,20 @@ from app.services.epistemic_memory.memory_region_types import (
     MemoryRegionView,
 )
 from app.services.epistemic_memory.proposal_types import ClaimProposal
+from app.services.epistemic_memory.provenance_scope import (
+    PROVENANCE_KIND_SOURCE_INTELLIGENCE,
+    PROVENANCE_KIND_TEST,
+    ProvenanceScope,
+    claim_sql_filter,
+    parse_provenance_scope,
+)
 from app.services.epistemic_memory.shadow_persist_result import ShadowPersistResult
 from app.services.epistemic_memory.types import (
     ClaimView,
     EpistemicMemorySummary,
     EvidenceLinkView,
     ObservationRefView,
+    ProvenanceAwareMemorySummary,
 )
 from app.services.source_intelligence_service import SourceProfile
 
@@ -111,9 +119,20 @@ class EpistemicMemoryService:
         epistemic_status: str | None = None,
         attributed_to: str | None = None,
         active_only: bool = False,
+        provenance_scope: ProvenanceScope | str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[list[ClaimView], int]:
+        scope = (
+            ProvenanceScope.ALL
+            if provenance_scope is None
+            else parse_provenance_scope(
+                provenance_scope.value
+                if isinstance(provenance_scope, ProvenanceScope)
+                else provenance_scope,
+                default=ProvenanceScope.ALL,
+            )
+        )
         stmt = select(EpistemicClaim)
         if epistemic_status:
             stmt = stmt.where(EpistemicClaim.epistemic_status == epistemic_status)
@@ -121,6 +140,9 @@ class EpistemicMemoryService:
             stmt = stmt.where(EpistemicClaim.attributed_to == attributed_to)
         if active_only:
             stmt = stmt.where(EpistemicClaim.superseded_by_id.is_(None))
+        filt = claim_sql_filter(scope)
+        if filt is not None:
+            stmt = stmt.where(filt)
 
         total = self._count(stmt)
         rows = self.db.scalars(
@@ -196,6 +218,66 @@ class EpistemicMemoryService:
             claim_count=claim_count,
             active_claim_count=active_claim_count,
             evidence_link_count=evidence_link_count,
+        )
+
+    def get_provenance_aware_summary(self) -> ProvenanceAwareMemorySummary:
+        """Split observation/claim/evidence counts into real vs test scopes."""
+
+        def _claim_count(scope: ProvenanceScope, *, active_only: bool = False) -> int:
+            stmt = select(func.count()).select_from(EpistemicClaim)
+            filt = claim_sql_filter(scope)
+            if filt is not None:
+                stmt = stmt.where(filt)
+            if active_only:
+                stmt = stmt.where(EpistemicClaim.superseded_by_id.is_(None))
+            return int(self.db.scalar(stmt) or 0)
+
+        def _obs_count(*, test: bool) -> int:
+            stmt = select(func.count()).select_from(ObservationRef)
+            if test:
+                stmt = stmt.where(ObservationRef.provenance_kind == PROVENANCE_KIND_TEST)
+            else:
+                stmt = stmt.where(ObservationRef.provenance_kind != PROVENANCE_KIND_TEST)
+            return int(self.db.scalar(stmt) or 0)
+
+        def _evid_count(*, test: bool) -> int:
+            stmt = select(func.count()).select_from(EvidenceLink)
+            if test:
+                stmt = stmt.where(EvidenceLink.provenance_kind == PROVENANCE_KIND_TEST)
+            else:
+                stmt = stmt.where(EvidenceLink.provenance_kind != PROVENANCE_KIND_TEST)
+            return int(self.db.scalar(stmt) or 0)
+
+        real_claims = _claim_count(ProvenanceScope.REAL)
+        test_claims = _claim_count(ProvenanceScope.TEST)
+        real_active = _claim_count(ProvenanceScope.REAL, active_only=True)
+        test_active = _claim_count(ProvenanceScope.TEST, active_only=True)
+        si_claims = int(
+            self.db.scalar(
+                select(func.count())
+                .select_from(EpistemicClaim)
+                .where(
+                    EpistemicClaim.provenance_kind
+                    == PROVENANCE_KIND_SOURCE_INTELLIGENCE
+                )
+            )
+            or 0
+        )
+        return ProvenanceAwareMemorySummary(
+            real_claims=real_claims,
+            test_claims=test_claims,
+            real_active_claims=real_active,
+            test_active_claims=test_active,
+            real_superseded_claims=real_claims - real_active,
+            test_superseded_claims=test_claims - test_active,
+            real_observations=_obs_count(test=False),
+            test_observations=_obs_count(test=True),
+            real_evidence_links=_evid_count(test=False),
+            test_evidence_links=_evid_count(test=True),
+            source_intelligence_claims=si_claims,
+            all_claims=real_claims + test_claims,
+            all_observations=_obs_count(test=False) + _obs_count(test=True),
+            all_evidence_links=_evid_count(test=False) + _evid_count(test=True),
         )
 
     def _count(self, stmt) -> int:

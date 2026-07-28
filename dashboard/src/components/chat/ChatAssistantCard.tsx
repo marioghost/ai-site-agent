@@ -161,7 +161,10 @@ export default function ChatAssistantCard({
           <p className="ds-chat-assistant__streaming-label">{t("chat.streaming")}</p>
         )}
 
-        {(sourcesStatus === "ready" || sourcesStatus === "empty" || (sources && sources.length > 0)) && (
+        {(sourcesStatus === "loading" ||
+          sourcesStatus === "ready" ||
+          sourcesStatus === "empty" ||
+          (sources && sources.length > 0)) && (
         <section className="ds-chat-assistant__section">
           <div className="ds-chat-assistant__section-title">{t("chat.sources")}</div>
           {sourcesStatus === "loading" || (streaming && !sources?.length) ? (

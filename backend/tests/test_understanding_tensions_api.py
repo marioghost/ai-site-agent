@@ -98,7 +98,13 @@ def test_tensions_empty_memory_returns_empty_page(monkeypatch):
         res = client.get(ENDPOINT, params={"page": 1, "page_size": 10})
         assert res.status_code == 200
         body = res.json()
-        assert body == {"items": [], "total": 0, "page": 1, "page_size": 10}
+        assert body == {
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 10,
+            "provenance_scope": "real",
+        }
     finally:
         app.dependency_overrides.clear()
 
@@ -140,7 +146,15 @@ def test_tensions_support_deficit_and_provenance(monkeypatch):
 
         monkeypatch.setattr(EpistemicMemoryService, "list_claims", _scoped_list)
 
-        res = client.get(ENDPOINT, params={"page": 1, "page_size": 200, "claim_limit": 500})
+        res = client.get(
+            ENDPOINT,
+            params={
+                "page": 1,
+                "page_size": 200,
+                "claim_limit": 500,
+                "provenance_scope": "test",
+            },
+        )
         assert res.status_code == 200
         body = res.json()
         deficits = [
@@ -207,7 +221,13 @@ def test_tensions_conflict_with_evidence_provenance():
         session.commit()
 
         res = client.get(
-            ENDPOINT, params={"page": 1, "page_size": 200, "claim_limit": 500}
+            ENDPOINT,
+            params={
+                "page": 1,
+                "page_size": 200,
+                "claim_limit": 500,
+                "provenance_scope": "test",
+            },
         )
         assert res.status_code == 200
         conflicts = [

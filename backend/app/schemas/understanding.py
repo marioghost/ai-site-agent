@@ -1,22 +1,21 @@
-"""Understanding / tension surfacing API schemas (RFC-100 Step 035).
+"""Understanding / Epistemic Health API schemas (RFC-100 Step 035 + demo-ready).
 
 A Tension is an epistemic hypothesis about a possible problem in Epistemic
 Memory — not knowledge, not a belief, and not a fact.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.services.tension_surfacing.tension_types import TensionView
 
+ProvenanceScopeLiteral = Literal["real", "test", "all"]
+
 
 class TensionRead(BaseModel):
-    """API DTO for one epistemic hypothesis (Tension).
-
-    Provenance fields explain *why* the hypothesis was surfaced without exposing
-    ORM models. Clients must treat each item as a possible problem signal, not
-    as confirmed knowledge.
-    """
+    """API DTO for one epistemic hypothesis (Tension)."""
 
     tension_type: str = Field(
         ...,
@@ -25,25 +24,16 @@ class TensionRead(BaseModel):
             "Indicates a possible problem — not a confirmed fact."
         ),
     )
-    claim_ids: list[int] = Field(
+    claim_ids: list[int]
+    observation_ref_ids: list[int]
+    evidence_link_ids: list[int]
+    summary: str
+    provenance_scope: str = Field(
         ...,
-        description="Claim IDs involved in this hypothesis (Epistemic Memory).",
+        description="real | test | mixed — derived from involved claims.",
     )
-    observation_ref_ids: list[int] = Field(
-        ...,
-        description="Observation ref IDs that support the detection rule.",
-    )
-    evidence_link_ids: list[int] = Field(
-        ...,
-        description="Evidence link IDs that support the detection rule.",
-    )
-    summary: str = Field(
-        ...,
-        description=(
-            "Human-readable explanation of why this epistemic hypothesis "
-            "was surfaced (provenance narrative)."
-        ),
-    )
+    claim_provenance_kinds: list[str] = Field(default_factory=list)
+    is_test_data: bool = False
 
     @classmethod
     def from_view(cls, view: TensionView) -> TensionRead:
@@ -53,6 +43,9 @@ class TensionRead(BaseModel):
             observation_ref_ids=list(view.observation_ref_ids),
             evidence_link_ids=list(view.evidence_link_ids),
             summary=view.summary,
+            provenance_scope=view.provenance_scope,
+            claim_provenance_kinds=list(view.claim_provenance_kinds),
+            is_test_data=view.is_test_data,
         )
 
 
@@ -63,3 +56,29 @@ class TensionListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    provenance_scope: ProvenanceScopeLiteral
+
+
+class EpistemicHealthSummaryResponse(BaseModel):
+    """Live Epistemic Health summary — provenance-aware, read-only."""
+
+    real_claims: int
+    test_claims: int
+    real_active_claims: int
+    test_active_claims: int
+    real_superseded_claims: int
+    test_superseded_claims: int
+    real_observations: int
+    test_observations: int
+    real_evidence_links: int
+    test_evidence_links: int
+    source_intelligence_claims: int
+    real_support_deficit_tensions: int
+    real_conflict_tensions: int
+    real_open_tensions: int
+    test_open_tensions: int
+    memory_version: int
+    memory_shadow_write_enabled: bool
+    chat_impact: Literal["not_active"] = "not_active"
+    diagnostic_only: bool = True
+    experimental: bool = True

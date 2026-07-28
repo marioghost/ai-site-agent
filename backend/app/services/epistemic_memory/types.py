@@ -62,3 +62,41 @@ class EpistemicMemorySummary:
             "active_claim_count": self.active_claim_count,
             "evidence_link_count": self.evidence_link_count,
         }
+
+
+@dataclass(frozen=True)
+class ProvenanceAwareMemorySummary:
+    """Real vs test split for Epistemic Health dashboards (UI/ops)."""
+
+    real_claims: int
+    test_claims: int
+    real_active_claims: int
+    test_active_claims: int
+    real_superseded_claims: int
+    test_superseded_claims: int
+    real_observations: int
+    test_observations: int
+    real_evidence_links: int
+    test_evidence_links: int
+    source_intelligence_claims: int
+    all_claims: int
+    all_observations: int
+    all_evidence_links: int
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "real_claims": self.real_claims,
+            "test_claims": self.test_claims,
+            "real_active_claims": self.real_active_claims,
+            "test_active_claims": self.test_active_claims,
+            "real_superseded_claims": self.real_superseded_claims,
+            "test_superseded_claims": self.test_superseded_claims,
+            "real_observations": self.real_observations,
+            "test_observations": self.test_observations,
+            "real_evidence_links": self.real_evidence_links,
+            "test_evidence_links": self.test_evidence_links,
+            "source_intelligence_claims": self.source_intelligence_claims,
+            "all_claims": self.all_claims,
+            "all_observations": self.all_observations,
+            "all_evidence_links": self.all_evidence_links,
+        }
