@@ -671,7 +671,8 @@ Scale: 1 = concept only, 3 = seam exists, 5 = production-default cognitive owner
 | **0.4** Memory schema + shadow write | Accepted | Per release reports | Shadow write OFF | `memory_shadow_write_enabled` | Additive tables |
 | **0.5** Tension surfacing | Accepted | Admin gated | Auth gate | No dedicated flag | Understanding API |
 | **0.6** Reasoning / EA / speech acts | **Accepted** (`closed_0_6: true`) | Not required for closure | Flags OFF | Env flags OFF | Steps 039–045 |
-| **0.7** Memory assist + shadow + offline eval | **Accepted** (`closed_0_7: true`; Engineering Ready) | **staging_validated: false** | **production_ready: false** | Assist + shadow Settings OFF | Steps 046–050; Release 0.8 not started |
+| **0.7** Memory assist + shadow + offline eval | **Accepted** (`closed_0_7: true`; Engineering Ready) | **staging_validated: false** | **production_ready: false** | Assist + shadow Settings OFF | Steps 046–050; superseded as current marker by Release 0.8 snapshot |
+| **0.8** Legacy surface cleanup | **Accepted** (`closed_0_8: true`; Engineering Ready) | **staging_validated: false** | **production_ready: false** | Preset 410 + doc-type flag OFF | See [KNOWLEDGE_OS_ARCHITECTURE_SNAPSHOT_0.8.md](KNOWLEDGE_OS_ARCHITECTURE_SNAPSHOT_0.8.md) |
 
 **Outstanding blockers for staging activation (not for engineering closure):**
 

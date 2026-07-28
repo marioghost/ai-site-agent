@@ -40,7 +40,7 @@ allow_legacy_<surface>                        # deprecation gates
 
 **Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation.
 
-**Release 0.8 (in progress):** Steps 052–054 complete. Step **055** adds `legacy_doc_type_canonical_enabled` default **false** (skip legacy doc-type reorder). Memory does **not** replace it; shadow/assist unchanged.
+**Release 0.8 (Steps 052–057):** Engineering Ready (`closed_0_8: true`; `APP_RELEASE=0.8`). `allow_legacy_kp_presets` and `legacy_doc_type_canonical_enabled` default **false**. Memory assist/shadow remain **default OFF**. `staging_validated=false`; `production_ready=false`. Migrations **0018/0019** are repository head — **not** claimed applied live. See [RELEASE-0.8-ACCEPTANCE-REPORT.md](releases/RELEASE-0.8-ACCEPTANCE-REPORT.md).
 
 ### `enable_semantic_diagnostics_v2`
 
@@ -267,6 +267,10 @@ See [0.8-step-055-architecture-review.md](releases/0.8-step-055-architecture-rev
 ### Release 0.7 closure (Step 050)
 
 Engineering accepted — [RELEASE-0.7-ACCEPTANCE-REPORT.md](releases/RELEASE-0.7-ACCEPTANCE-REPORT.md), [0.7-rollback.md](releases/0.7-rollback.md). Flags remain OFF; staging_validated=false; production_ready=false.
+
+### Release 0.8 closure
+
+Engineering accepted — [RELEASE-0.8-ACCEPTANCE-REPORT.md](releases/RELEASE-0.8-ACCEPTANCE-REPORT.md), [0.8-rollback.md](releases/0.8-rollback.md). `closed_0_8=true`; staging_validated=false; production_ready=false. Migrations 0018/0019 not claimed applied live.
 
 ---
 

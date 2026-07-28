@@ -197,7 +197,7 @@ def test_build_info_release_and_capabilities():
     from app.core.config import get_config
     from app.services.build_info_service import APP_RELEASE, BuildInfoService
 
-    assert APP_RELEASE == "0.7"
+    assert APP_RELEASE == "0.8"
     svc = BuildInfoService.__new__(BuildInfoService)
     svc._db = MagicMock()
     svc._config = get_config()
@@ -205,6 +205,10 @@ def test_build_info_release_and_capabilities():
         enable_semantic_diagnostics_v2=False,
         cache_namespace_v2_enabled=False,
         memory_shadow_write_enabled=False,
+        memory_evidence_assist_enabled=False,
+        memory_canonical_shadow_enabled=False,
+        allow_legacy_kp_presets=False,
+        legacy_doc_type_canonical_enabled=False,
     )
     with (
         patch("app.services.build_info_service.SettingsRepository") as SR,
@@ -219,6 +223,9 @@ def test_build_info_release_and_capabilities():
         MV.return_value.get.return_value = 1
         KV.return_value.get.return_value = 1
         data = svc.collect()
-    assert data["release_status"]["accepted"] == "0.7"
+    assert data["release_status"]["accepted"] == "0.8"
+    assert data["release_status"]["closed_0_8"] is True
+    assert data["release_status"]["staging_validated"] is False
+    assert data["release_status"]["production_ready"] is False
     assert data["deployed_capabilities"]["REASONING_SERVICE_ENABLED"]["supported"] is True
     assert "memory_shadow_write_enabled" in data["deployed_capabilities"]
