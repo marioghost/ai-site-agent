@@ -668,10 +668,14 @@ md_mm_target_bundle() {
       "Delete $MD_MM_BUNDLE_DIR and re-run the command on the SOURCE host to deliver a fresh bundle."
     return 1
   fi
-  local mig_id
+  local mig_id src_host
   mig_id="$(md_mm_json_get "$MD_MM_BUNDLE_DIR/bundle-manifest.json" migration_id)"
-  md_mm_py state-set --dir "$MD_MM_DIR" "bundle_id=$mig_id" \
-    "c_cut=$(md_mm_json_get "$MD_MM_BUNDLE_DIR/bundle-manifest.json" c_cut)"
+  src_host="$(md_mm_json_get "$MD_MM_BUNDLE_DIR/bundle-manifest.json" source_hostname)"
+  md_mm_py state-set --dir "$MD_MM_DIR" \
+    "bundle_id=$mig_id" \
+    "c_cut=$(md_mm_json_get "$MD_MM_BUNDLE_DIR/bundle-manifest.json" c_cut)" \
+    "source_hostname=$src_host" \
+    "target_hostname=$(hostname)"
   md_mm_phase_complete target_bundle
 }
 
@@ -775,6 +779,29 @@ for s in m.get("qdrant_snapshots", []):
     "$MD_MM_QDRANT_BASE/collections/site_knowledge_answer_cache" >/dev/null 2>&1 || true
   echo "  answer cache recreated empty ($vsize/$vdist)"
 
+  {
+    echo "{"
+    echo "  \"migration_id\": \"$(md_mm_json_get "$manifest" migration_id)\","
+    echo "  \"restored_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo "  \"database\": \"$db_name\","
+    echo "  \"dump\": \"$dump_name\","
+    echo "  \"qdrant_snapshot\": \"$snap\","
+    echo "  \"answer_cache\": \"recreate-empty\","
+    echo "  \"result\": \"PASS\""
+    echo "}"
+  } > "$MD_MM_DIR/restore-report.json"
+  {
+    echo "# Restore report"
+    echo ""
+    echo "- migration id: \`$(md_mm_json_get "$manifest" migration_id)\`"
+    echo "- restored at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "- database: \`$db_name\`"
+    echo "- dump: \`$dump_name\`"
+    echo "- qdrant snapshot: \`$snap\`"
+    echo "- answer cache: recreated empty"
+    echo "- result: PASS"
+  } > "$MD_MM_DIR/restore-report.md"
+
   md_mm_phase_complete target_restore
 }
 
@@ -848,6 +875,10 @@ md_mm_target_schema() {
         "Read the migrate release report above, resolve the cause, then run the command again."
       return 1
     fi
+    # Acceptance reads target-facts; refresh after a schema advance so the
+    # report reflects the post-migrate revision, not the restored dump.
+    md_mm_load_db_url || return 1
+    md_mm_py db-facts --url "$MD_MM_MIGRATE_URL" > "$MD_MM_DIR/target-facts/db-facts.json"
   else
     echo "  restored revision already matches the repository head — nothing to apply"
   fi

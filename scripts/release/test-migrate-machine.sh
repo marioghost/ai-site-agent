@@ -303,6 +303,10 @@ fn_body md_mm_target_restore | grep -q 'bundle-verify' \
   || fail "bundle must be re-verified immediately before destructive work"
 pass "19. PostgreSQL restore is atomic, targeted and manifest-derived"
 
+grep -q 'restore-report.json' "$MM" || fail "restore must write restore-report.json"
+grep -q 'restore-report.md' "$MM" || fail "restore must write restore-report.md"
+pass "19b. restore report artifacts are written"
+
 # --------------------------------------------------------------------------
 # 20-22. retrieval baseline and parity
 # --------------------------------------------------------------------------
@@ -382,6 +386,8 @@ fn_body md_mm_target_schema | grep -q 'migrate release --yes' \
   || fail "schema phase must delegate to migrate release"
 fn_body md_mm_target_schema | grep -q 'nothing to apply' \
   || fail "schema phase must no-op when revisions already match"
+fn_body md_mm_target_schema | grep -q 'target-facts/db-facts.json' \
+  || fail "schema phase must refresh db facts after migrate release"
 pass "24. migrate release runs only when the repository head is ahead"
 
 fn_body md_mm_target_deploy | grep -q 'origin/main has moved' \
@@ -422,6 +428,7 @@ grep -q 'never modified by a rollback' <<<"$R" \
   || fail "rollback must never write back into the source"
 if grep -qE '^[^#]*pg_restore' <<<"$R"; then fail "rollback must not restore data into the source"; fi
 grep -q 'rollback-report.md' "$MM" || fail "rollback must write a report"
+grep -q 'source_hostname=$src_host' "$MM" || fail "target must record source_hostname from the bundle for rollback"
 pass "29. rollback returns authority to the source without data merge"
 
 # --------------------------------------------------------------------------
