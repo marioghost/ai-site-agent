@@ -1,8 +1,8 @@
 # Post-0.8 Machine / Environment Migration — Architecture Review
 
-**Status:** **Part 1 of 2 — review in progress. NOT approved. NOT executed.**  
+**Status:** **Part 1 of 2 — complete. NOT approved. NOT executed.**  
 **Scope of this part:** old-machine topology, measured facts, and derived requirements.  
-**Deferred to Part 2:** every new-machine determination (see [§Required inputs](#required-inputs-before-part-2)).  
+**Part 2 (canonical blueprint):** [MACHINE-MIGRATION-MANIFEST.md](MACHINE-MIGRATION-MANIFEST.md) — resolves all 20 determinations, and supersedes the deferrals recorded below.  
 **Date:** 2026-07-29  
 **Base:** `main` @ `1c8c16e` (Release 0.8 operational deployment merged)  
 **Entry gate:** [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md) — deployment accepted 2026-07-29  
@@ -152,10 +152,17 @@ the correct transfer mechanism (§7).
 
 | Model | Size | Parameters | Quantization | Role |
 |-------|------|-----------|--------------|------|
-| `qwen2.5:7b` | 4.68 GB | 7.6 B | Q4_K_M | primary LLM |
-| `qwen2.5:3b` | 1.93 GB | 3.1 B | Q4_K_M | secondary/faster LLM |
+| `qwen2.5:3b` | 1.93 GB | 3.1 B | Q4_K_M | **runtime LLM** (`DEFAULT_LLM_MODEL`, `OLLAMA_WARMUP_MODEL`) |
 | `bge-m3:latest` | 1.16 GB | 566.70 M | **F16** | **embeddings — 1024-dim, pinned to Qdrant config** |
-| **Total** | **7.77 GB** | | | 3 models |
+| `qwen2.5:7b` | 4.68 GB | 7.6 B | Q4_K_M | optional; GPU-appropriate, too slow on CPU |
+| **Total** | **7.77 GB** | | | 3 models — **only 3.09 GB on the critical path** |
+
+`qwen2.5:3b` is the configured runtime model, not the 7B: `.env` sets
+`DEFAULT_LLM_MODEL=qwen2.5:3b` and `OLLAMA_WARMUP_MODEL=qwen2.5:3b`, migration
+`0009_cpu_local_model_defaults` sets `llm_model='qwen2.5:3b'`, `docs/STAGING-SEED-SMOKE.md` requires
+only `qwen2.5:3b` and `bge-m3` for smoke, and `deploy/OLLAMA.md` records that CPU-only `qwen2.5:7b`
+takes 50 s+ to first token. Digests for all three are recorded in
+[MACHINE-MIGRATION-MANIFEST.md](MACHINE-MIGRATION-MANIFEST.md) §1.
 
 `bge-m3` is not interchangeable. Its 1024-dimension output is baked into both Qdrant collections
 and into every stored vector, so it must be present on the new host **before** any retrieval.
@@ -354,7 +361,13 @@ error. Therefore:
 | O1 | Record the current `bge-m3` digest on the old host **before** migration |
 | O2 | After migration, verify the new host's `bge-m3` digest **matches**; if it does not, prefer copying the model blob over accepting the newer build |
 | O3 | Pin embedding-model identity in acceptance criteria, not just presence |
-| O4 | `qwen2.5:7b` / `qwen2.5:3b` may be re-pulled freely — they affect generation, not stored vectors |
+| O4 | `qwen2.5:3b` / `qwen2.5:7b` may be re-pulled freely — they affect generation, not stored vectors |
+
+**Digests recorded (O1 satisfied)** — see
+[MACHINE-MIGRATION-MANIFEST.md](MACHINE-MIGRATION-MANIFEST.md) §1: `bge-m3:latest` =
+`7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab`
+(blob `sha256-daec91ffb5dd…3062c`, `bert.embedding_length=1024`), `qwen2.5:3b` =
+`357c53fb659c…9e4b`, `qwen2.5:7b` = `845dbda0ea48…697e`.
 
 Note on hardware: the current host has **no CUDA GPU** (`/dev/dxg` paravirt only), so today's
 performance baseline is effectively CPU inference of a 7.6 B Q4_K_M model in 7.7 GiB RAM. A new host
