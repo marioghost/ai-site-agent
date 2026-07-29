@@ -21,6 +21,8 @@ After Release 0.8 engineering closure **and** its approved operational deploymen
 
 **Gate satisfied (2026-07-29):** the Release 0.8 operational deployment is complete and accepted — see [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md). This machine migration is therefore the next approved program. Execution still requires an approved architecture review; `staging_validated` and `production_ready` remain **false**.
 
+**Architecture review complete, awaiting approval:** [POST-0.8-MACHINE-MIGRATION-ARCHITECTURE-REVIEW.md](POST-0.8-MACHINE-MIGRATION-ARCHITECTURE-REVIEW.md) (Part 1 — measured old-machine baseline) and [MACHINE-MIGRATION-MANIFEST.md](MACHINE-MIGRATION-MANIFEST.md) (Part 2 — **canonical migration manifest**: component classification, dependency graph, cutover timeline, acceptance criteria A1–A42, risk matrix, rollback). **Migration execution is not authorized until the review is approved.**
+
 ---
 
 ## Goals
