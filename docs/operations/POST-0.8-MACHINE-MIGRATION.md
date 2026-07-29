@@ -19,6 +19,8 @@ This program migrates the entire operator workstation and runtime stack to a **n
 
 After Release 0.8 engineering closure **and** its approved operational deployment, the next priority is **this machine migration**. Do **not** begin Release **0.9** or other new product functionality until machine-migration acceptance is recorded.
 
+**Gate satisfied (2026-07-29):** the Release 0.8 operational deployment is complete and accepted — see [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md). This machine migration is therefore the next approved program. Execution still requires an approved architecture review; `staging_validated` and `production_ready` remain **false**.
+
 ---
 
 ## Goals
