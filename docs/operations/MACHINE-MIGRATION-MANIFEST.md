@@ -167,7 +167,7 @@ every row — nothing is in progress.
 
 | Component | Class | Current location | Target location | Transfer method | Verification | Rollback | Owner | Status |
 |-----------|-------|------------------|-----------------|-----------------|--------------|----------|-------|--------|
-| Git repository | REBUILD | `/home/home/projects/ai-site-agent` (608 MB, `.git` 13 MB) | `~/projects/ai-site-agent` | **clean `git clone`** — never rsync the dev checkout | `git rev-parse HEAD` == `39ebef1…`; `git status --porcelain` empty | old checkout intact | ENG | PLANNED |
+| Git repository | REBUILD | `/home/home/projects/ai-site-agent` (608 MB, `.git` 13 MB) | `~/projects/ai-site-agent` | **clean `git clone`** — never rsync the dev checkout | on branch `main`, **not detached**; `main` == `origin/main` == `C_cut` (§6.1); `git status --porcelain` empty | old checkout intact | ENG | PLANNED |
 | `origin` remote | GENERATE | `https://github.com/marioghost/ai-site-agent.git` | `git@github.com:marioghost/ai-site-agent.git` | reconfigure to SSH | `git fetch` and `git push --dry-run` both succeed | revert URL | ENG | PLANNED |
 | `deploy/` | REBUILD | `/opt/ai-site-agent/deploy` (220 KB) | same | arrives with clone → `deploy full` sync | present in `/opt` after sync | — | ENG | PLANNED |
 | `manage_deploy.sh` | REBUILD | `deploy/manage_deploy.sh` | same | in git; **sole operator entry point** | `bash deploy/manage_deploy.sh help` runs; `doctor` passes | — | ENG | PLANNED |
@@ -249,10 +249,15 @@ every row — nothing is in progress.
 | **RESTORE** | 2 | `ai_site_agent`, Qdrant `site_knowledge` |
 | **COPY** | 2 | curated backups, logs archive |
 | **REBUILD** | 9 | repo, `deploy/`, `manage_deploy.sh`, `/opt` layout, venv, build artifacts, backend, repo `.cursor`, `.cursor/rules` |
-| **REINSTALL** | 9 | OS, apt packages, Python, Node, PG cluster, Qdrant, Ollama runtime, `ollama.service`, Cursor + extensions + skills, `openssh-server` |
+| **REINSTALL** | 12 | OS, apt packages, Python, Node, PG cluster, Qdrant, Ollama runtime, `ollama.service`, `openssh-server`, Cursor application, Cursor extensions, Cursor skills |
 | **RE-PULL** | 3 | `bge-m3`, `qwen2.5:3b`, `qwen2.5:7b` (deferred) |
-| **GENERATE** | 17 | locale, timezone, users, firewall, logrotate, permissions, `origin` URL, `deploy.local.conf`, systemd units, nginx, `ai_agent` role, answer-cache collection, service binds, addressing, hostname, digests record, `.env` ×2, `STAGING_ADMIN_PASSWORD`, SSH keys, GitHub auth, git identity, Cursor settings |
+| **GENERATE** | 26 | locale/collation, timezone, users/groups, firewall, logrotate, permissions, `origin` URL, `deploy.local.conf`, systemd units, nginx config, `ai_agent` role, answer-cache collection, service binds ×4 (PG, Qdrant, Ollama, nginx), addressing, hostname, digests record, `.env` ×2, `STAGING_ADMIN_PASSWORD`, SSH keys, GitHub auth, git identity, Cursor settings |
 | **SKIP** | 7 | `ai_site_agent_recovery`, certificates, cron, `.cursor-server`, MCP, terminal profiles, `AGENTS.md` |
+| **TOTAL** | **61** | must equal the number of classified rows in §3.1–§3.7 |
+
+The total is an invariant, not a description: if the sum of the counts above does not equal the
+number of manifest rows, a component has been added or dropped without classification and this table
+is no longer a completeness proof.
 
 **Only two components are RESTORE.** That is the whole irreducible risk surface of this migration —
 everything else is reproducible from source, packages, or registries.
@@ -304,7 +309,7 @@ reordered.
              │                             ↓
              │              ┌──────────────────────────────┐
              │              │ Clean clone origin/main      │
-             │              │ @ 39ebef1  [NO dirty copy]   │
+             │              │ main @ C_cut [not detached]  │
              │              └──────────────┬───────────────┘
              │                             ↓
              │              ┌──────────────────────────────┐
@@ -391,13 +396,14 @@ reordered.
    └──────────────────────────────────┘
 ```
 
-### The five edges that cannot be reordered
+### The six edges that cannot be reordered
 
 | Edge | Why | Failure if violated |
 |------|-----|--------------------|
 | Locale → `initdb` | collation fixed at cluster/DB creation | `pg_restore` **succeeds** but text ordering silently differs |
 | Node as APP_USER → `deploy full` | nvm is user-scoped; `sudo` drops it from `PATH` | build stage fails *after* the backup |
-| GitHub auth → clone → `deploy full` | `verify-release` requires `main == origin/main` | validation gate unreachable |
+| GitHub auth → clone on `main` → `deploy full` | `deploy full` deploys the `origin/main` tip and refuses detached/non-`main`/dirty trees; `verify-release` requires `main == origin/main` (§6.1) | deploy **refused**, or validation gate unreachable |
+| `deploy full` → start `ai-agent-backend` | the unit's `ExecStart` is `/opt/…/.venv/bin/python`, which `deploy full` creates | unit fails into a `Restart=on-failure` loop |
 | Freeze → capture(PG **and** Qdrant) | backend is the sole writer to both | version skew; silent retrieval corruption |
 | `bge-m3` digest verify → first retrieval | 18780 vectors are this model's output | silent quality degradation, no error |
 
@@ -446,7 +452,9 @@ until `T`.
 | D-2 | Install Qdrant 1.12.4 + `config.yaml` (loopback, `LimitNOFILE=65536`) | `GET /` = 1.12.4 |
 | D-2 | Install Ollama; **`ollama pull bge-m3 qwen2.5:3b`**; `qwen2.5:7b` only if GPU | **`bge-m3` digest == `7907646426…6bab`** — else COPY blob |
 | D-2 | Generate SSH keys; register GitHub auth; set git identity | `git fetch` + `push --dry-run` non-interactive |
-| D-2 | Clean `git clone`; checkout `39ebef1`; create `.env` + `deploy.local.conf` at **600** | `git status --porcelain` empty |
+| D-2 | Clean `git clone`; stay on **`main` tracking `origin/main`** — **never** a detached checkout of a literal hash; create `.env` + `deploy.local.conf` at **600** | `git status --porcelain` empty; `git rev-parse --abbrev-ref HEAD` = `main`; `main` == `origin/main` |
+| D-2 | **Record the cutover commit `C_cut` = `git rev-parse origin/main`.** This — not a historical hash — is the identity every criterion asserts | `C_cut` written into the cutover record |
+| D-2 | **Declare a merge freeze on `main`** from now until acceptance (see §6.1) | no new commits on `origin/main` during the window |
 | D-1 | Configure nginx, systemd units, `ufw`, logrotate | `nginx -t`; unit ordering correct |
 | D-1 | **Dry run** `bash deploy/manage_deploy.sh doctor` and `status` | both pass |
 | D-1 | Record old-host baseline: counts, versions, digests, ports | matches this manifest |
@@ -462,17 +470,19 @@ until `T`.
 | **T+2** | Snapshot **both** Qdrant collections (same frozen instant) | snapshot files + SHA256 | restart backend |
 | **T+3** | `pg_restore --list` the dump | 217 TOC / 19 TABLE DATA / `public.settings` | **STOP** — do not proceed on a bad dump |
 | **T+4** | Transfer dump + snapshots to new host | SHA256 re-verified on arrival | restart old backend |
+| **T+5** | `createdb ai_site_agent` owned by `ai_agent` (role already exists from D-2) | `\l` shows the empty DB, `lc_collate=C.UTF-8` | restart old backend |
 | **T+6** | `pg_restore` into empty `ai_site_agent` | exit 0, no errors | restart old backend |
 | **T+8** | Verify schema: `alembic_version` = `0019_legacy_doc_type_canonical_enabled` | exact match | restart old backend |
 | **T+9** | Verify data: 5023 / 17958 / 39 / 13 / 21; `kv=26`, `mv=177`; 11 flags **false** | all exact | restart old backend |
 | **T+11** | Restore Qdrant `site_knowledge`; create answer-cache empty (1024/Cosine) | 18780 pts, `green`, 1024/Cosine | restart old backend |
 | **T+13** | **Atomic-pair check:** chunks 17958 ↔ points 18780 ↔ `kv=26` | consistent | restart old backend |
 | **T+14** | **Verify `bge-m3` digest** and `embedding_length=1024` | digest match | **STOP** — COPY blob from old host |
-| **T+15** | Start `qdrant`, `ollama`; **then** `ai-agent-backend` (unit order) | all three active | restart old backend |
-| **T+17** | `sudo bash deploy/manage_deploy.sh deploy full` | 6/6 stages; **internal Alembic = no-op**, zero `Running upgrade` lines | restart old backend |
-| **T+19** | `health` · `build-info` | `database=0019…`; identity `39ebef1`; release 0.8 | restart old backend |
-| **T+21** | `smoke` | 6 HTTP checks + **41** golden tests | restart old backend |
-| **T+23** | `verify-release` | **FULL CHAIN ALIGNED**, `FAIL=0` | restart old backend |
+| **T+15** | Start `qdrant` and `ollama` **only**. **Do not start `ai-agent-backend` yet** — its `ExecStart` is `/opt/ai-site-agent/backend/.venv/bin/python`, which does not exist until `deploy full` builds it; starting it here yields a `Restart=on-failure` loop | both active; backend still inactive | restart old backend |
+| **T+16** | `git fetch`; confirm `origin/main` **still == `C_cut`**, `main` == `origin/main`, tree clean, **not detached** | exact match | **STOP** — `main` moved; re-baseline `C_cut` before deploying |
+| **T+17** | `sudo bash deploy/manage_deploy.sh deploy full` — this bootstraps `/opt`, creates the venv, installs deps, builds the frontend, and **starts the backend at stage 3** | 6/6 stages; **internal Alembic = no-op**, zero `Running upgrade` lines; backend now active | restart old backend |
+| **T+19** | `health` · `build-info` | `database=0019…`; identity == **`C_cut`**; release 0.8 | restart old backend |
+| **T+21** | `smoke` | 6 HTTP checks + **41** golden tests (note: golden tests are **offline unit tests** — they are not a retrieval-quality gate) | restart old backend |
+| **T+23** | `verify-release` | **FULL CHAIN ALIGNED**, `FAIL=0` — valid **only while `origin/main` == `C_cut`** (§6.1) | restart old backend |
 | **T+25** | `ss -lntup`; `ufw status`; `stat .env` | matches §3.4; `.env` = 600 | restart old backend |
 | **T+27** | Manual: dashboard, deep link, chat, follow-up, sources | grounded answers | restart old backend |
 | **T+35** | Confirm no unintended writes: claims still 39; no new `index_jobs` | exact | restart old backend |
@@ -485,6 +495,34 @@ until `T`.
 loss, because the old host was never mutated. After it, §8 applies and any writes accepted by the
 new host are **discarded** — there is no merge path.
 
+### 6.1 Deployed identity is `origin/main`, not a pinned hash
+
+This constraint comes from the tooling, not from preference, and it governs every identity criterion
+in §7:
+
+| Fact | Evidence |
+|------|----------|
+| `deploy full` deploys the **`origin/main` tip**. There is no `--commit` flag | `deploy/lib/deploy_source.sh` |
+| A detached checkout of a literal hash is **refused** | `deploy_guard`: `ERROR: not on main branch (HEAD=detached)` |
+| A non-`main` branch and a dirty tree are **refused** | `deploy_guard` |
+| `verify-release` compares build-info, frontend identity, and `/api/build` against **`origin/main`** — a moving reference, not a pinned release commit | `scripts/release/verify-release.sh` |
+
+Two consequences the operator must internalise:
+
+1. **The cutover deploys `C_cut`, the `origin/main` tip recorded at D-2** — not a historical release
+   hash. Acceptance asserts `C_cut`. Re-confirm it at T+16, and hold the merge freeze so it cannot
+   move mid-window.
+2. **A documentation-only commit on `main` makes `verify-release` report identity FAIL on an
+   already-correct host,** because the deployed commit no longer equals the `origin/main` tip. The
+   runtime is unchanged; only the reference moved. This is expected, and it is why the merge freeze
+   exists.
+
+**Operator safety note for rollback:** the old host is deployed at
+`39ebef1b76a4236a8e608d7300cbecf0107f75b4`. Whenever `main` is ahead of that commit, a rollback to
+the old host will show a `verify-release` **identity mismatch that is not a rollback failure**. Do
+not treat it as one, and do not "fix" it by deploying. The authoritative rollback proof is `health`,
+`build-info`, the data counts, and the Alembic revision — see §8 step 5.
+
 ---
 
 ## 7. Acceptance criteria
@@ -496,13 +534,13 @@ are new. No subjective wording.
 
 | # | Criterion | Measurement | Expected |
 |---|-----------|-------------|----------|
-| A1 | Release verification | `verify-release` | **PASS**, `FAIL=0` |
-| A2 | Identity chain | `verify-release` | `origin/main` == build-info == frontend == `/api/build` |
+| A1 | Release verification | `verify-release` | **PASS**, `FAIL=0` — requires the §6.1 merge freeze to be intact |
+| A2 | Identity chain | `verify-release` | `origin/main` == build-info == frontend == `/api/build`, all == `C_cut` |
 | A3 | Release | `/api/build` `.release` | `0.8` |
 | A4 | Alembic head | `/api/build` `.alembic_head` | `0019_legacy_doc_type_canonical_enabled` |
 | A5 | Health | `/api/health` | `app`,`ollama`,`qdrant`,`database` all `ok` |
 | A6 | Code provenance | deploy log | clean `origin/main` worktree; **no** dirty-tree copy |
-| A23 | Deployed commit | `.build-info.json` `.git_commit` | `39ebef1b76a4236a8e608d7300cbecf0107f75b4` |
+| A23 | Deployed commit | `.build-info.json` `.git_commit` | **`C_cut`** — the `origin/main` tip recorded at D-2 and re-confirmed at T+16 (§6.1). Not a historical hash |
 | A24 | Internal Alembic no-op | deploy log stage 3 | **zero** `Running upgrade` lines |
 
 ### Data integrity
@@ -617,7 +655,7 @@ before the acceptance gate is therefore **not a restore** — it is starting a s
 | 2 | Confirm the new host cannot accept traffic | port 80 closed or nginx stopped |
 | 3 | `systemctl start ai-agent-backend` on the **old** host | `is-active` = active |
 | 4 | `bash deploy/manage_deploy.sh health` | `app`/`ollama`/`qdrant`/`database` = `ok` |
-| 5 | `bash deploy/manage_deploy.sh verify-release` | **PASS**, chain aligned at `39ebef1` |
+| 5 | `bash deploy/manage_deploy.sh verify-release` | Deployed commit == `39ebef1`. **If `main` is ahead of `39ebef1`, the identity checks report FAIL — that is expected drift, not a rollback failure (§6.1).** Rollback proof is steps 4, 6, and 7; never "fix" this by deploying |
 | 6 | Confirm data unchanged | 5023 / 17958 / 39 / 13 / 21; `kv=26`, `mv=177`; Qdrant 18780 |
 | 7 | Confirm Alembic | `0019_legacy_doc_type_canonical_enabled` |
 | 8 | Record the rollback and the reason | written record |
