@@ -195,7 +195,12 @@ def psql(conn: dict[str, str], sql: str, db: str | None = None) -> str:
     ]
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
-        err = res.stderr.strip().splitlines()[-1] if res.stderr.strip() else "unknown"
+        err_lines = (res.stderr or res.stdout or "unknown").strip().splitlines()
+        # Prefer the ERROR line; fall back to the last non-empty line.
+        err = next(
+            (ln for ln in err_lines if ln.startswith("ERROR:")),
+            err_lines[-1] if err_lines else "unknown",
+        )
         die(f"psql failed: {err}")
     return res.stdout.strip()
 
@@ -252,7 +257,8 @@ def gate_migration_state(state: dict[str, Any], role_arg: str) -> list[str]:
 def db_identity(conn: dict[str, str]) -> dict[str, str]:
     row = psql(
         conn,
-        "SELECT datname||'|'||pg_encoding_to_char(encoding)||'|'||datcollate||'|'||datctype "
+        "SELECT datname::text || '|' || pg_encoding_to_char(encoding)::text || '|' || "
+        "datcollate::text || '|' || datctype::text "
         "FROM pg_database WHERE datname = current_database()",
     )
     parts = row.split("|")
@@ -306,7 +312,8 @@ def index_catalog(conn: dict[str, str]) -> dict[str, str]:
     """name -> pg_get_indexdef text for public indexes."""
     out = psql(
         conn,
-        "SELECT indexname||'|'||pg_get_indexdef((quote_ident(schemaname)||'.'||quote_ident(indexname))::regclass) "
+        "SELECT indexname::text || '|' || "
+        "pg_get_indexdef((quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass)::text "
         "FROM pg_indexes WHERE schemaname='public'",
     )
     result: dict[str, str] = {}
@@ -328,7 +335,7 @@ def fulltext_objects(conn: dict[str, str]) -> dict[str, Any]:
     if int(col or "0") > 0:
         attis = psql(
             conn,
-            "SELECT a.attgenerated||'|'||format_type(a.atttypid,a.atttypmod) "
+            "SELECT a.attgenerated::text || '|' || format_type(a.atttypid, a.atttypmod)::text "
             "FROM pg_attribute a "
             "JOIN pg_class c ON c.oid=a.attrelid "
             "JOIN pg_namespace n ON n.oid=c.relnamespace "
@@ -370,8 +377,8 @@ def alembic_revision(conn: dict[str, str]) -> str | None:
 def _table_columns(conn: dict[str, str], table: str) -> list[dict[str, str]]:
     out = psql(
         conn,
-        "SELECT column_name||'|'||udt_name||'|'||is_nullable||'|'||coalesce(column_default,'')||'|'||"
-        "coalesce(generation_expression,'') "
+        "SELECT column_name::text || '|' || udt_name::text || '|' || is_nullable::text || '|' || "
+        "coalesce(column_default::text, '') || '|' || coalesce(generation_expression::text, '') "
         "FROM information_schema.columns "
         f"WHERE table_schema='public' AND table_name='{table}' "
         "ORDER BY ordinal_position",
@@ -397,7 +404,7 @@ def _table_constraints(conn: dict[str, str], table: str) -> dict[str, list[str]]
     """Return primary/unique/foreign constraint names from pg_constraint."""
     out = psql(
         conn,
-        "SELECT c.contype||'|'||c.conname "
+        "SELECT c.contype::text || '|' || c.conname::text "
         "FROM pg_constraint c "
         "JOIN pg_class t ON t.oid=c.conrelid "
         "JOIN pg_namespace n ON n.oid=t.relnamespace "
