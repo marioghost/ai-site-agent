@@ -28,6 +28,13 @@ Migrations **0018/0019** exist in code; they are **not** claimed applied to live
 | Migrations 0018/0019 on `ai_site_agent` | **not applied** (this closure) |
 | Machine migration | **planned, not executed** |
 
+> **Post-closure update (2026-07-29):** the deployment and migration rows above describe the state
+> **at engineering closure** and are retained as the historical record. Release 0.8 has since been
+> deployed and accepted operationally (commit `39ebef1`, Alembic `0019`) — see
+> [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](../operations/RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md).
+> `staging_validated` and `production_ready` remain **false**; the operational deployment granted no
+> lifecycle promotion.
+
 Repository metadata: `APP_RELEASE="0.8"`, `accepted="0.8"`, `closed_0_8=true`, `engineering_ready=true`, `staging_validated=false`, `production_ready=false`, `in_progress=null`.
 
 ---
@@ -269,4 +276,5 @@ Engineering closure is **data-neutral**. Final before/after proof belongs to the
 - [0.8-step-057-release-closure.md](0.8-step-057-release-closure.md)
 - [FEATURE_FLAGS.md](../FEATURE_FLAGS.md)
 - [POST-0.8-MACHINE-MIGRATION.md](../operations/POST-0.8-MACHINE-MIGRATION.md)
+- [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](../operations/RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md) — post-closure operational deployment evidence
 - [KNOWLEDGE_OS_ARCHITECTURE_SNAPSHOT_0.8.md](../architecture/KNOWLEDGE_OS_ARCHITECTURE_SNAPSHOT_0.8.md)
