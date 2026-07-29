@@ -33,6 +33,10 @@ Operations:
   migrate live                Explicit alias of bare migrate (/opt tree only)
   migrate release             Schema-first: Alembic from clean origin/main worktree
                               against live /opt DB (no code sync, no restart)
+
+Machine migration (one command, both hosts):
+  migrate-machine             Whole machine migration. Detects host role and the
+                              next phase; resume by running it again. No options.
   restart [all|backend|...]   Restart systemd modules
   logs [--module backend]     Service logs
   test unit                   Backend unit test subset
@@ -52,6 +56,10 @@ deploy full still runs post-sync Alembic (idempotent no-op after migrate release
   defense-in-depth — not a substitute for migrate release);
 bare migrate / migrate live cannot advance past migrations present in /opt;
 migrate release is the only supported schema-first command;
+machine migration is one command (migrate-machine) with no public phase or role
+  options — it detects the host role from observable state and fails closed if
+  ambiguous; it orchestrates backup db / migrate release / deploy full / health /
+  smoke / verify-release and never reimplements them;
 CLI does not hard-block deploy full if migrate release was skipped (operator policy);
 all future deploy/release-engineering features live under manage_deploy.sh
 (no new standalone deploy scripts except bootstrap/recovery).
@@ -219,6 +227,11 @@ md_cli_main() {
       ;;
     migrate)
       md_cli_migrate "$@"
+      ;;
+    migrate-machine)
+      # shellcheck source=deploy/lib/migrate_machine.sh
+      source "$(dirname "${BASH_SOURCE[0]}")/migrate_machine.sh"
+      md_migrate_machine "$@"
       ;;
     smoke)
       bash "$(md_cli_repo)/scripts/release/smoke-staging.sh"
