@@ -21,6 +21,8 @@ After Release 0.8 engineering closure **and** its approved operational deploymen
 
 **Gate satisfied (2026-07-29):** the Release 0.8 operational deployment is complete and accepted — see [RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md](RELEASE-0.8-OPERATIONAL-DEPLOYMENT-REPORT.md). This machine migration is therefore the next approved program. Execution still requires an approved architecture review; `staging_validated` and `production_ready` remain **false**.
 
+**Architecture review in progress:** [POST-0.8-MACHINE-MIGRATION-ARCHITECTURE-REVIEW.md](POST-0.8-MACHINE-MIGRATION-ARCHITECTURE-REVIEW.md) — Part 1 (old-machine topology and derived requirements) is complete; Part 2 (new-machine topology and cutover plan) is blocked on required inputs. **Migration execution is not authorized until that review is approved.**
+
 ---
 
 ## Goals
