@@ -562,5 +562,31 @@ grep -q "MD_MM_CMD='bash deploy/manage_deploy.sh migrate-machine'" "$MM" \
   || fail "the cited command must be the single public entry point"
 pass "36. every stop states the next action and the one command to run"
 
+# --------------------------------------------------------------------------
+# PostgreSQL 16 collation probe — SHOW lc_collate is gone; catalog only
+# --------------------------------------------------------------------------
+grep -E '^[^#]*SHOW lc_collate' "$PY" && fail "db-facts must not use SHOW lc_collate (removed in PostgreSQL 16)"
+grep -E '^[^#]*SHOW lc_ctype' "$PY" && fail "db-facts must not use SHOW lc_ctype (removed in PostgreSQL 16)"
+grep -q 'FROM pg_database WHERE datname = current_database()' "$PY" \
+  || fail "db-facts must read collation from pg_database"
+grep -q 'datcollate' "$PY" || fail "db-facts must select datcollate"
+grep -q 'datctype' "$PY" || fail "db-facts must select datctype"
+grep -q 'pg_database returned no row' "$PY" \
+  || fail "catalog probe must fail closed when no row is returned"
+grep -q 'incomplete row' "$PY" \
+  || fail "catalog probe must fail closed on an incomplete row"
+# Acceptance still compares the stable key name lc_collate (value from datcollate).
+grep -q 'facts\["lc_collate"\] = datcollate' "$PY" \
+  || fail "lc_collate acceptance key must be populated from datcollate"
+# Live-corpus role detection still depends on db-facts counts, not hardcoded numbers.
+fn_body md_mm_has_live_corpus | grep -q 'db-facts' \
+  || fail "source live-corpus detection must still call db-facts"
+fn_body md_mm_has_live_corpus | grep -qE 'sources|0' \
+  || fail "source live-corpus detection must still require sources > 0"
+# Target detection path must remain based on bundle/state, not corpus counts.
+fn_body md_mm_detect_role | grep -q 'md_mm_has_bundle' \
+  || fail "target role detection must still use the bundle indicator"
+pass "37. PostgreSQL 16 catalog collation probe replaces SHOW lc_collate"
+
 echo ""
 echo "OK: migrate-machine regression passed"

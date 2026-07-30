@@ -283,11 +283,23 @@ def collect_db_facts(url: str) -> dict:
     facts["memory_version"] = int(
         _scalar(conn, "SELECT memory_version FROM settings WHERE id = 1") or 0
     )
-    facts["lc_collate"] = _scalar(conn, "SHOW lc_collate")
     facts["server_version"] = _scalar(conn, "SHOW server_version")
-    facts["encoding"] = _scalar(
-        conn, "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()"
+    # PostgreSQL 16 removed the lc_collate / lc_ctype GUCs (SHOW no longer works).
+    # Read collation from pg_database so role detection and acceptance still see a live corpus.
+    catalog = psql(
+        conn,
+        "SELECT datname, pg_encoding_to_char(encoding), datcollate, datctype "
+        "FROM pg_database WHERE datname = current_database()",
     )
+    if not catalog or "|" not in catalog.splitlines()[0]:
+        die("pg_database returned no row for current_database(); refuse to invent collation")
+    datname, encoding, datcollate, datctype = catalog.splitlines()[0].split("|", 3)
+    if not datname or not encoding or not datcollate or not datctype:
+        die("pg_database catalog probe returned an incomplete row; refuse to continue")
+    facts["encoding"] = encoding
+    facts["lc_collate"] = datcollate  # acceptance key kept; value from datcollate
+    facts["lc_ctype"] = datctype
+    facts["catalog_datname"] = datname
 
     # Every boolean settings flag, discovered rather than hardcoded.
     flag_rows = psql(
