@@ -406,6 +406,22 @@ grep -q 'SMOKE_CHAT=1 md_mm_run_cli smoke' "$MM" || fail "must reuse smoke with 
 grep -q 'md_mm_run_cli verify-release' "$MM" || fail "must reuse verify-release"
 pass "26-28. deploy full / backup db / health / smoke / verify-release reused"
 
+# Empty-target schema bootstrap (rehearsal unblock) — internal only.
+grep -q 'md_mm_bootstrap_empty_target_schema' "$MM" || fail "empty-target bootstrap helper missing"
+grep -q 'bootstrap_empty_target_schema.py' "$MM" || fail "bootstrap python helper must be invoked"
+fn_body md_mm_target_rehearse | grep -q 'md_mm_bootstrap_empty_target_schema' \
+  || fail "target_rehearse must call empty-target bootstrap"
+# bootstrap before deploy full
+python3 - <<PY || fail "bootstrap must run before deploy full in rehearse"
+from pathlib import Path
+text = Path("$MM").read_text()
+body = text[text.index("md_mm_target_rehearse()"):text.index("\nmd_mm_target_bundle()")]
+assert body.index("md_mm_bootstrap_empty_target_schema") < body.index("deploy full")
+print("ok")
+PY
+[[ -f "$ROOT/deploy/lib/bootstrap_empty_target_schema.py" ]] || fail "bootstrap_empty_target_schema.py missing"
+pass "28a. empty-target schema bootstrap wired into target_rehearse"
+
 # No reimplementation of the delegated logic.
 if grep -qE '^[^#]*\bpg_dump\b' "$MM"; then fail "must not reimplement pg_dump (use backup db)"; fi
 if grep -qE '^[^#]*alembic (upgrade|downgrade)' "$MM"; then

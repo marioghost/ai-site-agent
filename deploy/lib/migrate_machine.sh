@@ -635,10 +635,109 @@ md_mm_target_preflight() {
   md_mm_phase_complete target_preflight
 }
 
+md_mm_recreate_empty_ai_site_agent() {
+  # Approved empty-target recreate only. Never touches recovery DBs.
+  local db_name="$1"
+  [[ "$db_name" == "ai_site_agent" ]] || {
+    md_mm_fail MM-TR03 \
+      "Refusing to recreate database '$db_name'." \
+      "Empty-target bootstrap may only recreate ai_site_agent." \
+      "Fix DATABASE_URL and run the command again."
+    return 1
+  }
+  echo "  recreating empty database ai_site_agent (C.UTF-8, owner ai_agent)"
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo -u postgres dropdb --if-exists ai_site_agent
+    sudo -u postgres createdb -O ai_agent -E UTF8 \
+      --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8 -T template0 ai_site_agent
+  elif [[ "$(id -u)" -eq 0 ]]; then
+    runuser -u postgres -- dropdb --if-exists ai_site_agent 2>/dev/null \
+      || su -s /bin/bash postgres -c "dropdb --if-exists ai_site_agent"
+    runuser -u postgres -- createdb -O ai_agent -E UTF8 \
+      --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8 -T template0 ai_site_agent 2>/dev/null \
+      || su -s /bin/bash postgres -c \
+        "createdb -O ai_agent -E UTF8 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8 -T template0 ai_site_agent"
+  else
+    md_mm_fail MM-TR04 \
+      "Cannot recreate ai_site_agent without postgres privileges." \
+      "Empty-target bootstrap must drop/create the database as the postgres OS user." \
+      "Re-run with sudo: sudo env PATH=\"\$PATH\" bash deploy/manage_deploy.sh migrate-machine"
+    return 1
+  fi
+}
+
+md_mm_bootstrap_empty_target_schema() {
+  # Fail-closed TARGET-only empty schema bootstrap for rehearsal.
+  # Public interface remains migrate-machine (no new operator command).
+  md_mm_load_db_url || return 1
+  local backend="$MD_MM_PROJECT_ROOT/backend"
+  if [[ ! -f "$backend/alembic.ini" ]]; then
+    backend="$MD_MM_REPO/backend"
+  fi
+  [[ -f "$backend/alembic.ini" ]] || {
+    md_mm_fail MM-TR05 \
+      "Backend tree with alembic.ini not found." \
+      "Empty-target bootstrap needs the application migrations and init_db()." \
+      "Ensure /opt or the checkout contains backend/alembic.ini."
+    return 1
+  }
+  local report="$MD_MM_DIR/empty-target-bootstrap-report.json"
+  local py="$MD_MM_LIB/bootstrap_empty_target_schema.py"
+  local rc=0
+  python3 "$py" probe \
+    --database-url "$MD_MM_MIGRATE_URL" \
+    --state-dir "$MD_MM_DIR" \
+    --backend-dir "$backend" \
+    --role "${MD_MM_ROLE:-target}" || rc=$?
+
+  if [[ "$rc" -eq 0 ]]; then
+    # Already at verified head — still write an idempotent report.
+    python3 "$py" bootstrap \
+      --database-url "$MD_MM_MIGRATE_URL" \
+      --state-dir "$MD_MM_DIR" \
+      --backend-dir "$backend" \
+      --report "$report" \
+      --role "${MD_MM_ROLE:-target}" \
+      --skip-recreate || return 1
+    echo "  empty-target schema: already verified (report $report)"
+    return 0
+  fi
+  if [[ "$rc" -ne 10 ]]; then
+    md_mm_fail MM-TR06 \
+      "Empty-target schema bootstrap refused." \
+      "Gates require TARGET role, empty ai_site_agent, C.UTF-8, and no restore/ACCEPT/SWITCH/ERASE." \
+      "Read the probe error above, then run the command again."
+    return 1
+  fi
+
+  echo "  empty-target schema bootstrap required (Alembic empty→head is unsafe)"
+  local dbn
+  dbn="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from migrate_machine import parse_db_url; print(parse_db_url(sys.argv[2])["db"])' \
+    "$MD_MM_LIB" "$MD_MM_MIGRATE_URL")"
+  md_mm_recreate_empty_ai_site_agent "$dbn" || return 1
+
+  if ! python3 "$py" bootstrap \
+      --database-url "$MD_MM_MIGRATE_URL" \
+      --state-dir "$MD_MM_DIR" \
+      --backend-dir "$backend" \
+      --report "$report" \
+      --role "${MD_MM_ROLE:-target}" \
+      --skip-recreate; then
+    md_mm_fail MM-TR07 \
+      "Empty-target schema bootstrap failed." \
+      "init_db, required indexes, or catalog verification did not pass; alembic was not stamped." \
+      "Read $report and the error above, then run the command again."
+    return 1
+  fi
+  echo "  empty-target schema bootstrap: PASS (report $report)"
+  return 0
+}
+
 md_mm_target_rehearse() {
   echo "[target 2/12] rehearse the existing deploy path"
   echo "  This warms the virtualenv, node_modules and dashboard build so the"
   echo "  cutover deploy is incremental, and proves the deploy path before the window."
+  md_mm_bootstrap_empty_target_schema || return 1
   if ! md_mm_run_cli deploy full; then
     md_mm_fail MM-TR01 \
       "The rehearsal deploy failed." \
