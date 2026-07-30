@@ -1111,6 +1111,7 @@ sync_from_dev_checkout() {
     --exclude 'backend/ai_site_agent.db-*' \
     --exclude 'logs/' \
     --exclude 'backups/' \
+    --exclude 'deployments/' \
     --exclude '*.dump' \
     --exclude '*.sql.gz' \
     --exclude '.git' \
@@ -1557,6 +1558,7 @@ update_source_code() {
       --exclude 'backend/.venv' \
       --exclude 'logs/' \
       --exclude 'backups/' \
+      --exclude 'deployments/' \
       --exclude '*.dump' \
       --exclude '*.sql.gz' \
       "$STAGING_DIR/" "$PROJECT_ROOT/"
