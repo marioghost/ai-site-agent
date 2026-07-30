@@ -366,7 +366,7 @@ ok, sch = b.verify_schema(conn_c, backend_dir=backend, database_url=url_for(db_c
 assert not ok
 assert any(i["name"] == "ix_claim_revision_of_id" and not i["ok"] for i in sch["indexes"])
 
-# 8) Non-empty refused — insert into chat_sessions if possible
+# 8) Non-empty refused — insert into an APP_DATA_TABLES row (claim)
 mkdb(db_a)  # reuse
 rc = subprocess.call([
     sys.executable, helper, "bootstrap",
@@ -377,59 +377,25 @@ rc = subprocess.call([
     "--role", "target",
     "--skip-recreate",
 ], env={**os.environ, "MM_EMPTY_TARGET_BOOTSTRAP_TEST": "1"})
-assert rc == 0
+assert rc == 0, "bootstrap for non-empty setup should succeed"
 conn_a = b.parse_db_url(url_for(db_a))
-# Insert corpus-like row
-try:
-    b.psql(conn_a, "INSERT INTO chat_sessions (id, session_id, status, created_at, updated_at) "
-                   "VALUES (gen_random_uuid(), 't', 'active', now(), now())")
-except SystemExit:
-    # Schema may differ — try sources count via raw
-    b.psql(conn_a, "CREATE TABLE IF NOT EXISTS _force_nonempty(x int)")
-    # APP_DATA_TABLES won't see that — force via claim insert attempt
-    cols = b.psql(conn_a, "SELECT string_agg(column_name, ',') FROM information_schema.columns "
-                          "WHERE table_name='chat_messages'")
-    # Minimal: update chunks with a dummy if empty table allows defaultless insert
-    pass
-
-# Prefer inserting into a counted table with defaults
-inserted = False
-for sql in (
-    "INSERT INTO chat_sessions DEFAULT VALUES",
-    "INSERT INTO answer_traces DEFAULT VALUES",
-):
-    try:
-        b.psql(conn_a, sql)
-        inserted = True
-        break
-    except SystemExit:
-        continue
-if not inserted:
-    # Fallback: create a fake sources-like count by using SQL to insert minimal claim
-    try:
-        b.psql(
-            conn_a,
-            "INSERT INTO claim (id, subject, predicate, object, status, created_at, updated_at) "
-            "VALUES (gen_random_uuid(), 's', 'p', 'o', 'active', now(), now())",
-        )
-        inserted = True
-    except SystemExit as e:
-        print("WARN: could not insert app data for non-empty test:", e)
-
-if inserted:
-    st2 = Path("$TMP") / "state2"
-    st2.mkdir(exist_ok=True)
-    (st2 / "state.json").write_text(json.dumps(b_state), encoding="utf-8")
-    rc = subprocess.call([
-        sys.executable, helper, "probe",
-        "--database-url", url_for(db_a),
-        "--state-dir", str(st2),
-        "--role", "target",
-    ], env={**os.environ, "MM_EMPTY_TARGET_BOOTSTRAP_TEST": "1"})
-    assert rc == 1, f"non-empty must refuse, got {rc}"
-    print("OK: 8 non-empty refused")
-else:
-    print("WARN: 8 non-empty insert skipped (schema insert too strict)")
+b.psql(
+    conn_a,
+    "INSERT INTO claim (proposition, attributed_to, provenance_kind, created_at, updated_at) "
+    "VALUES ('bootstrap-nonempty-test', 'test', 'test', now(), now())",
+)
+assert not b.is_empty_of_app_data(b.app_data_counts(conn_a))
+st2 = Path("$TMP") / "state2"
+st2.mkdir(exist_ok=True)
+(st2 / "state.json").write_text(json.dumps(b_state), encoding="utf-8")
+rc = subprocess.call([
+    sys.executable, helper, "probe",
+    "--database-url", url_for(db_a),
+    "--state-dir", str(st2),
+    "--role", "target",
+], env={**os.environ, "MM_EMPTY_TARGET_BOOTSTRAP_TEST": "1"})
+assert rc == 1, f"non-empty must refuse, got {rc}"
+print("OK: 8 non-empty refused")
 
 # 9) Restored/source-like refused via gates
 st_bad = Path("$TMP") / "state_restore"
@@ -446,34 +412,31 @@ rc = subprocess.call([
 assert rc == 1
 print("OK: 9 restored-like refused")
 
-# 10) Wrong collation refused
-try:
-    admin_sql("DROP DATABASE IF EXISTS mm_empty_bootstrap_collate_x", "postgres")
-    admin_sql(
-        f"CREATE DATABASE mm_empty_bootstrap_collate_x OWNER {admin_conn['user']} "
-        f"ENCODING 'UTF8' LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8' TEMPLATE template0",
-        "postgres",
-    )
-    url_bad = url_for("mm_empty_bootstrap_collate_x")
-    st3 = Path("$TMP") / "state3"
-    st3.mkdir(exist_ok=True)
-    (st3 / "state.json").write_text(json.dumps(b_state), encoding="utf-8")
-    rc = subprocess.call([
-        sys.executable, helper, "probe",
-        "--database-url", url_bad,
-        "--state-dir", str(st3),
-        "--role", "target",
-    ], env={**os.environ, "MM_EMPTY_TARGET_BOOTSTRAP_TEST": "1"})
-    assert rc == 1
-    admin_sql("DROP DATABASE IF EXISTS mm_empty_bootstrap_collate_x", "postgres")
-    print("OK: 10 wrong collation refused")
-except SystemExit as e:
-    print("WARN: 10 collation test skipped:", e)
+# 10) Wrong collation refused — use locale C (always present); required is C.UTF-8
+admin_sql("DROP DATABASE IF EXISTS mm_empty_bootstrap_collate_x", "postgres")
+admin_sql(
+    f"CREATE DATABASE mm_empty_bootstrap_collate_x OWNER {admin_conn['user']} "
+    f"ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0",
+    "postgres",
+)
+url_bad = url_for("mm_empty_bootstrap_collate_x")
+st3 = Path("$TMP") / "state3"
+st3.mkdir(exist_ok=True)
+(st3 / "state.json").write_text(json.dumps(b_state), encoding="utf-8")
+rc = subprocess.call([
+    sys.executable, helper, "probe",
+    "--database-url", url_bad,
+    "--state-dir", str(st3),
+    "--role", "target",
+], env={**os.environ, "MM_EMPTY_TARGET_BOOTSTRAP_TEST": "1"})
+assert rc == 1, f"wrong collation must refuse, got {rc}"
+admin_sql("DROP DATABASE IF EXISTS mm_empty_bootstrap_collate_x", "postgres")
+print("OK: 10 wrong collation refused")
 
 # 11) Wrong database name — static already; also runtime
 try:
     b.assert_db_name_allowed("not_allowed_db")
-    raise SystemExit("should have refused")
+    raise AssertionError("should have refused")
 except SystemExit:
     print("OK: 11 wrong database name refused")
 
