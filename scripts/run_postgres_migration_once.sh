@@ -74,6 +74,7 @@ rsync -a --delete \
   --exclude '*.pyc' \
   --exclude 'logs/' \
   --exclude 'backups/' \
+  --exclude 'deployments/' \
   --exclude '.git' \
   --exclude 'backend/ai_site_agent.db' \
   --exclude 'backend/ai_site_agent.db-*' \
