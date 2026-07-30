@@ -381,8 +381,11 @@ assert rc == 0, "bootstrap for non-empty setup should succeed"
 conn_a = b.parse_db_url(url_for(db_a))
 b.psql(
     conn_a,
-    "INSERT INTO claim (proposition, attributed_to, provenance_kind, created_at, updated_at) "
-    "VALUES ('bootstrap-nonempty-test', 'test', 'test', now(), now())",
+    "INSERT INTO claim ("
+    "proposition, epistemic_status, attributed_to, provenance_kind, created_at, updated_at"
+    ") VALUES ("
+    "'bootstrap-nonempty-test', 'provisional', 'test', 'test', now(), now()"
+    ")",
 )
 assert not b.is_empty_of_app_data(b.app_data_counts(conn_a))
 st2 = Path("$TMP") / "state2"
