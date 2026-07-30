@@ -76,6 +76,8 @@ assert not b.gate_migration_state(
 )
 assert b.HEAD_REVISION == "0019_legacy_doc_type_canonical_enabled"
 assert len(b.REQUIRED_INDEXES) == 7
+assert len(b.HEAD_REVISION) > 32, "stamp must widen alembic_version past Alembic default VARCHAR(32)"
+assert "ensure_alembic_version_table" in Path("deploy/lib/bootstrap_empty_target_schema.py").read_text()
 print("OK: static gates")
 PY
 pass "fail-closed name/role/ERASE/restore/accept/switch gates"

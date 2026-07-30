@@ -677,6 +677,42 @@ def apply_required_indexes(conn: dict[str, str]) -> None:
         psql(conn, spec["create_sql"])
 
 
+def ensure_alembic_version_table(conn: dict[str, str]) -> None:
+    """Create/widen alembic_version so long revision ids can be stamped.
+
+    Alembic's default version_num is VARCHAR(32), but this project's head
+    revision id is longer (e.g. 0019_legacy_doc_type_canonical_enabled = 38).
+    Creating the table first with VARCHAR(64) lets ``alembic stamp`` insert
+    without DataError; Alembic will not replace an existing version table.
+    """
+    psql(
+        conn,
+        "CREATE TABLE IF NOT EXISTS alembic_version ("
+        "version_num VARCHAR(64) NOT NULL PRIMARY KEY"
+        ")",
+    )
+    # Prior failed stamp may have left Alembic's default VARCHAR(32).
+    psql(
+        conn,
+        "ALTER TABLE alembic_version "
+        "ALTER COLUMN version_num TYPE VARCHAR(64)",
+    )
+
+
+def _subprocess_error_tail(res: subprocess.CompletedProcess[str], fallback: str) -> str:
+    text = (res.stderr or "") + "\n" + (res.stdout or "")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return fallback
+    # Prefer the real DBAPI / sqlalchemy message over the docs footer.
+    for ln in reversed(lines):
+        if ln.startswith("(Background on this error"):
+            continue
+        if "sqlalchemy.exc." in ln or ln.startswith("psycopg.") or "Error" in ln:
+            return ln
+    return lines[-1]
+
+
 def run_init_db(backend_dir: Path, database_url: str) -> None:
     env = dict(os.environ)
     env["DATABASE_URL"] = database_url
@@ -697,8 +733,7 @@ def run_init_db(backend_dir: Path, database_url: str) -> None:
         env=env,
     )
     if res.returncode != 0:
-        err = (res.stderr or res.stdout or "init_db failed").strip()
-        die(f"init_db failed: {err.splitlines()[-1]}")
+        die(f"init_db failed: {_subprocess_error_tail(res, 'init_db failed')}")
 
 
 def alembic_stamp_head(backend_dir: Path, database_url: str) -> None:
@@ -707,10 +742,12 @@ def alembic_stamp_head(backend_dir: Path, database_url: str) -> None:
     env["PYTHONPATH"] = str(backend_dir)
     py = backend_dir / ".venv" / "bin" / "python"
     python = str(py) if py.is_file() else sys.executable
+    # Escape % for ConfigParser interpolation inside alembic.ini handling.
+    safe_url = database_url.replace("%", "%%")
     code = (
         "from alembic import command\n"
         "from app.core.alembic_config import make_alembic_config\n"
-        f"command.stamp(make_alembic_config({database_url!r}), {HEAD_REVISION!r})\n"
+        f"command.stamp(make_alembic_config({safe_url!r}), {HEAD_REVISION!r})\n"
         "print('OK: stamped')\n"
     )
     res = subprocess.run(
@@ -721,8 +758,7 @@ def alembic_stamp_head(backend_dir: Path, database_url: str) -> None:
         env=env,
     )
     if res.returncode != 0:
-        err = (res.stderr or res.stdout or "stamp failed").strip()
-        die(f"alembic stamp failed: {err.splitlines()[-1]}")
+        die(f"alembic stamp failed: {_subprocess_error_tail(res, 'stamp failed')}")
 
 
 def prove_alembic_upgrade_duplicate(backend_dir: Path, database_url: str) -> dict[str, Any]:
@@ -917,6 +953,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
 
         # Stamp only after verification passes.
         if alembic_revision(conn) != HEAD_REVISION:
+            ensure_alembic_version_table(conn)
             alembic_stamp_head(backend, args.database_url)
         report["stamped_revision"] = alembic_revision(conn)
 
