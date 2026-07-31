@@ -57,6 +57,8 @@ echo "==> Backend unit tests (excluding golden parity)"
   tests/test_tension_surfacing_service.py \
   tests/test_tension_acceptance.py \
   tests/test_understanding_tensions_api.py \
+  tests/test_maintenance_agenda_ranking.py \
+  tests/test_maintenance_cycle_orchestration.py \
   tests/test_db_isolation.py \
   tests/test_caching.py \
   -m "unit and not benchmark" -q "$@"

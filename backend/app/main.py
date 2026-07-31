@@ -101,12 +101,16 @@ async def lifespan(app: FastAPI):
         db.close()
     from app.services.analytics_aggregation_worker import analytics_aggregation_worker
     from app.services.cache_cleanup_worker import cache_cleanup_worker
+    from app.services.executive.maintenance_cycle_invoker import (
+        maintenance_cycle_invoker,
+    )
 
     cache_cleanup_worker.start()
     analytics_aggregation_worker.start()
+    maintenance_cycle_invoker.start()
     yield
+    maintenance_cycle_invoker.stop()
     logger.info("Shutting down AI Site Agent backend")
-
 
 app = FastAPI(
     title="AI Site Agent",
