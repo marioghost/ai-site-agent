@@ -94,10 +94,11 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False
     assert body["settings_flags"]["cache_namespace_v2_enabled"] is False
-    assert body["release_status"]["accepted"] == "0.8"
+    assert body["release_status"]["accepted"] == "0.9"
     assert body["release_status"]["closed_0_6"] is True
     assert body["release_status"]["closed_0_7"] is True
     assert body["release_status"]["closed_0_8"] is True
+    assert body["release_status"]["closed_0_9"] is True
     assert body["release_status"]["engineering_ready"] is True
     assert body["release_status"]["staging_validated"] is False
     assert body["release_status"]["production_ready"] is False
@@ -122,5 +123,14 @@ def test_build_info_endpoint(build_client: TestClient):
     assert caps8["golden_generic_profile_ci"]["code_present"] is True
     steps8 = body["release_status"]["steps_052_057"]
     assert [s["step"] for s in steps8] == ["052", "053", "054", "055", "056", "057"]
+    caps9 = body["release_status"]["release_0_9_capabilities"]
+    assert caps9["maintenance_agenda_ranking"]["code_present"] is True
+    assert caps9["maintenance_cycle_orchestration"]["code_present"] is True
+    assert caps9["index_integrate_compose"]["code_present"] is True
+    assert caps9["investigation_execution_fetch"]["code_present"] is True
+    assert caps9["investigation_metrics"]["code_present"] is True
+    assert caps9["release_0_9_engineering_closure"]["code_present"] is True
+    steps9 = body["release_status"]["steps_058_062"]
+    assert [s["step"] for s in steps9] == ["058", "059", "060", "061", "062"]
     assert "deployed_capabilities" in body
     assert body["deployed_capabilities"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"]["supported"] is True

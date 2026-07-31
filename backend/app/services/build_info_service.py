@@ -13,8 +13,8 @@ from app.repositories.settings_repository import SettingsRepository
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
-# Last accepted RFC-100 release (engineering closure 2026-07-28).
-APP_RELEASE = "0.8"
+# Last accepted RFC-100 release (engineering closure 2026-07-31).
+APP_RELEASE = "0.9"
 
 # Release 0.6 cognitive pipeline — code present when repo includes Steps 039–045.
 RELEASE_0_6_STEPS = (
@@ -44,6 +44,15 @@ RELEASE_0_8_STEPS = (
     {"step": "055", "title": "Legacy doc-type canonical flag", "code": "present"},
     {"step": "056", "title": "Golden generic profile CI fail-closed", "code": "present"},
     {"step": "057", "title": "Release 0.8 engineering closure", "code": "present"},
+)
+
+# Release 0.9 active maintenance — code present; execution default OFF; staging/production not validated.
+RELEASE_0_9_STEPS = (
+    {"step": "058", "title": "Maintenance agenda ranking", "code": "present"},
+    {"step": "059", "title": "Maintenance cycle orchestration", "code": "present"},
+    {"step": "060", "title": "Investigation execution (fetch)", "code": "present"},
+    {"step": "061", "title": "Investigation metrics", "code": "present"},
+    {"step": "062", "title": "Release 0.9 engineering closure", "code": "present"},
 )
 
 _ENV_CAPABILITIES = (
@@ -248,11 +257,12 @@ class BuildInfoService:
             "env_flags": env_flags,
             "settings_flags": settings_flags,
             "release_status": {
-                "accepted": "0.8",
+                "accepted": "0.9",
                 "in_progress": None,
                 "closed_0_6": True,
                 "closed_0_7": True,
                 "closed_0_8": True,
+                "closed_0_9": True,
                 "engineering_ready": True,
                 "staging_validated": False,
                 "production_ready": False,
@@ -261,6 +271,7 @@ class BuildInfoService:
                 # Backward-compatible alias for pre-closure consumers.
                 "steps_046_048": list(RELEASE_0_7_STEPS),
                 "steps_052_057": list(RELEASE_0_8_STEPS),
+                "steps_058_062": list(RELEASE_0_9_STEPS),
                 "release_0_7_capabilities": {
                     "memory_region_reads": {
                         "code_present": True,
@@ -357,13 +368,62 @@ class BuildInfoService:
                         "note": "Step 056 — CI/test only; production profiles unaffected",
                     },
                 },
+                "release_0_9_capabilities": {
+                    "maintenance_agenda_ranking": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 058 — ephemeral ranking only; no execution",
+                    },
+                    "maintenance_cycle_orchestration": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": (
+                            "Step 059 — env MAINTENANCE_EXECUTION_ENABLED default OFF; "
+                            "budget fail-closed"
+                        ),
+                    },
+                    "index_integrate_compose": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": (
+                            "Authoritative Index→Integrate contract — opt-in compose; "
+                            "index-only callers unchanged"
+                        ),
+                    },
+                    "investigation_execution_fetch": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": (
+                            "Step 060 — fetch-only investigations via Index→Integrate; "
+                            "gated by Step 059"
+                        ),
+                    },
+                    "investigation_metrics": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": (
+                            "Step 061 — three process-local counters on /api/metrics; "
+                            "kos_tension_resolved_total deferred"
+                        ),
+                    },
+                    "release_0_9_engineering_closure": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 062 — engineering closure only; no runtime subsystem",
+                    },
+                },
                 "note": (
-                    "Release 0.8 engineering accepted (Steps 052–057). "
+                    "Release 0.9 engineering accepted (Steps 058–062 + Index→Integrate). "
                     "Engineering Ready; staging_validated=false; production_ready=false. "
-                    "Alembic code head 0019; migrations 0018/0019 not claimed applied live. "
-                    "allow_legacy_kp_presets + legacy_doc_type_canonical_enabled default false. "
+                    "MAINTENANCE_EXECUTION_ENABLED default OFF. "
+                    "kos_tension_resolved_total deferred. "
                     "Memory assist/shadow remain default OFF. "
-                    "Step 055 overview/news quality risk documented. "
                     "code_present ≠ configured ≠ enabled ≠ effective ≠ deployed. "
                     "Live /api/build reflects this metadata only after approved deploy+restart."
                 ),

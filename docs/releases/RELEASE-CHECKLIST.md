@@ -172,5 +172,6 @@ Policy enforced by the CLI for deploy source: clean worktree from `origin/main` 
 | 0.6 | `0015` (no new migrations) | Reasoning/EA/speech-act flags OFF; golden parity |
 | 0.7 | `0017_memory_canonical_shadow_enabled` (code head) | Assist/shadow Settings OFF; `/api/build` `closed_0_7`; no Memory chat influence |
 | 0.8 | `0019_legacy_doc_type_canonical_enabled` (code head) | Preset 410 default; doc-type canonical flag OFF; `/api/build` `closed_0_8`; staging_validated=false; 0018/0019 not claimed live |
+| 0.9 | `0019` (no new migrations) | Maintenance execution OFF; `/api/build` `closed_0_9`; three investigation counters only; `kos_tension_resolved_total` deferred; staging_validated=false |
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) and [STAGING-SEED-SMOKE.md](../STAGING-SEED-SMOKE.md). Operator deploy always via `bash deploy/manage_deploy.sh …`.

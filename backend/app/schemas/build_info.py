@@ -38,6 +38,7 @@ class ReleaseStatus(BaseModel):
     closed_0_6: bool = False
     closed_0_7: bool = False
     closed_0_8: bool = False
+    closed_0_9: bool = False
     engineering_ready: bool = False
     staging_validated: bool = False
     production_ready: bool = False
@@ -45,10 +46,14 @@ class ReleaseStatus(BaseModel):
     steps_046_050: list[dict[str, Any]] = Field(default_factory=list)
     steps_046_048: list[dict[str, Any]] = Field(default_factory=list)
     steps_052_057: list[dict[str, Any]] = Field(default_factory=list)
+    steps_058_062: list[dict[str, Any]] = Field(default_factory=list)
     release_0_7_capabilities: dict[str, ReleaseCapabilityState] = Field(
         default_factory=dict
     )
     release_0_8_capabilities: dict[str, ReleaseCapabilityState] = Field(
+        default_factory=dict
+    )
+    release_0_9_capabilities: dict[str, ReleaseCapabilityState] = Field(
         default_factory=dict
     )
     note: str = ""

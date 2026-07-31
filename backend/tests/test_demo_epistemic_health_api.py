@@ -197,7 +197,7 @@ def test_build_info_release_and_capabilities():
     from app.core.config import get_config
     from app.services.build_info_service import APP_RELEASE, BuildInfoService
 
-    assert APP_RELEASE == "0.8"
+    assert APP_RELEASE == "0.9"
     svc = BuildInfoService.__new__(BuildInfoService)
     svc._db = MagicMock()
     svc._config = get_config()
@@ -223,8 +223,9 @@ def test_build_info_release_and_capabilities():
         MV.return_value.get.return_value = 1
         KV.return_value.get.return_value = 1
         data = svc.collect()
-    assert data["release_status"]["accepted"] == "0.8"
+    assert data["release_status"]["accepted"] == "0.9"
     assert data["release_status"]["closed_0_8"] is True
+    assert data["release_status"]["closed_0_9"] is True
     assert data["release_status"]["staging_validated"] is False
     assert data["release_status"]["production_ready"] is False
     assert data["deployed_capabilities"]["REASONING_SERVICE_ENABLED"]["supported"] is True
