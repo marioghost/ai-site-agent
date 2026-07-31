@@ -2,6 +2,9 @@
 
 Not a Scheduler framework. Reuses the existing in-process background-worker
 pattern. Harmless when rollout flag is disabled and budget is 0.
+
+After Step 059 selection, invokes Step 060 investigation execution when plans
+were selected. Does not change Step 059 gates or selection semantics.
 """
 from __future__ import annotations
 
@@ -9,6 +12,10 @@ import threading
 
 from app.core.database import SessionLocal
 from app.core.logging import get_logger
+from app.repositories.settings_repository import SettingsRepository
+from app.services.executive.investigation_execution import (
+    execute_selected_investigations,
+)
 from app.services.executive.maintenance_orchestration import (
     orchestrate_maintenance_cycle,
 )
@@ -53,7 +60,10 @@ class MaintenanceCycleInvoker:
     def run_once(self) -> None:
         db = SessionLocal()
         try:
-            orchestrate_maintenance_cycle(db)
+            cycle = orchestrate_maintenance_cycle(db)
+            if cycle.selected_plans:
+                settings = SettingsRepository(db).get_or_create()
+                execute_selected_investigations(db, cycle.selected_plans, settings)
         finally:
             db.close()
 

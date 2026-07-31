@@ -26,6 +26,7 @@ from app.services.executive.maintenance_types import (
     SKIP_RANK_FAILED,
     STATUS_ERROR,
     STATUS_OK,
+    MaintenanceCycleResult,
 )
 
 pytestmark = pytest.mark.unit
@@ -304,11 +305,21 @@ def test_periodic_invocation_calls_cycle_entry() -> None:
         patch(
             "app.services.executive.maintenance_cycle_invoker.orchestrate_maintenance_cycle"
         ) as orch,
+        patch(
+            "app.services.executive.maintenance_cycle_invoker.execute_selected_investigations"
+        ) as exec_fn,
     ):
         session = MagicMock()
         session_factory.return_value = session
+        orch.return_value = MaintenanceCycleResult(
+            status="ok",
+            skip_reason="flag_off",
+            selected_plans=(),
+            plans_considered=0,
+        )
         invoker.run_once()
         orch.assert_called_once_with(session)
+        exec_fn.assert_not_called()
         session.close.assert_called_once()
 
 
