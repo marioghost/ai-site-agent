@@ -19,6 +19,7 @@ from app.services.executive.investigation_execution import (
 from app.services.executive.maintenance_orchestration import (
     orchestrate_maintenance_cycle,
 )
+from app.services.maintenance_metrics import observe_maintenance_metrics
 
 logger = get_logger(__name__)
 
@@ -61,9 +62,14 @@ class MaintenanceCycleInvoker:
         db = SessionLocal()
         try:
             cycle = orchestrate_maintenance_cycle(db)
+            investigation = None
             if cycle.selected_plans:
                 settings = SettingsRepository(db).get_or_create()
-                execute_selected_investigations(db, cycle.selected_plans, settings)
+                investigation = execute_selected_investigations(
+                    db, cycle.selected_plans, settings
+                )
+            # Step 061: observe DTOs on this invocation path (fail-open).
+            observe_maintenance_metrics(cycle, investigation)
         finally:
             db.close()
 

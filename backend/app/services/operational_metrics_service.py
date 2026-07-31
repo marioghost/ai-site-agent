@@ -1,6 +1,8 @@
-"""Operational metrics — read-only gauges for operators (RFC-100 Steps 025 / 037).
+"""Operational metrics — gauges + maintenance counters (RFC-100 Steps 025 / 037 / 061).
 
-Uses version services and TensionSurfacingService as authorities.
+Uses version services and TensionSurfacingService as authorities for gauges.
+Step 061 process-local counters are observed separately and appended at exposition.
+
 Does not mutate settings, bump versions, persist tensions, or query epistemic ORM
 tables directly.
 
@@ -16,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.services.epistemic_memory import EpistemicMemoryService
 from app.services.knowledge_version_service import KnowledgeVersionService
+from app.services.maintenance_metrics import get_maintenance_counters
 from app.services.memory_version_service import MemoryVersionService
 from app.services.tension_surfacing import TensionSurfacingService
 from app.services.tension_surfacing.tension_surfacing_service import (
@@ -58,8 +61,9 @@ class OperationalMetricsService:
         )
 
     def render_prometheus(self) -> str:
-        """Prometheus text exposition format (RFC-100 ``kos_*`` gauge names)."""
+        """Prometheus text exposition format (RFC-100 ``kos_*`` names)."""
         gauges = self.collect_gauges()
+        counters = get_maintenance_counters().snapshot()
         lines = [
             "# HELP kos_memory_version Epistemic memory revision counter (MemoryVersionService).",
             "# TYPE kos_memory_version gauge",
@@ -86,5 +90,23 @@ class OperationalMetricsService:
             ),
             "# TYPE kos_conflict_tensions gauge",
             f"kos_conflict_tensions {gauges.conflict_tensions}",
+            (
+                "# HELP kos_maintenance_cycles_total Completed maintenance cycle "
+                "results observed (process-local; includes no-op skip outcomes)."
+            ),
+            "# TYPE kos_maintenance_cycles_total counter",
+            f"kos_maintenance_cycles_total {counters.maintenance_cycles_total}",
+            (
+                "# HELP kos_investigations_planned Selected investigation plans "
+                "observed from MaintenanceCycleResult.selected_plans (process-local)."
+            ),
+            "# TYPE kos_investigations_planned counter",
+            f"kos_investigations_planned {counters.investigations_planned}",
+            (
+                "# HELP kos_investigations_failed_total Investigation plans with "
+                "status=failed observed from InvestigationCycleResult (process-local)."
+            ),
+            "# TYPE kos_investigations_failed_total counter",
+            f"kos_investigations_failed_total {counters.investigations_failed_total}",
         ]
         return "\n".join(lines) + "\n"

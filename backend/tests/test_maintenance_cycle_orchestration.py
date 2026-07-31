@@ -308,18 +308,23 @@ def test_periodic_invocation_calls_cycle_entry() -> None:
         patch(
             "app.services.executive.maintenance_cycle_invoker.execute_selected_investigations"
         ) as exec_fn,
+        patch(
+            "app.services.executive.maintenance_cycle_invoker.observe_maintenance_metrics"
+        ) as observe,
     ):
         session = MagicMock()
         session_factory.return_value = session
-        orch.return_value = MaintenanceCycleResult(
+        cycle = MaintenanceCycleResult(
             status="ok",
             skip_reason="flag_off",
             selected_plans=(),
             plans_considered=0,
         )
+        orch.return_value = cycle
         invoker.run_once()
         orch.assert_called_once_with(session)
         exec_fn.assert_not_called()
+        observe.assert_called_once_with(cycle, None)
         session.close.assert_called_once()
 
 
