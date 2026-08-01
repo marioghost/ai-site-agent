@@ -139,11 +139,11 @@ class SettingsBase(BaseModel):
     enable_trace_storage: bool = True
     enable_request_metadata_logging: bool = True
     enable_chat_debug_payload: bool = True
-    enable_semantic_diagnostics_v2: bool = False
-    cache_namespace_v2_enabled: bool = False
-    memory_shadow_write_enabled: bool = False
-    memory_evidence_assist_enabled: bool = False
-    memory_canonical_shadow_enabled: bool = False
+    enable_semantic_diagnostics_v2: bool = True
+    cache_namespace_v2_enabled: bool = True
+    memory_shadow_write_enabled: bool = True
+    memory_evidence_assist_enabled: bool = True
+    memory_canonical_shadow_enabled: bool = True
     allow_legacy_kp_presets: bool = False
     legacy_doc_type_canonical_enabled: bool = False
     max_trace_retention_days: int = Field(default=30, ge=1, le=3650)

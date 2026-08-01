@@ -155,6 +155,9 @@ def test_migration_0016_adds_memory_evidence_assist_flag():
     assert m16.down_revision == "0015_memory_shadow_write_enabled"
 
 
+    assert memory_evidence_assist_enabled(
+        Settings(memory_evidence_assist_enabled=True)
+    ) is True
     assert memory_evidence_assist_enabled(Settings()) is False
 
 
@@ -172,7 +175,7 @@ def test_memory_assist_effective_requires_reasoning_and_cache_v2(monkeypatch):
 @pytest.mark.unit
 def test_assist_on_reasoning_off_skipped(monkeypatch):
     s = _settings(memory_evidence_assist_enabled=True, cache_namespace_v2_enabled=True)
-    monkeypatch.delenv("REASONING_SERVICE_ENABLED", raising=False)
+    monkeypatch.setenv("REASONING_SERVICE_ENABLED", "false")
     from app.core.config import get_config
 
     get_config.cache_clear()
@@ -364,8 +367,13 @@ def test_empty_memory_does_not_reduce_sufficiency():
 
 
 @pytest.mark.unit
-def test_cache_namespace_assist_off_by_default():
-    ns = build_retrieval_namespace(_settings())
+def test_cache_namespace_assist_off_when_disabled():
+    ns = build_retrieval_namespace(
+        _settings(
+            memory_evidence_assist_enabled=False,
+            cache_namespace_v2_enabled=False,
+        )
+    )
     assert ns["memory_evidence_assist"] == "off"
     assert "corpus_boundary_fingerprint" not in ns
 

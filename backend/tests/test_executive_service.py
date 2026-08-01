@@ -10,6 +10,15 @@ from app.services.executive import ExecutiveService
 from app.services.rag_service import RagResult, RagSource
 
 
+@pytest.fixture(autouse=True)
+def _reasoning_off_for_passthrough(monkeypatch):
+    """Step 001 passthrough tests; Step 063 defaults Reasoning ON."""
+    monkeypatch.setattr(
+        "app.services.executive.executive_service.reasoning_service_enabled",
+        lambda: False,
+    )
+
+
 @pytest.mark.unit
 def test_executive_answer_delegates_to_rag_service():
     expected = RagResult(

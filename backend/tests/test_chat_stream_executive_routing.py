@@ -109,6 +109,11 @@ def _collect_dispatch_events(monkeypatch, *, executive: bool) -> list[tuple[str,
             return iter(golden)
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: executive)
+    # Legacy stream path under test is RagStreamingService (not Reasoning seam).
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
+        lambda: False,
+    )
     monkeypatch.setattr(
         "app.api.chat.RagStreamingService",
         lambda rag: _FakeStreaming(),
@@ -154,6 +159,7 @@ def test_stream_dispatch_flag_off_uses_rag_streaming(monkeypatch):
             raise AssertionError("Executive must not be used when flag is OFF")
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _FakeStreaming())
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
     monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
@@ -282,6 +288,7 @@ def test_stream_error_event_passes_through_unchanged(monkeypatch):
             yield error_event
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _ErrorStream())
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
 
@@ -308,6 +315,7 @@ def test_stream_dispatch_cancellation_propagates(monkeypatch):
             yield from _slow_stream()
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _FakeStreaming())
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
 

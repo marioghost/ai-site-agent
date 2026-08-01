@@ -156,6 +156,7 @@ def test_non_stream_dispatch_logs_path_legacy(monkeypatch, caplog):
             return RagResult(answer="ok", sources=[], used_context=False, request_id="req-ns")
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
     monkeypatch.setattr("app.api.chat.ExecutiveService", MagicMock())
 

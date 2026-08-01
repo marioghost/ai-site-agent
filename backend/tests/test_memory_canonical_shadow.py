@@ -188,8 +188,12 @@ def test_migration_0017_chain():
 
 
 @pytest.mark.unit
-def test_shadow_flag_defaults_off():
+def test_shadow_flag_defaults_follow_orm_materialization():
+    # Unset ORM instance → helper False; explicit True → ON (DB default via migration).
     assert memory_canonical_shadow_enabled(Settings()) is False
+    assert memory_canonical_shadow_enabled(
+        Settings(memory_canonical_shadow_enabled=True)
+    ) is True
 
 
 @pytest.mark.unit

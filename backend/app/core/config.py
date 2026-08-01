@@ -98,18 +98,19 @@ class AppConfig(BaseSettings):
     jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
     jwt_expire_minutes: int = Field(default=480, alias="JWT_EXPIRE_MINUTES")
 
-    # Knowledge OS migration flags (RFC-100). Default OFF until parity proven.
+    # Knowledge OS migration flags (RFC-100 Step 063 — default ON for Release 1.0).
+    # Emergency rollback: set env to false/0/off and restart.
     knowledge_os_executive_enabled: bool = Field(
-        default=False, alias="KNOWLEDGE_OS_EXECUTIVE_ENABLED"
+        default=True, alias="KNOWLEDGE_OS_EXECUTIVE_ENABLED"
     )
     reasoning_service_enabled: bool = Field(
-        default=False, alias="REASONING_SERVICE_ENABLED"
+        default=True, alias="REASONING_SERVICE_ENABLED"
     )
     evidence_assembly_enabled: bool = Field(
-        default=False, alias="EVIDENCE_ASSEMBLY_ENABLED"
+        default=True, alias="EVIDENCE_ASSEMBLY_ENABLED"
     )
     reasoning_speech_acts_enabled: bool = Field(
-        default=False, alias="REASONING_SPEECH_ACTS_ENABLED"
+        default=True, alias="REASONING_SPEECH_ACTS_ENABLED"
     )
 
     @property

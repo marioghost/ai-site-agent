@@ -4,23 +4,39 @@ from __future__ import annotations
 from app.core.config import get_config
 
 
+def _settings_bool(settings, name: str, *, default: bool) -> bool:
+    """Read a Settings-backed flag.
+
+    Missing attribute → *default* (plain objects / incomplete stubs).
+    ORM unset (``None``) → False so in-memory ``Settings()`` fixtures stay
+    explicit; production defaults come from Alembic ``server_default`` +
+    migration ``UPDATE`` (Step 063) and Pydantic schema defaults.
+    """
+    if not hasattr(settings, name):
+        return default
+    value = getattr(settings, name)
+    if value is None:
+        return False
+    return bool(value)
+
+
 def knowledge_os_executive_enabled() -> bool:
-    """Route non-streaming chat via ExecutiveService when True (default False)."""
+    """Route chat via ExecutiveService when True (default True, RFC-100 Step 063)."""
     return bool(get_config().knowledge_os_executive_enabled)
 
 
 def reasoning_service_enabled() -> bool:
-    """Route chat through ReasoningService passthrough when True (default False, RFC-100 Step 039)."""
+    """Route chat through ReasoningService when True (default True, RFC-100 Step 063)."""
     return bool(get_config().reasoning_service_enabled)
 
 
 def evidence_assembly_enabled() -> bool:
-    """Route DFP stage through EvidenceAssemblyService when True (default False, RFC-100 Step 040)."""
+    """Route assemble stage through EvidenceAssemblyService when True (default True, Step 063)."""
     return bool(get_config().evidence_assembly_enabled)
 
 
 def reasoning_speech_acts_enabled() -> bool:
-    """Activate Language consumption of speech acts (default False, RFC-100 Step 045).
+    """Activate Language consumption of speech acts (default True, RFC-100 Step 063).
 
     Has no effect unless ReasoningService is on the chat path
     (``REASONING_SERVICE_ENABLED``). Independently rollbackable.
@@ -29,34 +45,34 @@ def reasoning_speech_acts_enabled() -> bool:
 
 
 def semantic_diagnostics_v2_enabled(settings) -> bool:
-    """Include semantic diagnostics v2 stubs when True (default False, RFC-100 Step 014)."""
-    return bool(getattr(settings, "enable_semantic_diagnostics_v2", False))
+    """Include semantic diagnostics v2 stubs when True (default True, RFC-100 Step 063)."""
+    return _settings_bool(settings, "enable_semantic_diagnostics_v2", default=True)
 
 
 def cache_namespace_v2_enabled(settings) -> bool:
-    """Include memory_version in cache namespace when True (default False, RFC-100 Step 023)."""
-    return bool(getattr(settings, "cache_namespace_v2_enabled", False))
+    """Include memory_version in cache namespace when True (default True, RFC-100 Step 063)."""
+    return _settings_bool(settings, "cache_namespace_v2_enabled", default=True)
 
 
 def memory_shadow_write_enabled(settings) -> bool:
-    """Persist SI claim proposals to epistemic tables when True (default False, RFC-100 Step 030)."""
-    return bool(getattr(settings, "memory_shadow_write_enabled", False))
+    """Persist SI claim proposals to epistemic tables when True (default True, Step 063)."""
+    return _settings_bool(settings, "memory_shadow_write_enabled", default=True)
 
 
 def memory_evidence_assist_enabled(settings) -> bool:
-    """Advisory Memory region read before Evidence Assembly when True (default False, Step 047).
+    """Advisory Memory region read before Evidence Assembly (default True, Step 063).
 
     Effective only when ``REASONING_SERVICE_ENABLED`` and ``cache_namespace_v2_enabled``.
-  """
-    return bool(getattr(settings, "memory_evidence_assist_enabled", False))
+    """
+    return _settings_bool(settings, "memory_evidence_assist_enabled", default=True)
 
 
 def memory_canonical_shadow_enabled(settings) -> bool:
-    """Diagnostic Memory vs retrieval shadow when True (default False, Step 048).
+    """Diagnostic Memory vs retrieval shadow (default True, RFC-100 Step 063).
 
     Effective only when Reasoning, assist, and cache namespace v2 are also ON.
     """
-    return bool(getattr(settings, "memory_canonical_shadow_enabled", False))
+    return _settings_bool(settings, "memory_canonical_shadow_enabled", default=True)
 
 
 def allow_legacy_kp_presets(settings) -> bool:
@@ -65,7 +81,7 @@ def allow_legacy_kp_presets(settings) -> bool:
     Settings-backed only — not an environment flag. Does not affect stored
     ``knowledge_profile_json`` runtime, generation/wizard, or in-process PRESETS.
     """
-    return bool(getattr(settings, "allow_legacy_kp_presets", False))
+    return _settings_bool(settings, "allow_legacy_kp_presets", default=False)
 
 
 def legacy_doc_type_canonical_enabled(settings) -> bool:
@@ -75,7 +91,7 @@ def legacy_doc_type_canonical_enabled(settings) -> bool:
     canonical reorder and keeps post-DFP/broad-inject order. Does not implement
     Memory authority selection and does not change shadow/assist semantics.
     """
-    return bool(getattr(settings, "legacy_doc_type_canonical_enabled", False))
+    return _settings_bool(settings, "legacy_doc_type_canonical_enabled", default=False)
 
 
 def memory_canonical_shadow_effective(settings) -> bool:

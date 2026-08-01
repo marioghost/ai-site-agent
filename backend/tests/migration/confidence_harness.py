@@ -189,6 +189,11 @@ def apply_flags(monkeypatch, combo: FlagCombo) -> None:
         "app.services.executive.executive_service.reasoning_service_enabled",
         lambda: combo.reasoning,
     )
+    # Step 042 seam gate is independent of Step 045 Language UX (default ON at 063).
+    monkeypatch.setattr(
+        "app.services.reasoning.reasoning_service.reasoning_speech_acts_enabled",
+        lambda: False,
+    )
 
 
 def install_instrumentation(monkeypatch, counters: ExecutionCounters) -> None:

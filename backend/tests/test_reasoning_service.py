@@ -39,14 +39,15 @@ def _fake_rag_result(**overrides) -> RagResult:
 
 
 @pytest.mark.unit
-def test_reasoning_service_enabled_defaults_false(monkeypatch):
+def test_reasoning_service_enabled_defaults_true(monkeypatch):
     from app.core.config import get_config
 
     monkeypatch.delenv("REASONING_SERVICE_ENABLED", raising=False)
     get_config.cache_clear()
     from app.services.feature_flags import reasoning_service_enabled
 
-    assert reasoning_service_enabled() is False
+    assert reasoning_service_enabled() is True
+    get_config.cache_clear()
 
 
 @pytest.mark.unit
@@ -58,6 +59,18 @@ def test_reasoning_service_enabled_reads_env(monkeypatch):
     from app.services.feature_flags import reasoning_service_enabled
 
     assert reasoning_service_enabled() is True
+    get_config.cache_clear()
+
+
+@pytest.mark.unit
+def test_reasoning_service_enabled_kill_switch_false(monkeypatch):
+    from app.core.config import get_config
+
+    monkeypatch.setenv("REASONING_SERVICE_ENABLED", "false")
+    get_config.cache_clear()
+    from app.services.feature_flags import reasoning_service_enabled
+
+    assert reasoning_service_enabled() is False
     get_config.cache_clear()
 
 

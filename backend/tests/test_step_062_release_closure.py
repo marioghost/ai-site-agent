@@ -54,7 +54,8 @@ def test_release_0_9_closure_metadata():
     assert rs["engineering_ready"] is True
     assert rs["staging_validated"] is False
     assert rs["production_ready"] is False
-    assert rs["in_progress"] is None
+    # Step 063 marks Release 1.0 in progress; 0.9 remains accepted/closed.
+    assert rs["in_progress"] == "1.0"
     assert [s["step"] for s in rs["steps_058_062"]] == [
         "058",
         "059",
@@ -62,6 +63,7 @@ def test_release_0_9_closure_metadata():
         "061",
         "062",
     ]
+    assert [s["step"] for s in rs["steps_063"]] == ["063"]
     caps9 = rs["release_0_9_capabilities"]
     assert caps9["index_integrate_compose"]["code_present"] is True
     assert caps9["investigation_metrics"]["code_present"] is True

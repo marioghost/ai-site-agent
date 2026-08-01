@@ -185,9 +185,11 @@ def test_flag_on_debug_enabled_persists_understanding_trace_in_diagnostics_json(
 
 
 @pytest.mark.unit
-def test_semantic_diagnostics_v2_enabled_defaults_false():
+def test_semantic_diagnostics_v2_enabled_defaults_true():
+    from app.schemas.settings import SettingsBase
     from app.services.feature_flags import semantic_diagnostics_v2_enabled
 
+    assert SettingsBase().enable_semantic_diagnostics_v2 is True
     assert semantic_diagnostics_v2_enabled(_SettingsStub()) is False
     assert semantic_diagnostics_v2_enabled(_SettingsStubV2Enabled()) is True
 

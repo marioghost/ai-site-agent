@@ -49,14 +49,14 @@ def _decision(act: str, reason: str = "test", hint: str | None = None) -> Speech
 
 
 @pytest.mark.unit
-def test_flag_defaults_false(monkeypatch):
+def test_flag_defaults_true(monkeypatch):
     monkeypatch.delenv("REASONING_SPEECH_ACTS_ENABLED", raising=False)
     from app.core.config import get_config
 
     get_config.cache_clear()
     from app.services.feature_flags import reasoning_speech_acts_enabled
 
-    assert reasoning_speech_acts_enabled() is False
+    assert reasoning_speech_acts_enabled() is True
     get_config.cache_clear()
 
 

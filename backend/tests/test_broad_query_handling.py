@@ -121,7 +121,7 @@ def test_document_type_from_profile_rules():
 
 
 def test_broad_overview_query_detected_by_retrieval_intent():
-    profile = PRESETS["generic_corporate"]
+    profile = PRESETS["generic_corporate"].model_copy(deep=True)
     profile.organization_name = "Acme Corporation"
     result = RetrievalIntentService.classify("tell me about Acme Corporation", profile=profile)
     assert result.legacy_intent == "entity_overview"
@@ -302,6 +302,10 @@ def test_retrieval_pipeline_records_broad_overview_diagnostics(monkeypatch):
     monkeypatch.setattr(
         "app.services.retrieval_pipeline_service.DocumentFirstRetrievalPipeline",
         _FakeDocumentPipeline,
+    )
+    monkeypatch.setattr(
+        "app.services.retrieval_pipeline_service.evidence_assembly_enabled",
+        lambda: False,
     )
 
     settings = Settings(

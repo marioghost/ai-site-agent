@@ -60,71 +60,80 @@ _ENV_CAPABILITIES = (
         "KNOWLEDGE_OS_EXECUTIVE_ENABLED",
         "knowledge_os_executive_enabled",
         "Executive seam",
-        False,
+        True,
         "Route chat through ExecutiveService instead of direct RagService",
-        "Release 1.0 default ON",
+        "Step 063 — default ON; kill-switch = env false + restart",
     ),
     (
         "REASONING_SERVICE_ENABLED",
         "reasoning_service_enabled",
         "Reasoning seam",
-        False,
+        True,
         "Route chat through ReasoningService (diagnostics + optional Language)",
-        "Release 1.0 default ON",
+        "Step 063 — default ON; kill-switch = env false + restart",
     ),
     (
         "EVIDENCE_ASSEMBLY_ENABLED",
         "evidence_assembly_enabled",
         "Evidence Assembly seam",
-        False,
+        True,
         "Route RPS assemble stage through EvidenceAssemblyService",
-        "Release 1.0 default ON",
+        "Step 063 — default ON; kill-switch = env false + restart",
     ),
     (
         "REASONING_SPEECH_ACTS_ENABLED",
         "reasoning_speech_acts_enabled",
         "Speech-act Language rendering",
-        False,
+        True,
         "Language applies clarify/refuse/qualify when Reasoning is ON",
-        "Requires Reasoning ON; Step 045 must be deployed",
+        "Step 063 — default ON; requires Reasoning ON; kill-switch = env false",
     ),
+)
+
+# Release 1.0 (in progress) — Step 063+
+RELEASE_1_0_STEPS = (
+    {
+        "step": "063",
+        "title": "Default knowledge_os flags ON",
+        "code": "present",
+    },
 )
 
 _SETTINGS_CAPABILITIES = (
     (
         "enable_semantic_diagnostics_v2",
         "Semantic diagnostics v2 stub",
-        False,
+        True,
         "Empty understanding_trace on chat when debug enabled",
-        "Release 1.0",
+        "Step 063 — default ON",
     ),
     (
         "cache_namespace_v2_enabled",
         "Cache namespace v2",
-        False,
+        True,
         "Include memory_version in retrieval/answer cache namespace",
-        "Staging validation",
+        "Step 063 — default ON",
     ),
     (
         "memory_shadow_write_enabled",
         "Memory shadow write",
-        False,
+        True,
         "Persist SI claim proposals to Epistemic Memory (shadow; not used by chat)",
-        "Default OFF until 0.7 assist",
+        "Step 063 — default ON",
     ),
     (
         "memory_evidence_assist_enabled",
         "Memory evidence assist",
-        False,
+        True,
         "Advisory Memory region read in Reasoning before Evidence Assembly",
-        "Requires Reasoning ON + cache_namespace_v2; staging NO-GO until coverage gate",
+        "Step 063 — default ON; effective when Reasoning + cache_namespace_v2 ON",
     ),
     (
         "memory_canonical_shadow_enabled",
         "Memory canonical shadow",
-        False,
+        True,
         "Diagnostic Memory vs retrieval source-set comparison (shadow only)",
-        "Requires Reasoning ON + assist ON + cache_namespace_v2; skipped on answer cache hit",
+        "Step 063 — default ON; effective when Reasoning + assist + cache v2 ON",
     ),
     (
         "allow_legacy_kp_presets",
@@ -258,7 +267,7 @@ class BuildInfoService:
             "settings_flags": settings_flags,
             "release_status": {
                 "accepted": "0.9",
-                "in_progress": None,
+                "in_progress": "1.0",
                 "closed_0_6": True,
                 "closed_0_7": True,
                 "closed_0_8": True,
@@ -272,6 +281,7 @@ class BuildInfoService:
                 "steps_046_048": list(RELEASE_0_7_STEPS),
                 "steps_052_057": list(RELEASE_0_8_STEPS),
                 "steps_058_062": list(RELEASE_0_9_STEPS),
+                "steps_063": list(RELEASE_1_0_STEPS),
                 "release_0_7_capabilities": {
                     "memory_region_reads": {
                         "code_present": True,
@@ -419,11 +429,14 @@ class BuildInfoService:
                     },
                 },
                 "note": (
-                    "Release 0.9 engineering accepted (Steps 058–062 + Index→Integrate). "
-                    "Engineering Ready; staging_validated=false; production_ready=false. "
-                    "MAINTENANCE_EXECUTION_ENABLED default OFF. "
-                    "kos_tension_resolved_total deferred. "
-                    "Memory assist/shadow remain default OFF. "
+                    "Release 0.9 accepted; Release 1.0 in progress (Step 063 — "
+                    "knowledge_os flags default ON). "
+                    "APP_RELEASE remains 0.9 until 1.0 engineering closure. "
+                    "Legacy flags allow_legacy_kp_presets / "
+                    "legacy_doc_type_canonical_enabled stay default OFF. "
+                    "MAINTENANCE_EXECUTION_ENABLED default ON when unset; "
+                    "budget still defaults to 0 (no work). "
+                    "staging_validated=false; production_ready=false. "
                     "code_present ≠ configured ≠ enabled ≠ effective ≠ deployed. "
                     "Live /api/build reflects this metadata only after approved deploy+restart."
                 ),

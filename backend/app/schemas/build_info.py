@@ -47,6 +47,7 @@ class ReleaseStatus(BaseModel):
     steps_046_048: list[dict[str, Any]] = Field(default_factory=list)
     steps_052_057: list[dict[str, Any]] = Field(default_factory=list)
     steps_058_062: list[dict[str, Any]] = Field(default_factory=list)
+    steps_063: list[dict[str, Any]] = Field(default_factory=list)
     release_0_7_capabilities: dict[str, ReleaseCapabilityState] = Field(
         default_factory=dict
     )

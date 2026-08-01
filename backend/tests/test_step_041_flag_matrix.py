@@ -33,6 +33,14 @@ if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
 
 
+@pytest.fixture(autouse=True)
+def _speech_acts_off_for_041(monkeypatch):
+    """Step 041 matrix is pre-Step-045; Step 063 defaults speech acts ON."""
+    monkeypatch.setattr(
+        "app.services.reasoning.reasoning_service.reasoning_speech_acts_enabled",
+        lambda: False,
+    )
+
 def _hit(url: str = "https://site/about") -> SearchHit:
     return SearchHit(
         score=0.9,
@@ -201,6 +209,10 @@ def test_flag_matrix_one_retrieval_one_llm(
     monkeypatch.setattr(
         "app.services.reasoning.reasoning_service.evidence_assembly_enabled",
         lambda: ea_on,
+    )
+    monkeypatch.setattr(
+        "app.services.reasoning.reasoning_service.reasoning_speech_acts_enabled",
+        lambda: False,
     )
 
     settings = _pipeline_settings()

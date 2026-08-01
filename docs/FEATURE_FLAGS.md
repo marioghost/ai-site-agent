@@ -1,8 +1,8 @@
 # Feature Flags — Knowledge OS Migration
 
-**RFC-100 Release 0.1+** (updated Release 0.4 — Epistemic Memory shadow flag)  
+**RFC-100 Release 0.1+** (updated **Release 1.0 Step 063** — Knowledge OS flags default **ON**)  
 **Owner:** Platform / migration lead  
-**Principle:** Default **OFF** until parity proven; remove or default ON at Release 1.0.
+**Principle:** Default **ON** for Knowledge OS path at Release 1.0 (Step 063). Legacy surfaces stay **OFF**. Kill-switch = explicit `false` + restart (unset no longer disables env flags).
 
 This registry tracks migration flags only. Existing Settings toggles (reranking, caches, tracing, etc.) are unchanged and documented in the dashboard Settings UI.
 
@@ -22,36 +22,37 @@ allow_legacy_<surface>                        # deprecation gates
 
 | Flag | Surface | Default | Purpose | Activate when | Rollback | Remove |
 |------|---------|---------|---------|---------------|----------|--------|
-| `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **false** | Route `/api/chat` (stream + non-stream) through `ExecutiveService` instead of direct `RagService` | Staging golden shadow green; ops sign-off | Set env `false` or unset; restart | Release 1.0 |
-| `reasoning_service_enabled` | Env `REASONING_SERVICE_ENABLED` | **false** | Route chat through `ReasoningService` (Steps 039–045). With EA also ON (Step 041), Reasoning orders RPS prepare→assemble→finalize once. Steps 043–044 add sufficiency + speech-act diagnostics; Step 045 Language UX requires `REASONING_SPEECH_ACTS_ENABLED` | Golden parity with flag ON (speech acts OFF); ops sign-off | Set env `false` or unset; restart | Release 1.0 |
-| `evidence_assembly_enabled` | Env `EVIDENCE_ASSEMBLY_ENABLED` | **false** | Route RPS assemble stage through `EvidenceAssemblyService` (Step 040). With Reasoning also ON, Reasoning coordinates that stage | Golden + retrieval parity; **Step 042 gate** | Set env `false` or unset; restart | Release 1.0 |
-| `reasoning_speech_acts_enabled` | Env `REASONING_SPEECH_ACTS_ENABLED` | **false** | Language consumes Reasoning speech acts (Step 045). **No effect when Reasoning OFF.** When Reasoning ON + this OFF → Step 044 advisory-only. When both ON → clarify/refuse deterministic; qualify limitation; answer unchanged | Intentional UX tests; ops sign-off | Set env `false` or unset; restart | Release 1.0 |
+| `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **true** | Route `/api/chat` (stream + non-stream) through `ExecutiveService` instead of direct `RagService` | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
+| `reasoning_service_enabled` | Env `REASONING_SERVICE_ENABLED` | **true** | Route chat through `ReasoningService` (Steps 039–045). With EA also ON (Step 041), Reasoning orders RPS prepare→assemble→finalize once. Steps 043–044 add sufficiency + speech-act diagnostics; Step 045 Language UX requires `REASONING_SPEECH_ACTS_ENABLED` | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
+| `evidence_assembly_enabled` | Env `EVIDENCE_ASSEMBLY_ENABLED` | **true** | Route RPS assemble stage through `EvidenceAssemblyService` (Step 040). With Reasoning also ON, Reasoning coordinates that stage | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
+| `reasoning_speech_acts_enabled` | Env `REASONING_SPEECH_ACTS_ENABLED` | **true** | Language consumes Reasoning speech acts (Step 045). **No effect when Reasoning OFF.** When Reasoning ON + this OFF → Step 044 advisory-only. When both ON → clarify/refuse deterministic; qualify limitation; answer unchanged | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
 
 **Step 042:** All three migration flags validated independently and in all 8 combinations — see [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md).
-| `enable_semantic_diagnostics_v2` | Settings DB column | **false** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Staging diagnostics validation; Step 015 dashboard | Set Settings `false`; restart not required | Release 1.0 |
-| `cache_namespace_v2_enabled` | Settings DB column | **false** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Staging cache invalidation validation; after Step 022 manual bump tested | Set Settings `false`; restart not required | Release 0.5 |
-| `memory_shadow_write_enabled` | Settings DB column | **false** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Staging idempotency + roundtrip tests green; see [ADR-0001](adr/0001-shadow-observation-key-per-source.md) | Set Settings `false`; restart not required | Release 0.7 |
-| `memory_evidence_assist_enabled` | Settings DB column | **false** | Advisory Memory region read in Reasoning before Evidence Assembly (Step 047) | Reasoning ON + `cache_namespace_v2_enabled`; staging NO-GO until Memory coverage gate | Set Settings `false`; restart not required | Release 1.0 |
-| `memory_canonical_shadow_enabled` | Settings DB column | **false** | Diagnostic Memory vs retrieval source-set comparison (Step 048); no answer influence | Reasoning ON + assist ON + cache v2 ON; skipped on answer cache hit | Set Settings `false`; restart not required | Release 1.0 |
-| `allow_legacy_kp_presets` | Settings DB column | **false** | Allow GET/POST Knowledge Profile industry preset APIs; **410** when false (Step 054) | Ops rollback only — keep false in normal 0.8 operation | Set Settings `true` | Release 1.0 |
-| `legacy_doc_type_canonical_enabled` | Settings DB column | **false** | When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (Step 055) | Ops rollback to restore pre-055 reorder | Set Settings `true` | Release 1.0 |
+| `enable_semantic_diagnostics_v2` | Settings DB column | **true** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
+| `cache_namespace_v2_enabled` | Settings DB column | **true** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
+| `memory_shadow_write_enabled` | Settings DB column | **true** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
+| `memory_evidence_assist_enabled` | Settings DB column | **true** | Advisory Memory region read in Reasoning before Evidence Assembly (Step 047) | Default ON (Step 063); effective when Reasoning + `cache_namespace_v2` ON | Set Settings `false`; restart not required | After 1.0 stabilization |
+| `memory_canonical_shadow_enabled` | Settings DB column | **true** | Diagnostic Memory vs retrieval source-set comparison (Step 048); no answer influence | Default ON (Step 063); effective when Reasoning + assist + cache v2 ON | Set Settings `false`; restart not required | After 1.0 stabilization |
+| `allow_legacy_kp_presets` | Settings DB column | **false** | Allow GET/POST Knowledge Profile industry preset APIs; **410** when false (Step 054) | Ops rollback only — keep false in normal operation | Set Settings `true` | Release 1.0+ |
+| `legacy_doc_type_canonical_enabled` | Settings DB column | **false** | When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (Step 055) | Ops rollback to restore pre-055 reorder | Set Settings `true` | Release 1.0+ |
+| `MAINTENANCE_EXECUTION_ENABLED` | Env | **true** when unset | Gate maintenance investigation execution (Step 059+) | Default ON unset (Step 063); budget still defaults to **0** (no work) | Set env `false`; restart | After 1.0 stabilization |
 
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
-**Release 0.7 (Steps 046–050):** Engineering Ready (`closed_0_7: true`). Assist/shadow Settings flags remain **default OFF**. Staging activation pending real offline evaluation.
+**Release 1.0 Step 063:** Knowledge OS env + Settings flags above default **ON**. Legacy KP/doc-type flags remain **false**. See [1.0-step-063-implementation.md](releases/1.0-step-063-implementation.md).
 
-**Release 0.8 (Steps 052–057):** Engineering Ready (`closed_0_8: true`; `APP_RELEASE=0.8`). `allow_legacy_kp_presets` and `legacy_doc_type_canonical_enabled` default **false**. Memory assist/shadow remain **default OFF**. `staging_validated=false`; `production_ready=false`. Migrations **0018/0019** are repository head — **not** claimed applied live. See [RELEASE-0.8-ACCEPTANCE-REPORT.md](releases/RELEASE-0.8-ACCEPTANCE-REPORT.md).
+**Release 0.7–0.9 (historical):** Flags shipped default OFF through Release 0.9 engineering closure. Do not rewrite historical acceptance reports.
 
 ### `enable_semantic_diagnostics_v2`
 
 **Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/chat_response_builder.py` → `app/api/chat.py`
 
-**Behavior when OFF (default):**
+**Behavior when OFF:**
 
 - `ChatResponse.understanding_trace` remains `null` (unchanged from Release 0.1)
 - Explicit `understanding_trace` in stream payloads is preserved (forward compat)
 
-**Behavior when ON + client `debug=true` + `enable_chat_debug_payload=true`:**
+**Behavior when ON (default as of Step 063) + client `debug=true` + `enable_chat_debug_payload=true`:**
 
 - Response includes empty `understanding_trace` stub (`version: "stub"`, `populated: false`)
 - Persisted session diagnostics JSON includes the same stub
@@ -73,13 +74,13 @@ cd backend
 
 **Code:** `app/core/config.py` → `app/services/feature_flags.py` → `app/api/chat.py`
 
-**Behavior when OFF (default):**
+**Behavior when OFF (kill-switch):**
 
 - `_dispatch_non_stream_answer()` → `RagService.answer()`
 - `_dispatch_stream_events()` → `RagStreamingService.iter_events()`
 - Structured logs: `path=legacy`
 
-**Behavior when ON:**
+**Behavior when ON (default as of Step 063):**
 
 - Both paths delegate to `ExecutiveService` (passthrough to same RAG stack in 0.1)
 - Structured logs: `path=executive`
@@ -100,13 +101,13 @@ cd backend
 
 **Code:** `app/models/settings.py` → `app/services/feature_flags.py` → `app/services/cache_namespace_service.py` → `RagService` / `RagStreamingService`
 
-**Behavior when OFF (default):**
+**Behavior when OFF (kill-switch):**
 
-- Cache namespace dict is **identical** to pre-0.3 behavior
+- Cache namespace dict matches pre-v2 behavior
 - `memory_version` on the settings row is **ignored** for cache keys
 - Existing retrieval and answer cache entries remain valid
 
-**Behavior when ON:**
+**Behavior when ON (default as of Step 063):**
 
 - `build_retrieval_namespace(..., db=session)` adds `memory_version` from **`MemoryVersionService.get()`**
 - Bumping `memory_version` (manual Step 022 API or Step 031 auto-bump on new shadow rows) produces a new namespace hash → cache miss on next lookup
@@ -278,14 +279,15 @@ Engineering accepted — [RELEASE-0.8-ACCEPTANCE-REPORT.md](releases/RELEASE-0.8
 
 Use when Executive path causes regression in staging or production.
 
-1. **Disable flag:** set `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` (or unset) and restart backend pods/processes.
+1. **Disable flag:** set `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` and restart backend pods/processes.
+   (**Do not** rely on unsetting the variable — as of Step 063, unset means **ON**.)
 2. **Clear caches** (optional but recommended after routing change):
    - Admin → clear retrieval cache / semantic answer cache, or run maintenance script if available.
 3. **Verify:** run golden smoke (see below).
 4. **Observe:** confirm logs show `path=legacy` on new chat requests.
 5. **Post-mortem** within 24h if production was affected.
 
-There is no separate emergency env in 0.1; disabling `KNOWLEDGE_OS_EXECUTIVE_ENABLED` is sufficient.
+Disabling `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` is the primary chat-path kill-switch.
 
 ---
 

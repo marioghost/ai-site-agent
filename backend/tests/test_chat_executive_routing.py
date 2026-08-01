@@ -28,14 +28,15 @@ def _fake_rag_result(**overrides) -> RagResult:
 
 
 @pytest.mark.unit
-def test_knowledge_os_executive_enabled_defaults_false(monkeypatch):
+def test_knowledge_os_executive_enabled_defaults_true(monkeypatch):
     from app.core.config import get_config
 
     monkeypatch.delenv("KNOWLEDGE_OS_EXECUTIVE_ENABLED", raising=False)
     get_config.cache_clear()
     from app.services.feature_flags import knowledge_os_executive_enabled
 
-    assert knowledge_os_executive_enabled() is False
+    assert knowledge_os_executive_enabled() is True
+    get_config.cache_clear()
 
 
 @pytest.mark.unit
@@ -47,6 +48,19 @@ def test_knowledge_os_executive_enabled_reads_env(monkeypatch):
     from app.services.feature_flags import knowledge_os_executive_enabled
 
     assert knowledge_os_executive_enabled() is True
+    get_config.cache_clear()
+
+
+@pytest.mark.unit
+def test_knowledge_os_executive_enabled_kill_switch_false(monkeypatch):
+    from app.core.config import get_config
+
+    monkeypatch.setenv("KNOWLEDGE_OS_EXECUTIVE_ENABLED", "false")
+    get_config.cache_clear()
+    from app.services.feature_flags import knowledge_os_executive_enabled
+
+    assert knowledge_os_executive_enabled() is False
+    get_config.cache_clear()
 
 
 @pytest.mark.unit
@@ -73,6 +87,10 @@ def test_dispatch_flag_off_uses_rag_service(monkeypatch):
 
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
         lambda: False,
     )
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
@@ -155,6 +173,10 @@ def test_dispatch_both_paths_return_same_result(monkeypatch):
         "app.api.chat.knowledge_os_executive_enabled",
         lambda: False,
     )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
+        lambda: False,
+    )
     legacy = _dispatch_non_stream_answer(
         MagicMock(), MagicMock(), "q", "s", request_id="req-3"
     )
@@ -190,6 +212,7 @@ def test_dispatch_logs_path(monkeypatch, caplog):
 
     with caplog.at_level(logging.INFO, logger="app.api.chat"):
         monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+        monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-log-1",
@@ -230,6 +253,7 @@ def test_dispatch_overloaded_error_propagates(monkeypatch):
     )
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     with pytest.raises(OverloadedError, match="too many requests"):
         _dispatch_non_stream_answer(
             MagicMock(), MagicMock(), "q", "s", request_id="req-err-1"
@@ -261,6 +285,10 @@ def test_chat_flag_off_uses_rag_service(monkeypatch, client, auth_headers):
 
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
         lambda: False,
     )
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
@@ -345,6 +373,10 @@ def test_chat_flag_on_and_off_return_identical_schema(monkeypatch, client, auth_
         "app.api.chat.knowledge_os_executive_enabled",
         lambda: False,
     )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
+        lambda: False,
+    )
     legacy = client.post("/api/chat", json=payload, headers=auth_headers)
     assert legacy.status_code == 200
 
@@ -388,6 +420,10 @@ def test_chat_overloaded_error_propagates_same_for_both_paths(
 
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
         lambda: False,
     )
     legacy = client.post("/api/chat", json=payload, headers=auth_headers)

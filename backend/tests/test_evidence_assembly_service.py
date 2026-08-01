@@ -96,14 +96,14 @@ def _request() -> EvidenceAssemblyRequest:
 
 
 @pytest.mark.unit
-def test_evidence_assembly_enabled_defaults_false(monkeypatch):
+def test_evidence_assembly_enabled_defaults_true(monkeypatch):
     from app.core.config import get_config
 
     monkeypatch.delenv("EVIDENCE_ASSEMBLY_ENABLED", raising=False)
     get_config.cache_clear()
     from app.services.feature_flags import evidence_assembly_enabled
 
-    assert evidence_assembly_enabled() is False
+    assert evidence_assembly_enabled() is True
     get_config.cache_clear()
 
 
@@ -116,6 +116,18 @@ def test_evidence_assembly_enabled_reads_env(monkeypatch):
     from app.services.feature_flags import evidence_assembly_enabled
 
     assert evidence_assembly_enabled() is True
+    get_config.cache_clear()
+
+
+@pytest.mark.unit
+def test_evidence_assembly_enabled_kill_switch_false(monkeypatch):
+    from app.core.config import get_config
+
+    monkeypatch.setenv("EVIDENCE_ASSEMBLY_ENABLED", "false")
+    get_config.cache_clear()
+    from app.services.feature_flags import evidence_assembly_enabled
+
+    assert evidence_assembly_enabled() is False
     get_config.cache_clear()
 
 
@@ -186,7 +198,7 @@ def test_flag_off_calls_dfp_directly_without_ea(monkeypatch):
     from app.core.config import get_config
     from app.models.settings import Settings
 
-    monkeypatch.delenv("EVIDENCE_ASSEMBLY_ENABLED", raising=False)
+    monkeypatch.setenv("EVIDENCE_ASSEMBLY_ENABLED", "false")
     get_config.cache_clear()
 
     expected = _dfp_result()

@@ -330,14 +330,19 @@ def test_periodic_invocation_calls_cycle_entry() -> None:
 
 def test_default_configuration_causes_no_work() -> None:
     rank = MagicMock()
-    # Empty environ → flag off (missing) and budget 0
+    # Empty environ → flag ON (Step 063) but budget still 0 → no work
     result = orchestrate_maintenance_cycle(
         MagicMock(),
         environ={},
         rank_service=rank,
     )
-    assert result.skip_reason == SKIP_FLAG_OFF
+    assert result.skip_reason == SKIP_BUDGET_ZERO
     rank.rank.assert_not_called()
+
+
+def test_rollout_flag_defaults_true_when_unset() -> None:
+    assert rollout_flag_enabled({}) is True
+    assert rollout_flag_enabled(_env()) is True
 
 
 def test_rollout_true_variants() -> None:

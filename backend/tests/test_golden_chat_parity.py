@@ -66,6 +66,8 @@ def _run_dispatch_path(
             return fixture
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: executive)
+    # Legacy path under test is RagService (not Reasoning); Step 063 defaults Reasoning ON.
+    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
     monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
@@ -186,6 +188,9 @@ def test_golden_http_chat_integration(client, auth_headers, golden_smoke, monkey
         for executive in (False, True):
             monkeypatch.setattr(
                 "app.api.chat.knowledge_os_executive_enabled", lambda e=executive: e
+            )
+            monkeypatch.setattr(
+                "app.api.chat.reasoning_service_enabled", lambda: False
             )
             res = client.post(
                 "/api/chat",

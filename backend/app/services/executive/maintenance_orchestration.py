@@ -35,8 +35,14 @@ _cycle_lock = threading.Lock()
 
 
 def rollout_flag_enabled(environ: dict[str, str] | None = None) -> bool:
-    """Environment-backed rollout flag. Invalid values fail closed to disabled."""
+    """Environment-backed rollout flag (RFC-100 Step 063 — default ON when unset).
+
+    Explicit false/0/off disables. Invalid non-empty values fail closed to disabled.
+    Budget still defaults to 0, so default ON alone does not execute investigations.
+    """
     env = environ if environ is not None else os.environ
+    if _ENV_ROLLOUT_FLAG not in env:
+        return True
     raw = str(env.get(_ENV_ROLLOUT_FLAG, "")).strip().lower()
     if raw in _TRUE:
         return True

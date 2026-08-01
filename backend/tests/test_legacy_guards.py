@@ -194,6 +194,14 @@ def _run_non_stream_dispatch(
         "app.api.chat.knowledge_os_executive_enabled",
         lambda: executive,
     )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.services.executive.executive_service.reasoning_service_enabled",
+        lambda: False,
+    )
     return _dispatch_non_stream_answer(
         MagicMock(),
         settings,
@@ -216,6 +224,14 @@ def _run_stream_dispatch(
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
         lambda: executive,
+    )
+    monkeypatch.setattr(
+        "app.api.chat.reasoning_service_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "app.services.executive.executive_service.reasoning_service_enabled",
+        lambda: False,
     )
     collector = DiagnosticsCollector(
         request_id=f"guard-stream-{'exec' if executive else 'legacy'}",

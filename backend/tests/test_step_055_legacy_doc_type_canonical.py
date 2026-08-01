@@ -300,8 +300,12 @@ def test_finalize_gate_runs_when_both_true(monkeypatch):
 
 @pytest.mark.unit
 def test_cache_namespace_includes_flag_and_differs():
-    off = _settings_row(legacy_doc_type_canonical_enabled=False)
-    on = _settings_row(legacy_doc_type_canonical_enabled=True)
+    off = _settings_row(
+        cache_namespace_v2_enabled=False, legacy_doc_type_canonical_enabled=False
+    )
+    on = _settings_row(
+        cache_namespace_v2_enabled=False, legacy_doc_type_canonical_enabled=True
+    )
     ns_off = build_retrieval_namespace(off)
     ns_on = build_retrieval_namespace(on)
     assert ns_off["retrieval_settings_version"] != ns_on["retrieval_settings_version"]
