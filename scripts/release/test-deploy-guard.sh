@@ -134,9 +134,14 @@ if ! grep -q 'md_deploy_mandatory_backup\|BACKUP (mandatory)' "$SOURCE"; then
   echo "FAIL: deploy_source must run mandatory backup stage" >&2
   exit 1
 fi
-if ! grep -q 'backup → build → deploy → verify → restart → smoke' "$SOURCE" \
-  && ! grep -q 'stages: backup' "$SOURCE"; then
-  echo "FAIL: deploy_source must document mandatory stage order" >&2
+if ! grep -q 'migration decision' "$SOURCE" \
+  || ! grep -q 'verify-release' "$SOURCE" \
+  || ! grep -q 'POST-SYNC MIGRATE\|post-sync' "$SOURCE"; then
+  echo "FAIL: deploy_source must document One Command stage order" >&2
+  exit 1
+fi
+if grep -q 'restart --module backend' "$SOURCE" && grep -E 'restart --module backend[\s\S]{0,120}\|\| true' "$SOURCE"; then
+  echo "FAIL: deploy_source must not soft-fail restart" >&2
   exit 1
 fi
 if ! grep -q 'no-backup-db is forbidden' "$MANAGE"; then

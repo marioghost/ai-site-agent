@@ -7,6 +7,19 @@ md_cli_usage() {
 AI Site Agent — operator CLI
 Canonical entry: bash deploy/manage_deploy.sh <command>
 
+Normal release (ONE command — complete orchestrator):
+  sudo bash deploy/manage_deploy.sh deploy full
+
+  Pipeline (owned by deploy full):
+    preflight → backup → migration decision → conditional schema-first
+    → build → sync → post-sync migrate → restart → health
+    → verify-release → smoke → report → SUCCESS
+
+  Schema-first is auto-detected and run internally when tip migrations
+  are absent from /opt. Operators must NOT run migrate release for a
+  normal release. Post-sync Alembic always runs (idempotent no-op OK).
+  Restart and health failures are fatal. Exit 0 only on full SUCCESS.
+
 Release workflow (main-only policy):
   release status              Git state + deploy readiness
   release prepare [--branch]  Review branch vs main before merge
@@ -15,24 +28,25 @@ Release workflow (main-only policy):
   release check               Full make release-check gate
 
 Deploy (origin/main, clean worktree only):
-  deploy full                 backup→build→deploy→verify→restart→smoke
-  deploy backend              Backend path (mandatory backup)
-  deploy frontend             Frontend path (mandatory backup)
+  deploy full                 Canonical normal release (see above)
+  deploy backend              Recovery/dev scoped path (not a full release)
+  deploy frontend             Recovery/dev scoped path (not a full release)
 
-Verification:
+Diagnostics / audit (NOT required after a normal deploy full):
   status                      Concise repo/deploy/runtime identity report
-  verify-release              End-to-end identity + health report
+  verify-release              Re-run shared identity + health gate (drift check)
   smoke                       HTTP smoke (flags-off paths)
   build-info                  GET /api/build summary
-
-Operations:
   doctor                      Pre-flight + git + DB connectivity
   health                      Health probes only
-  backup db                   PostgreSQL pg_dump backup
+
+Recovery / ops (NOT normal-release stages):
+  backup db                   PostgreSQL pg_dump backup (also run inside deploy full)
   migrate                     Alembic upgrade head using live /opt install tree
   migrate live                Explicit alias of bare migrate (/opt tree only)
-  migrate release             Schema-first: Alembic from clean origin/main worktree
-                              against live /opt DB (no code sync, no restart)
+  migrate release             Schema-first recovery only: Alembic from clean
+                              origin/main worktree against live /opt DB
+                              (no code sync, no restart). Not for normal release.
 
 Machine migration (one command, both hosts):
   migrate-machine             Whole machine migration. Detects host role and the
@@ -50,17 +64,13 @@ Legacy flags (deprecated):
 
 Policy: deploy never uses dirty/feature checkouts; never deploys non-main;
 backup is mandatory on release deploy (--no-backup-db refused);
-schema-first cutovers: status → backup db → migrate release → verify schema head
-  → deploy full → health → build-info → smoke → verify-release;
-deploy full still runs post-sync Alembic (idempotent no-op after migrate release;
-  defense-in-depth — not a substitute for migrate release);
+release identity is tip APP_RELEASE (stale RELEASE_VERSION is warned and ignored);
 bare migrate / migrate live cannot advance past migrations present in /opt;
-migrate release is the only supported schema-first command;
+migrate release remains available for recovery/schema repair only;
 machine migration is one command (migrate-machine) with no public phase or role
   options — it detects the host role from observable state and fails closed if
-  ambiguous; it orchestrates backup db / migrate release / deploy full / health /
+  ambiguous; it reuses backup db / migrate release / deploy full / health /
   smoke / verify-release and never reimplements them;
-CLI does not hard-block deploy full if migrate release was skipped (operator policy);
 all future deploy/release-engineering features live under manage_deploy.sh
 (no new standalone deploy scripts except bootstrap/recovery).
 Emergency bypass: EMERGENCY_DEPLOY_I_UNDERSTAND=YES + reason + confirm

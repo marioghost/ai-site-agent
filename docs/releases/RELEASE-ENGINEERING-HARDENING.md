@@ -13,14 +13,25 @@ Make `main → origin/main → build → /opt → /api/build` share one git comm
 | Layer | Role |
 |-------|------|
 | `deploy/manage_deploy.sh` | **Single public entry** (CLI + menu) |
-| `deploy/lib/deploy_source.sh` | Clean worktree deploy from `origin/main` |
+| `deploy/lib/deploy_source.sh` | **One Command** orchestrator (`deploy full`) |
+| `deploy/lib/migration_decision.sh` | Internal schema-first vs post-sync-only decision |
+| `deploy/lib/verify_release.sh` | Shared verify-release core (deploy gate + CLI) |
+| `deploy/lib/manifest.sh` | Deployment report (SUCCESS/FAILED) under `deployments/` |
 | `deploy/lib/deploy_guard.sh` | Hard refusals + emergency mode |
-| `deploy/lib/cli.sh` | `release` / `deploy` / `verify-release` / ops |
+| `deploy/lib/cli.sh` | `release` / `deploy` / diagnostics / recovery |
 | `scripts/release/write-build-info.sh` | Auto build identity (never hand-edit) |
 | `dashboard/dist/.deploy-identity.json` | Frontend commit stamp |
-| `scripts/release/verify-release.sh` | End-to-end identity + health report |
+| `scripts/release/verify-release.sh` | Thin wrapper over shared verify core |
 
 Product paths (chat, Memory, Reasoning, Language, Retrieval, Qdrant, flags) are untouched.
+
+**Normal release command (only):**
+
+```bash
+sudo bash deploy/manage_deploy.sh deploy full
+```
+
+Standalone `migrate release`, `verify-release`, `smoke`, `health`, `build-info` are diagnostics/recovery — not required normal-release stages.
 
 ## Script classification
 
@@ -53,8 +64,9 @@ Product paths (chat, Memory, Reasoning, Language, Retrieval, Qdrant, flags) are 
 
 ## Release identity
 
-Deploy validates `APP_RELEASE` (code) == `.build-info.json` `release` == `RELEASE_VERSION`.  
-If an exact git tag (`v0.7` / `release-0.7` / `0.7`) exists on the commit, it must match.
+Deploy derives release from tip `APP_RELEASE` and validates it against `.build-info.json` / frontend identity / `/api/build`.  
+If configured `RELEASE_VERSION` differs, deploy **warns and ignores** it (never deploys under the stale configured label).  
+If an exact git tag (`v0.7` / `release-0.7` / `0.7`) exists on the commit, it must match tip `APP_RELEASE`.
 
 ## Single entrypoint
 

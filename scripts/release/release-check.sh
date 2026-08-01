@@ -45,6 +45,7 @@ run_required "Migrate release CLI" bash "$ROOT/scripts/release/test-migrate-rele
 run_required "Migrate machine orchestrator" bash "$ROOT/scripts/release/test-migrate-machine.sh"
 run_required "Empty-target schema bootstrap" bash "$ROOT/scripts/release/test-bootstrap-empty-target-schema.sh"
 run_required "Schema-first docs" bash "$ROOT/scripts/release/test-schema-first-docs.sh"
+run_required "One Command Deployment" bash "$ROOT/scripts/release/test-one-command-deploy.sh"
 run_required "Golden parity tests" bash "$ROOT/scripts/release/test-golden.sh"
 
 cd "$ROOT/dashboard"

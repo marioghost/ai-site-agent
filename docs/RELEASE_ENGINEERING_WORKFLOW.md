@@ -3,7 +3,8 @@
 **Status:** Active project-wide policy  
 **Scope:** Every future RFC-100 step and every release after Release 0.7  
 **Source of truth:** `main` and `origin/main`  
-**Canonical operator entry:** `bash deploy/manage_deploy.sh`
+**Canonical operator entry:** `bash deploy/manage_deploy.sh`  
+**Canonical normal release:** `sudo bash deploy/manage_deploy.sh deploy full`
 
 ---
 
@@ -14,9 +15,11 @@ main  ==  origin/main  ==  build (.build-info.json)
                          ==  frontend (.deploy-identity.json)
                          ==  /opt runtime
                          ==  GET /api/build
+                         ==  tip APP_RELEASE
 ```
 
-Same git commit. No exceptions for normal deploys.
+Same git commit. No exceptions for normal deploys.  
+Release identity is derived from tip `APP_RELEASE`. A stale configured `RELEASE_VERSION` is warned and ignored.
 
 ---
 
@@ -31,69 +34,48 @@ Same git commit. No exceptions for normal deploys.
 7. Merge into `main` (`manage_deploy.sh release merge`)  
 8. Validate again on `main` (`release check` / tests)  
 9. Push `origin/main` (`manage_deploy.sh release push`) — **ask separately**  
-10. Schema-first when `origin/main` has migrations not yet in `/opt`: `migrate release` → verify schema head  
-11. Deploy only from `origin/main` (`manage_deploy.sh deploy full`)  
-12. Verify runtime (`manage_deploy.sh health` / `build-info` / `smoke` / `verify-release`)  
-13. Staging → Production (when release accepts)
+10. Deploy with the **one** normal-release command (`manage_deploy.sh deploy full`)  
+11. Product staging validation (separate lifecycle; not a deploy stage)  
+12. Staging → Production (when release accepts)
 
 ---
 
-## Schema-first cutover (when required)
+## Normal release (One Command Deployment)
 
-When `origin/main` contains Alembic revisions not present in the live `/opt` tree (e.g. Release 0.8 while `/opt` is still 0.7):
+```bash
+cd /path/to/ai-site-agent   # on main, clean, synced with origin/main
+sudo bash deploy/manage_deploy.sh deploy full
+```
+
+That single command owns the frozen pipeline:
 
 ```text
-status
-→ backup db
-→ migrate release
-→ verify schema head
-→ deploy full
-→ health
-→ build-info
-→ smoke
-→ verify-release
+preflight → backup → migration decision → conditional schema-first
+→ build → sync → post-sync migrate → restart → health
+→ verify-release → smoke → report → SUCCESS
 ```
+
+| Behaviour | Rule |
+|-----------|------|
+| Schema-first | Auto-detected; run **internally** when tip migrations are absent from `/opt` |
+| Post-sync Alembic | Always runs after sync (idempotent no-op OK; failure is fatal) |
+| Restart / health | Fail-hard (no soft-ignore) |
+| Verify + smoke | Required internal gates |
+| Exit `0` | Only full Success Contract + success report written |
+| Report | One JSON under `deployments/` (SUCCESS and FAILED); `latest.json` updated |
+
+Operators must **not** run `backup db`, `migrate release`, `health`, `build-info`, `smoke`, or `verify-release` as part of a normal release. Those remain **diagnostics / audit / recovery** only.
+
+### Migration commands (recovery / diagnostics)
 
 | Command | Meaning |
 |---------|---------|
-| `migrate` / `migrate live` | Alembic from **live `/opt`** tree only (`migrate live` = explicit alias of bare `migrate`) |
-| `migrate release` | **Only** supported schema-first command: clean origin/main worktree → live `/opt` DB |
-| `deploy full` inner `run_migrations` | Post-sync Alembic upgrade (expected **idempotent no-op** after successful `migrate release`; retained as defense-in-depth) |
+| `migrate` / `migrate live` | Alembic from **live `/opt`** tree only |
+| `migrate release` | **Recovery** schema-first: clean origin/main worktree → live `/opt` DB (no code sync, no restart) |
 
-Operators **must not** skip `migrate release` when `/opt` lacks the required migration files. Bare `migrate` cannot advance beyond migrations present in `/opt`. Post-sync migrate inside `deploy full` is **not** a substitute for schema-first.
-
-**Policy vs enforcement:** the CLI does **not** hard-block `deploy full` if `migrate release` was skipped. Compliance is operator workflow + documentation today. Deferred follow-up: preflight comparing `/opt` head, origin/main head, and live DB revision (not implemented; no marker file).
-
-## Deploy stages (mandatory inside `deploy full`)
-
-```
-backup → build → deploy (sync + internal run_migrations) → verify → restart → smoke
-```
-
-`--no-backup-db` is **refused** on release deploy. A failure of the post-sync migrate must still fail the deploy (may indicate environment or revision corruption).
-
-## Single entrypoint policy
-
-All future deployment and release-engineering functionality must live under
-`deploy/manage_deploy.sh` (CLI or menu).
-
-Do **not** introduce new standalone deploy scripts unless they are
-bootstrap/recovery utilities (`install_*.sh`, one-shot cutovers).
+Bare `migrate` cannot advance beyond migrations present in `/opt`. Standalone `migrate release` is **not** a normal-release stage.
 
 ## Deploy policy
-
-Deploy **only** from `origin/main` via (after schema-first when required):
-
-```bash
-cd /path/to/ai-site-agent   # on main, clean, synced
-bash deploy/manage_deploy.sh backup db
-bash deploy/manage_deploy.sh migrate release   # when /opt lacks required migrations
-sudo bash deploy/manage_deploy.sh deploy full
-bash deploy/manage_deploy.sh health
-bash deploy/manage_deploy.sh build-info
-bash deploy/manage_deploy.sh smoke
-bash deploy/manage_deploy.sh verify-release
-```
 
 Refuse when:
 
@@ -101,7 +83,8 @@ Refuse when:
 - detached HEAD
 - dirty working tree
 - local `main` ≠ `origin/main`
-- build-info / frontend identity / `/api/build` disagree
+- build-info / frontend identity / `/api/build` disagree (verify-release gate)
+- migration decision is ambiguous / DB unreachable / live DB ahead of tip / multiple heads
 
 ### Emergency mode (destructive override)
 
@@ -115,31 +98,26 @@ export EMERGENCY_DEPLOY_CONFIRM=DEPLOY-OUTSIDE-ORIGIN-MAIN
 
 Legacy `ALLOW_DIRTY_SYNC` / `DEPLOY_LOCAL_MAIN` are **rejected** unless emergency mode is active.
 
+## Single entrypoint policy
+
+All future deployment and release-engineering functionality must live under
+`deploy/manage_deploy.sh` (CLI or menu).
+
+Do **not** introduce new standalone deploy scripts unless they are
+bootstrap/recovery utilities (`install_*.sh`, one-shot cutovers).
+
 ---
 
 ## Rollback lifecycle
 
-1. Prefer flag OFF (no data deletion) — see `docs/releases/0.7-rollback.md`.  
-2. Redeploy previous known-good `origin/main` commit only after it is restored on `origin/main` (revert merge + push), then `deploy full`.  
-3. Do not rsync arbitrary checkouts as “rollback”.
+Code rollback: put the known-good tip on `origin/main`, then run **one** command:
 
----
+```bash
+sudo bash deploy/manage_deploy.sh deploy full
+```
 
-## Operator checklist
+Do not auto-downgrade the database. Schema failures require operator review (`review_schema_no_autodowngrade`).
 
-- [ ] On `main`, clean tree  
-- [ ] `main` == `origin/main`  
-- [ ] `manage_deploy.sh status` / `release status` → Deploy readiness OK  
-- [ ] `manage_deploy.sh backup db`  
-- [ ] When schema-first required: `migrate release` → verify schema head (do **not** skip)  
-- [ ] `manage_deploy.sh deploy full`  
-- [ ] `health` / `build-info` / `smoke` / `verify-release` → VERDICT PASS  
-- [ ] Spot-check chat smoke with flags OFF (no product regression)
+Optional diagnostics after SUCCESS or FAILED: `status`, `verify-release`, `health`, `build-info`, `doctor`.
 
----
-
-## Related
-
-- Audit classification: `docs/releases/RELEASE-ENGINEERING-HARDENING.md`  
-- Cursor rule: `.cursor/rules/release-engineering-workflow.mdc`  
-- Constitution: `docs/DEVELOPMENT_CHARTER.md`
+See release-specific rollback docs under `docs/releases/`.

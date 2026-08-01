@@ -22,8 +22,8 @@ source "$GUARD"
 help_out="$(bash "$MD" help 2>&1 || true)"
 echo "$help_out" | grep -q 'migrate release' || fail "help missing migrate release"
 echo "$help_out" | grep -q 'live /opt install tree' || fail "help must distinguish live migrate"
-echo "$help_out" | grep -q 'backup db → migrate release → deploy full' \
-  || echo "$help_out" | grep -q 'migrate release' || fail "help should document schema-first cutover"
+echo "$help_out" | grep -qiE 'recovery|schema-first' \
+  || fail "help should document migrate release as recovery/schema-first"
 echo "OK: help documents migrate release"
 
 # Ambiguous overload protection: unknown migrate subcommand fails.

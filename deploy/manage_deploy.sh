@@ -4,9 +4,11 @@
 # Stack: systemd backend + nginx frontend + local Ollama + local Qdrant + PostgreSQL.
 # No Docker. Single public entry point for release engineering.
 #
-# Preferred release deploy (origin/main only):
+# Preferred release deploy (origin/main only — one command):
 #   cd /path/to/ai-site-agent && sudo bash deploy/manage_deploy.sh deploy full
+# Optional diagnostics (not required after SUCCESS):
 #   bash deploy/manage_deploy.sh verify-release
+#   bash deploy/manage_deploy.sh status
 #
 # Interactive menu:
 #   sudo bash deploy/manage_deploy.sh
@@ -1824,7 +1826,13 @@ deploy_backend() {
   fi
   update_source_code || return 1
   ensure_venv || return 1
-  run_migrations || return 1
+  # One Command deploy full runs post-sync migrate as a separate stage so
+  # failed_stage can distinguish sync vs post_sync_migrate.
+  if [[ "${MD_SKIP_RUN_MIGRATIONS:-0}" == "1" ]]; then
+    log_info "Skipping run_migrations here — release post-sync migrate stage owns it"
+  else
+    run_migrations || return 1
+  fi
   # Ownership is applied after frontend build in mode_full so npm is not locked out.
   if [[ "${SKIP_FIX_OWNERSHIP:-}" != "yes" ]]; then
     fix_ownership

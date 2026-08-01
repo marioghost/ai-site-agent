@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Canonical clean-worktree deploy from origin/main (never dirty/feature checkout).
+# One Command Deployment — canonical clean-worktree deploy from origin/main.
 #
-# Mandatory release stages:
-#   1. backup → 2. build → 3. deploy → 4. verify → 5. restart → 6. smoke
+# Frozen pipeline (deploy full):
+#   1 preflight → 2 backup → 3 migration decision → 4 conditional schema-first
+#   → 5 build → 6 sync → 7 post-sync migrate → 8 restart → 9 health
+#   → 10 verify-release → 11 smoke → 12 report → 13 SUCCESS
 set -euo pipefail
 
 md_deploy_source_init() {
@@ -12,6 +14,12 @@ md_deploy_source_init() {
   source "$MD_DEPLOY_SCRIPT_DIR/lib/deploy_guard.sh"
   # shellcheck source=deploy/lib/node_path.sh
   source "$MD_DEPLOY_SCRIPT_DIR/lib/node_path.sh"
+  # shellcheck source=deploy/lib/migration_decision.sh
+  source "$MD_DEPLOY_SCRIPT_DIR/lib/migration_decision.sh"
+  # shellcheck source=deploy/lib/verify_release.sh
+  source "$MD_DEPLOY_SCRIPT_DIR/lib/verify_release.sh"
+  # shellcheck source=deploy/lib/manifest.sh
+  source "$MD_DEPLOY_SCRIPT_DIR/lib/manifest.sh"
   # shellcheck source=deploy.conf
   source "$MD_DEPLOY_SCRIPT_DIR/deploy.conf"
   if [[ -f "$MD_DEPLOY_SCRIPT_DIR/deploy.local.conf" ]]; then
@@ -20,7 +28,25 @@ md_deploy_source_init() {
   fi
   MD_DEPLOY_PROJECT_ROOT="${PROJECT_ROOT:-/opt/ai-site-agent}"
   MD_DEPLOY_WORKTREE=""
-  MD_DEPLOY_RELEASE="${RELEASE_VERSION:-0.7}"
+  MD_DEPLOY_CONFIGURED_RELEASE="${RELEASE_VERSION:-}"
+  MD_DEPLOY_RELEASE=""
+  MD_DEPLOY_START_EPOCH="$(date +%s)"
+  MD_DEPLOY_PARTIAL="false"
+  MD_DEPLOY_SYNC_STARTED=0
+  MD_REPORT_OUTCOME="failed"
+  MD_REPORT_PARTIAL_DEPLOY="false"
+  MD_REPORT_MIGRATION_DECISION="not_reached"
+  MD_REPORT_MIGRATION_SCHEMA_FIRST="not_reached"
+  MD_REPORT_MIGRATION_POST_SYNC="not_reached"
+  MD_REPORT_RESTART_RESULT="not_reached"
+  MD_REPORT_HEALTH_RESULT="not_reached"
+  MD_REPORT_VERIFY_RESULT="not_reached"
+  MD_REPORT_SMOKE_RESULT="not_reached"
+  MD_REPORT_BACKUP_PATH=""
+  MD_REPORT_BACKUP_ID=""
+  MD_REPORT_MANIFEST_PATH=""
+  MD_REPORT_FAILED_STAGE=""
+  MD_REPORT_FAILED_STAGE_DETAIL=""
 }
 
 md_deploy_source_cleanup() {
@@ -30,12 +56,108 @@ md_deploy_source_cleanup() {
   fi
 }
 
+md_deploy_duration() {
+  local now
+  now="$(date +%s)"
+  echo $((now - MD_DEPLOY_START_EPOCH))
+}
+
+md_deploy_read_previous_identity() {
+  local build_json="$MD_DEPLOY_PROJECT_ROOT/.build-info.json"
+  MD_REPORT_PREVIOUS_COMMIT="unknown"
+  MD_REPORT_PREVIOUS_RELEASE="unknown"
+  if [[ -f "$build_json" ]]; then
+    MD_REPORT_PREVIOUS_COMMIT="$(python3 -c "import json; print(json.load(open('$build_json')).get('git_commit') or 'unknown')" 2>/dev/null || echo unknown)"
+    MD_REPORT_PREVIOUS_RELEASE="$(python3 -c "import json; print(json.load(open('$build_json')).get('release') or 'unknown')" 2>/dev/null || echo unknown)"
+  fi
+}
+
+md_deploy_capture_backup_path() {
+  local newest
+  newest="$(ls -1t "$MD_DEPLOY_PROJECT_ROOT/backups/"*.dump 2>/dev/null | head -1 || echo "")"
+  MD_REPORT_BACKUP_PATH="$newest"
+  if [[ -n "$newest" ]]; then
+    MD_REPORT_BACKUP_ID="$(basename "$newest" .dump)"
+  fi
+}
+
+md_deploy_mark_sync_started() {
+  MD_DEPLOY_SYNC_STARTED=1
+  MD_DEPLOY_PARTIAL="true"
+  MD_REPORT_PARTIAL_DEPLOY="true"
+}
+
+md_deploy_fail() {
+  local stage="$1"
+  local detail="${2:-}"
+  MD_REPORT_FAILED_STAGE="$stage"
+  MD_REPORT_FAILED_STAGE_DETAIL="$detail"
+  MD_REPORT_OUTCOME="failed"
+  MD_REPORT_DURATION_SECONDS="$(md_deploy_duration)"
+  if [[ "$MD_DEPLOY_SYNC_STARTED" -eq 1 ]]; then
+    MD_REPORT_PARTIAL_DEPLOY="true"
+  else
+    MD_REPORT_PARTIAL_DEPLOY="false"
+  fi
+  echo ""
+  echo "[deploy] FAILED at stage=$stage"
+  [[ -n "$detail" ]] && echo "[deploy] detail: $detail"
+
+  local wrote=0
+  if md_write_deploy_report "$MD_DEPLOY_PROJECT_ROOT" 2>/dev/null; then
+    wrote=1
+  else
+    echo "WARN: could not write deployment report" >&2
+  fi
+
+  local rollback
+  rollback="$(md_rollback_recommendation "$stage" failed)"
+  echo ""
+  echo "VERDICT: FAILED"
+  echo "  failed_stage:            $stage"
+  echo "  attempted_commit:        ${MD_REPORT_DEPLOYED_COMMIT:-unknown}"
+  echo "  previous_commit:         ${MD_REPORT_PREVIOUS_COMMIT:-unknown}"
+  echo "  previous_release:        ${MD_REPORT_PREVIOUS_RELEASE:-unknown}"
+  echo "  partial_deploy:          ${MD_REPORT_PARTIAL_DEPLOY}"
+  echo "  backup_path:             ${MD_REPORT_BACKUP_PATH:-}"
+  echo "  rollback_recommendation: $rollback"
+  if [[ "$wrote" -eq 1 ]]; then
+    echo "  manifest_path:           ${MD_REPORT_MANIFEST_PATH}"
+  else
+    echo "  manifest_path:           manifest_unavailable"
+  fi
+  return 1
+}
+
+md_deploy_success_summary() {
+  local duration schema_label
+  duration="$(md_deploy_duration)"
+  if [[ "${MD_REPORT_MIGRATION_SCHEMA_FIRST}" == "executed" ]]; then
+    schema_label="executed"
+  else
+    schema_label="skipped"
+  fi
+  echo ""
+  echo "VERDICT: SUCCESS"
+  echo "  deployed_commit:         ${MD_REPORT_DEPLOYED_COMMIT}"
+  echo "  deployed_release:        ${MD_REPORT_DEPLOYED_RELEASE}"
+  echo "  migration_decision:      ${MD_REPORT_MIGRATION_DECISION}"
+  echo "  schema_first:            $schema_label"
+  echo "  restart_result:          ${MD_REPORT_RESTART_RESULT}"
+  echo "  health_result:           ${MD_REPORT_HEALTH_RESULT}"
+  echo "  verify_release_result:   ${MD_REPORT_VERIFY_RESULT}"
+  echo "  smoke_result:            ${MD_REPORT_SMOKE_RESULT}"
+  echo "  backup_path:             ${MD_REPORT_BACKUP_PATH}"
+  echo "  manifest_path:           ${MD_REPORT_MANIFEST_PATH}"
+  echo "  duration_seconds:        $duration"
+}
+
 md_write_frontend_identity() {
   local root="$1"
   local commit="$2"
   local short release
   short="$(git -C "$root" rev-parse --short "$commit" 2>/dev/null || echo "${commit:0:7}")"
-  release="$(deploy_guard_read_app_release "$root" || echo "${MD_DEPLOY_RELEASE}")"
+  release="${MD_DEPLOY_RELEASE}"
   mkdir -p "$root/dashboard/dist"
   python3 - <<PY
 import json
@@ -61,24 +183,71 @@ md_deploy_strip_no_backup_args() {
       echo "ERROR: --no-backup-db is forbidden on release deploy (backup is mandatory)" >&2
       return 1
     fi
-    # Skip empty tokens (bash "${arr[@]:-}" can inject "" when arr is empty).
     [[ -n "$a" ]] || continue
     MD_DEPLOY_FORWARD_ARGS+=("$a")
   done
 }
 
 md_deploy_mandatory_backup() {
-  echo "[deploy 1/6] BACKUP (mandatory)"
-  # Backup live /opt database before any code/build mutation.
+  echo "[deploy 2/13] BACKUP (mandatory)"
   PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
     MD_SKIP_CLI=1 \
     bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action backup-postgres --yes \
-    || {
-      echo "ERROR: mandatory backup failed — aborting release deploy" >&2
-      return 1
-    }
+    || return 1
   export MD_BACKUP_COMPLETED=1
-  echo "[deploy 1/6] BACKUP OK"
+  md_deploy_capture_backup_path
+  echo "[deploy 2/13] BACKUP OK (${MD_REPORT_BACKUP_PATH:-})"
+}
+
+md_deploy_restart_hard() {
+  echo "[deploy 8/13] RESTART"
+  local attempt=1
+  local max_attempts=3
+  local ok=0
+  while [[ "$attempt" -le "$max_attempts" ]]; do
+    echo "[deploy] restart attempt $attempt/$max_attempts"
+    if MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+         bash "$MD_DEPLOY_PROJECT_ROOT/deploy/manage_deploy.sh" --action restart --module backend --yes \
+      || MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+           bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action restart --module backend --yes; then
+      ok=1
+      break
+    fi
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  if [[ "$ok" -ne 1 ]]; then
+    MD_REPORT_RESTART_RESULT="fail"
+    return 1
+  fi
+  MD_REPORT_RESTART_RESULT="ok"
+  echo "[deploy 8/13] RESTART OK"
+  return 0
+}
+
+md_deploy_health_hard() {
+  echo "[deploy 9/13] HEALTH"
+  local ready=0
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if curl -sf --max-time 2 "http://127.0.0.1:8000/api/health" -o /dev/null; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$ready" -ne 1 ]]; then
+    MD_REPORT_HEALTH_RESULT="fail"
+    return 1
+  fi
+  if ! MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+       bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action status >/dev/null 2>&1; then
+    # status may print DOWN for non-critical deps; require HTTP health as gate.
+    :
+  fi
+  MD_REPORT_HEALTH_RESULT="ok"
+  echo "[deploy 9/13] HEALTH OK"
+  return 0
 }
 
 # md_deploy_from_main [mode] — mode: full|backend|frontend (default full)
@@ -91,71 +260,115 @@ md_deploy_from_main() {
   local repo="$MD_DEPLOY_REPO_ROOT"
   local commit
 
+  # --- 1/13 PREFLIGHT ---
+  echo "[deploy 1/13] PREFLIGHT"
   if [[ "$(id -u)" -ne 0 && "${DEPLOY_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
-    echo "ERROR: run with sudo for systemd/nginx deploy to $MD_DEPLOY_PROJECT_ROOT" >&2
-    return 1
+    md_deploy_fail preflight "run with sudo for systemd/nginx deploy to $MD_DEPLOY_PROJECT_ROOT" || return 1
   fi
 
-  deploy_guard_reject_legacy_bypasses || return 1
-  md_deploy_strip_no_backup_args "$@" || return 1
+  deploy_guard_reject_legacy_bypasses || { md_deploy_fail preflight "legacy bypass refused" || return 1; }
+  md_deploy_strip_no_backup_args "$@" || { md_deploy_fail preflight "--no-backup-db refused" || return 1; }
 
-  deploy_guard_assert_not_detached "$repo" || return 1
-  deploy_guard_assert_on_main_branch "$repo" || return 1
-  deploy_guard_assert_clean_worktree "$repo" "operator checkout" || return 1
+  deploy_guard_assert_not_detached "$repo" || { md_deploy_fail preflight "detached HEAD" || return 1; }
+  deploy_guard_assert_on_main_branch "$repo" || { md_deploy_fail preflight "not on main" || return 1; }
+  deploy_guard_assert_clean_worktree "$repo" "operator checkout" || { md_deploy_fail preflight "dirty working tree" || return 1; }
   deploy_guard_fetch_origin "$repo"
 
   if deploy_guard_emergency_enabled; then
-    deploy_guard_require_emergency "emergency deploy commit selection" || return 1
+    deploy_guard_require_emergency "emergency deploy commit selection" || { md_deploy_fail preflight "emergency not confirmed" || return 1; }
     commit="$(deploy_guard_resolve_commit "$repo" "${DEPLOY_COMMIT:-}")"
     echo "WARN: emergency — deploying commit $commit (may not equal origin/main tip)" >&2
   else
     commit="$(deploy_guard_resolve_commit "$repo" "${DEPLOY_COMMIT:-}")"
-    deploy_guard_assert_commit_on_main "$repo" "$commit" || return 1
+    deploy_guard_assert_commit_on_main "$repo" "$commit" || { md_deploy_fail preflight "commit not on main" || return 1; }
     if [[ -z "${DEPLOY_COMMIT:-}" ]]; then
-      deploy_guard_assert_local_main_matches_origin "$repo" || return 1
-    else
-      deploy_guard_assert_commit_on_main "$repo" "$commit" || return 1
+      deploy_guard_assert_local_main_matches_origin "$repo" || { md_deploy_fail preflight "local main != origin/main" || return 1; }
     fi
   fi
 
-  echo "[deploy] target commit: $commit  release: $MD_DEPLOY_RELEASE"
+  # Release identity from tip APP_RELEASE (resolved during build from worktree).
+  local tip_release=""
 
-  # --- 1/6 BACKUP ---
-  md_deploy_mandatory_backup || return 1
+  MD_REPORT_DEPLOYED_COMMIT="$commit"
+  MD_REPORT_DEPLOYED_COMMIT_SHORT="$(git -C "$repo" rev-parse --short "$commit" 2>/dev/null || echo "${commit:0:7}")"
+  MD_REPORT_ORIGIN_MAIN_COMMIT="$commit"
+  md_deploy_read_previous_identity
+  echo "[deploy 1/13] PREFLIGHT OK (commit=$commit)"
 
-  # --- 2/6 BUILD ---
-  echo "[deploy 2/6] BUILD (worktree + identity)"
+  # --- 2/13 BACKUP ---
+  md_deploy_mandatory_backup || { md_deploy_fail backup "mandatory backup failed" || return 1; }
+
+  # --- 3/13 MIGRATION DECISION ---
+  echo "[deploy 3/13] MIGRATION DECISION"
+  if ! md_migration_decision "$repo" "$commit" "$MD_DEPLOY_PROJECT_ROOT"; then
+    md_deploy_fail migration_decision "${MD_MIGRATION_DECISION_DETAIL:-ambiguous or unreachable}" || return 1
+  fi
+  MD_REPORT_MIGRATION_DECISION="$MD_MIGRATION_DECISION"
+  echo "[deploy 3/13] MIGRATION DECISION OK ($MD_MIGRATION_DECISION)"
+
+  # --- 4/13 CONDITIONAL SCHEMA-FIRST ---
+  echo "[deploy 4/13] SCHEMA-FIRST"
+  if [[ "$MD_MIGRATION_DECISION" == "schema_first" ]]; then
+    echo "[deploy] schema-first required — running migrate release --yes (non-interactive)"
+    if ! MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+         bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" migrate release --yes; then
+      MD_REPORT_MIGRATION_SCHEMA_FIRST="failed"
+      md_deploy_fail schema_first "migrate release failed" || return 1
+    fi
+    MD_REPORT_MIGRATION_SCHEMA_FIRST="executed"
+    echo "[deploy 4/13] SCHEMA-FIRST OK (executed)"
+  else
+    MD_REPORT_MIGRATION_SCHEMA_FIRST="skipped"
+    echo "[deploy 4/13] SCHEMA-FIRST skipped (post_sync_only)"
+  fi
+
+  # --- 5/13 BUILD ---
+  echo "[deploy 5/13] BUILD (worktree + identity)"
   MD_DEPLOY_WORKTREE="$(mktemp -d /tmp/ai-site-agent-deploy-XXXXXX)"
   echo "[deploy] clean worktree: $MD_DEPLOY_WORKTREE"
   git -C "$repo" worktree add --detach "$MD_DEPLOY_WORKTREE" "$commit" >/dev/null
-  deploy_guard_assert_clean_worktree "$MD_DEPLOY_WORKTREE" "deploy worktree" || return 1
+  deploy_guard_assert_clean_worktree "$MD_DEPLOY_WORKTREE" "deploy worktree" \
+    || { md_deploy_fail build "dirty deploy worktree" || return 1; }
+
+  if [[ -z "$tip_release" ]]; then
+    tip_release="$(deploy_guard_read_app_release "$MD_DEPLOY_WORKTREE" || true)"
+  fi
+  if [[ -z "$tip_release" ]]; then
+    md_deploy_fail build "cannot read tip APP_RELEASE" || return 1
+  fi
+  MD_DEPLOY_RELEASE="$tip_release"
+  MD_REPORT_DEPLOYED_RELEASE="$tip_release"
+  if [[ -n "${MD_DEPLOY_CONFIGURED_RELEASE}" && "$MD_DEPLOY_CONFIGURED_RELEASE" != "$tip_release" ]]; then
+    echo "WARN: configured RELEASE_VERSION=$MD_DEPLOY_CONFIGURED_RELEASE differs from tip APP_RELEASE=$tip_release — ignoring configured value for release identity" >&2
+  fi
 
   RELEASE_VERSION="$MD_DEPLOY_RELEASE" ROOT="$MD_DEPLOY_WORKTREE" \
     EXPECTED_COMMIT="$commit" \
-    bash "$MD_DEPLOY_WORKTREE/scripts/release/write-build-info.sh"
-  deploy_guard_assert_build_info_matches_commit "$MD_DEPLOY_WORKTREE" "$commit" || return 1
-  deploy_guard_assert_release_identity "$MD_DEPLOY_WORKTREE" "$commit" "$MD_DEPLOY_RELEASE" || return 1
+    bash "$MD_DEPLOY_WORKTREE/scripts/release/write-build-info.sh" \
+    || { md_deploy_fail build "write-build-info failed" || return 1; }
+  deploy_guard_assert_build_info_matches_commit "$MD_DEPLOY_WORKTREE" "$commit" \
+    || { md_deploy_fail build "build-info commit mismatch" || return 1; }
+  deploy_guard_assert_release_identity "$MD_DEPLOY_WORKTREE" "$commit" "$MD_DEPLOY_RELEASE" \
+    || { md_deploy_fail build "release identity mismatch" || return 1; }
 
   if [[ "$mode" == "full" || "$mode" == "frontend" ]]; then
     echo "[deploy] building dashboard"
     md_augment_path_for_node
     local npm
-    npm="$(md_npm_cmd)" || { echo "ERROR: npm not found — set NPM_BIN in deploy.local.conf" >&2; return 1; }
-    command -v node &>/dev/null || { echo "ERROR: node not on PATH — set NODE_BIN" >&2; return 1; }
+    npm="$(md_npm_cmd)" || { md_deploy_fail build "npm not found" || return 1; }
+    command -v node &>/dev/null || { md_deploy_fail build "node not on PATH" || return 1; }
     cd "$MD_DEPLOY_WORKTREE/dashboard"
     if [[ ! -d node_modules ]]; then "$npm" ci --silent; else "$npm" install --silent; fi
-    "$npm" run build
+    "$npm" run build || { md_deploy_fail build "frontend build failed" || return 1; }
     [[ -f "$MD_DEPLOY_WORKTREE/dashboard/dist/index.html" ]] \
-      || { echo "ERROR: frontend build missing" >&2; return 1; }
+      || { md_deploy_fail build "frontend build missing index.html" || return 1; }
     md_write_frontend_identity "$MD_DEPLOY_WORKTREE" "$commit"
-    mkdir -p "$MD_DEPLOY_PROJECT_ROOT/dashboard/dist"
-    rsync -a --delete "$MD_DEPLOY_WORKTREE/dashboard/dist/" "$MD_DEPLOY_PROJECT_ROOT/dashboard/dist/"
-    deploy_guard_assert_frontend_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" || return 1
   fi
-  echo "[deploy 2/6] BUILD OK"
+  echo "[deploy 5/13] BUILD OK"
 
-  # --- 3/6 DEPLOY (sync + migrate; backup already done) ---
-  echo "[deploy 3/6] DEPLOY (sync + migrate)"
+  # --- 6/13 SYNC (no post-sync migrate — separate stage below) ---
+  echo "[deploy 6/13] SYNC to $MD_DEPLOY_PROJECT_ROOT"
+  md_deploy_mark_sync_started
   export PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT"
   export DEV_CHECKOUT="$MD_DEPLOY_WORKTREE"
   unset ALLOW_DIRTY_SYNC || true
@@ -164,16 +377,15 @@ md_deploy_from_main() {
   export MD_DEPLOY_COMMIT="$commit"
   export MD_RELEASE_DEPLOY=1
   export MD_BACKUP_COMPLETED=1
-  # Still force backup flag yes so inner path cannot opt out; deploy_backend
-  # skips duplicate dump when MD_BACKUP_COMPLETED=1.
   export DO_BACKUP_DB=yes
+  export MD_SKIP_RUN_MIGRATIONS=1
 
   local legacy_mode="full"
   [[ "$mode" == "backend" ]] && legacy_mode="backend"
   [[ "$mode" == "frontend" ]] && legacy_mode="frontend"
 
   local -a deploy_cmd=(
-    bash "$MD_DEPLOY_WORKTREE/deploy/manage_deploy.sh"
+    bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh"
     --mode "$legacy_mode"
     --sync-from-dev
     --no-git-pull
@@ -183,58 +395,74 @@ md_deploy_from_main() {
   if ((${#MD_DEPLOY_FORWARD_ARGS[@]})); then
     deploy_cmd+=("${MD_DEPLOY_FORWARD_ARGS[@]}")
   fi
-  "${deploy_cmd[@]}"
-  echo "[deploy 3/6] DEPLOY OK"
 
-  # --- 4/6 VERIFY ---
-  echo "[deploy 4/6] VERIFY (identity)"
-  deploy_guard_assert_build_info_matches_commit "$MD_DEPLOY_PROJECT_ROOT" "$commit" || return 1
-  deploy_guard_assert_release_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE" || return 1
+  if ! "${deploy_cmd[@]}"; then
+    unset MD_SKIP_RUN_MIGRATIONS || true
+    md_deploy_fail sync "sync to /opt failed" || return 1
+  fi
+  unset MD_SKIP_RUN_MIGRATIONS || true
+  echo "[deploy 6/13] SYNC OK"
+
+  # On-disk identity after sync (still sync stage — artifacts must match tip)
+  deploy_guard_assert_build_info_matches_commit "$MD_DEPLOY_PROJECT_ROOT" "$commit" \
+    || { md_deploy_fail sync "synced build-info mismatch" || return 1; }
+  deploy_guard_assert_release_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE" \
+    || { md_deploy_fail sync "synced release identity mismatch" || return 1; }
   if [[ "$mode" == "full" || "$mode" == "frontend" ]]; then
-    deploy_guard_assert_frontend_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" || return 1
+    deploy_guard_assert_frontend_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" \
+      || { md_deploy_fail sync "synced frontend identity mismatch" || return 1; }
   fi
-  echo "[deploy 4/6] VERIFY OK"
 
-  # --- 5/6 RESTART (backend only — do not bounce qdrant/ollama) ---
-  # Stage 3 already started the new backend. A full restart-all races smoke
-  # (connection refused / dep warmup) and is unnecessary for code deploys.
-  echo "[deploy 5/6] RESTART"
-  MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
-    bash "$MD_DEPLOY_PROJECT_ROOT/deploy/manage_deploy.sh" --action restart --module backend --yes \
-    || MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
-         bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" --action restart --module backend --yes \
-    || true
-  # Wait until HTTP is ready before smoke (covers brief post-restart lag).
-  local ready=0
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if curl -sf --max-time 2 "http://127.0.0.1:8000/api/health" -o /dev/null; then
-      ready=1
-      break
-    fi
-    sleep 1
-  done
-  if [[ "$ready" -ne 1 ]]; then
-    echo "WARN: backend HTTP not ready after restart — smoke may fail" >&2
+  # --- 7/13 POST-SYNC MIGRATE (mandatory; distinct failed_stage) ---
+  echo "[deploy 7/13] POST-SYNC MIGRATE"
+  local migrate_script="$MD_DEPLOY_PROJECT_ROOT/deploy/manage_deploy.sh"
+  [[ -f "$migrate_script" ]] || migrate_script="$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh"
+  if ! MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+       bash "$migrate_script" --action run-migrations; then
+    MD_REPORT_MIGRATION_POST_SYNC="failed"
+    md_deploy_fail post_sync_migrate "post-sync alembic upgrade failed" || return 1
   fi
-  echo "[deploy 5/6] RESTART attempted"
+  MD_REPORT_MIGRATION_POST_SYNC="ok"
+  echo "[deploy 7/13] POST-SYNC MIGRATE OK"
 
-  # --- 6/6 SMOKE ---
-  echo "[deploy 6/6] SMOKE"
-  local smoke_result="pass"
+  # --- 8/13 RESTART ---
+  md_deploy_restart_hard || { md_deploy_fail restart "backend restart failed after retries" || return 1; }
+
+  # --- 9/13 HEALTH ---
+  md_deploy_health_hard || { md_deploy_fail health "health check failed" || return 1; }
+
+  # --- 10/13 VERIFY RELEASE ---
+  echo "[deploy 10/13] VERIFY RELEASE"
+  if ! md_verify_release_run "$repo" "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE"; then
+    MD_REPORT_VERIFY_RESULT="fail"
+    md_deploy_fail verify_release "verify-release critical failures" || return 1
+  fi
+  MD_REPORT_VERIFY_RESULT="pass"
+  echo "[deploy 10/13] VERIFY RELEASE OK"
+
+  # --- 11/13 SMOKE ---
+  echo "[deploy 11/13] SMOKE"
   if ! bash "$MD_DEPLOY_REPO_ROOT/scripts/release/smoke-staging.sh"; then
-    smoke_result="fail"
-    echo "ERROR: smoke failed after deploy" >&2
-    # shellcheck source=deploy/lib/manifest.sh
-    source "$MD_DEPLOY_SCRIPT_DIR/lib/manifest.sh"
-    md_write_deploy_manifest "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$smoke_result"
-    return 1
+    MD_REPORT_SMOKE_RESULT="fail"
+    md_deploy_fail smoke "smoke suite failed" || return 1
   fi
-  echo "[deploy 6/6] SMOKE OK"
+  MD_REPORT_SMOKE_RESULT="pass"
+  echo "[deploy 11/13] SMOKE OK"
 
-  # shellcheck source=deploy/lib/manifest.sh
-  source "$MD_DEPLOY_SCRIPT_DIR/lib/manifest.sh"
-  md_write_deploy_manifest "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$smoke_result"
-  echo "[deploy] OK — origin/main $commit (release $MD_DEPLOY_RELEASE) → $MD_DEPLOY_PROJECT_ROOT"
-  echo "[deploy] stages: backup → build → deploy → verify → restart → smoke"
+  # --- 12/13 REPORT ---
+  echo "[deploy 12/13] WRITE FINAL REPORT"
+  MD_REPORT_OUTCOME="success"
+  MD_REPORT_PARTIAL_DEPLOY="false"
+  MD_REPORT_DURATION_SECONDS="$(md_deploy_duration)"
+  MD_REPORT_FAILED_STAGE=""
+  MD_REPORT_FAILED_STAGE_DETAIL=""
+  if ! md_write_deploy_report "$MD_DEPLOY_PROJECT_ROOT"; then
+    md_deploy_fail report "cannot write deployment report to deployments/" || return 1
+  fi
+  echo "[deploy 12/13] REPORT OK (${MD_REPORT_MANIFEST_PATH})"
+
+  # --- 13/13 SUCCESS ---
+  echo "[deploy 13/13] SUCCESS"
+  md_deploy_success_summary
+  return 0
 }

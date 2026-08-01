@@ -11,11 +11,11 @@ echo "$out" | grep -q 'release status' || { echo "FAIL: help missing release sta
 echo "$out" | grep -q 'migrate release' || { echo "FAIL: help missing migrate release" >&2; exit 1; }
 echo "$out" | grep -q 'migrate live' || { echo "FAIL: help missing migrate live" >&2; exit 1; }
 echo "$out" | grep -qi 'alias of bare migrate' || { echo "FAIL: help must say migrate live is alias" >&2; exit 1; }
-echo "$out" | grep -qi 'post-sync Alembic\|idempotent\|defense-in-depth' \
-  || { echo "FAIL: help must mention post-sync Alembic policy" >&2; exit 1; }
+echo "$out" | grep -qiE 'post-sync|idempotent|ONE command|Normal release' \
+  || { echo "FAIL: help must mention one-command / post-sync policy" >&2; exit 1; }
 echo "$out" | grep -q '^  status' || { echo "FAIL: help missing status command" >&2; exit 1; }
-echo "$out" | grep -q 'backup→build→deploy→verify→restart→smoke' \
-  || echo "$out" | grep -q 'backup' || { echo "FAIL: help should mention mandatory backup pipeline" >&2; exit 1; }
+echo "$out" | grep -qiE 'backup|preflight|migration decision' \
+  || { echo "FAIL: help should mention deploy pipeline stages" >&2; exit 1; }
 
 # status command should run (may exit 1 if /opt stale — still must print Overall)
 status_out="$(bash "$MD" status 2>&1 || true)"

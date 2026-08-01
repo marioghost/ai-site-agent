@@ -114,12 +114,12 @@ Same as production — no separate worker service.
 |--------|--------|
 | **Primary release path** | Linux VPS: systemd + nginx + host Postgres/Qdrant/Ollama via `deploy/manage_deploy.sh` |
 | **Public operator entry** | `bash deploy/manage_deploy.sh <command>` only (`help` for syntax) |
-| **Schema-first cutover** | `status` → `backup db` → `migrate release` → verify schema head → `deploy full` → `health` → `build-info` → `smoke` → `verify-release` (see [RELEASE-CHECKLIST.md](releases/RELEASE-CHECKLIST.md)) |
-| **Migrate commands** | `migrate` / `migrate live` = live `/opt` tree only; `migrate release` = only supported schema-first path (clean **origin/main** worktree → live `/opt` DB) |
-| **`deploy full` + Alembic** | Still runs post-sync `run_migrations` (idempotent no-op after successful `migrate release`; defense-in-depth; not a substitute for schema-first) |
+| **Normal release** | **One command:** `sudo bash deploy/manage_deploy.sh deploy full` (owns backup, schema-first decision, sync, migrate, restart, health, verify, smoke, report); tip must be clean `origin/main` |
+| **Migrate commands** | `migrate` / `migrate live` = live `/opt` tree only; `migrate release` = recovery schema-first from clean **origin/main** worktree (not a normal-release stage) |
+| **`deploy full` + Alembic** | Auto schema-first when tip migrations missing from `/opt`; always runs post-sync `run_migrations` (idempotent no-op OK; failure is fatal) |
 | **Makefile gates** | `make release-check` (CI/dev). Do **not** use Makefile as the public deploy workflow |
 | **Docker role** | Optional validation/staging path (`deploy/Dockerfile.validate`, CI). Not the production architecture |
-| **Do not** | Redesign deployment around Docker; require Docker for releases; block staging validation when Docker is missing; use ad-hoc DEV_CHECKOUT migrate; skip `migrate release` when `/opt` lacks required migrations; use `deploy full` → bare `migrate` |
+| **Do not** | Redesign deployment around Docker; require Docker for releases; block staging validation when Docker is missing; use ad-hoc DEV_CHECKOUT migrate; treat multi-command cutovers as the normal release path; use `deploy full` → bare `migrate` |
 
 ---
 | Staging deploy | `make deploy` | Linux server + sudo |

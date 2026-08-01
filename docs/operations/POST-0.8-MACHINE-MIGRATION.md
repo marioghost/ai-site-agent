@@ -94,31 +94,20 @@ Record before any cutover (read-only where possible):
 
 ## Gate D — Validation (new host)
 
-When the new host still lacks migration files that `origin/main` requires (schema-first case), use the same Release 0.8 cutover order — **never** `deploy full` then bare `migrate`:
-
-```text
-status → backup db → migrate release → verify schema head
-→ deploy full → health → build-info → smoke → verify-release
-```
+When the new host still lacks migration files that `origin/main` requires, **`deploy full` auto-detects schema-first** and runs it internally. Do **not** run a multi-command cutover for a normal release, and never `deploy full` then bare `migrate`:
 
 ```bash
-bash deploy/manage_deploy.sh doctor
-bash deploy/manage_deploy.sh status
-bash deploy/manage_deploy.sh backup db
-bash deploy/manage_deploy.sh migrate release   # only supported schema-first path
-# STOP unless head/post revision/columns verified (see RELEASE-0.8-PRE-DEPLOY-PLAN.md)
+bash deploy/manage_deploy.sh doctor    # diagnostic
+bash deploy/manage_deploy.sh status    # diagnostic
 sudo bash deploy/manage_deploy.sh deploy full   # only when approved for this host
-bash deploy/manage_deploy.sh health
-bash deploy/manage_deploy.sh build-info
-bash deploy/manage_deploy.sh smoke
-bash deploy/manage_deploy.sh verify-release
+# Optional diagnostics: health / build-info / verify-release
 ```
 
 | Command | Role on this host |
 |---------|-------------------|
 | `migrate` / `migrate live` | Alembic from **currently deployed `/opt`** tree only — cannot advance past files present in `/opt` |
-| `migrate release` | **Only** supported schema-first command (clean origin/main worktree → live `/opt` DB) |
-| `deploy full` inner migrate | Post-sync idempotent defense-in-depth; **not** a substitute for `migrate release` |
+| `migrate release` | Recovery schema-first only (clean origin/main worktree → live `/opt` DB) — not a normal-release stage |
+| `deploy full` | Canonical normal release (owns schema-first decision, sync, post-sync migrate, verify, smoke) |
 
 Manual checks after CLI gates:
 
@@ -130,7 +119,7 @@ Manual checks after CLI gates:
 - Logs: `bash deploy/manage_deploy.sh logs --module backend`
 - Flags still at intended defaults (Memory OFF; 0.8 flags as ops approved)
 
-Apply Alembic **0018/0019** via **`migrate release`** when `/opt` does not yet contain those files. Do **not** rely on bare `migrate` for that gate.
+Alembic tip revisions are applied by **`deploy full`** (internal schema-first when `/opt` lacks files, then post-sync migrate). Do **not** rely on bare `migrate` when `/opt` is missing tip migration files. Standalone `migrate release` remains recovery-only.
 
 ---
 
