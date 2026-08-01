@@ -20,12 +20,18 @@ These documents define the platform. **Do not redesign, replace, or reinterpret 
 | `RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md` | Curiosity and maintenance |
 | `KNOWLEDGE_OS_ARCHITECTURE_v1.md` | Subsystem boundaries |
 | `RFC-100-PRODUCTION-MIGRATION-STRATEGY.md` | Execution roadmap |
+| `RFC-PRODUCT-READINESS.md` | Product Readiness Program — parallel acceptance layer for Release 1.0 |
+| `RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md` | Dashboard product SoT (Release 1.0 UI/IA/ownership) |
+| `RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md` | Dashboard implementation architecture (folders/state/routing) |
+| `LIFECYCLE.md` | Capability states + Release 1.0 dual acceptance |
 
 ---
 
 ## Role
 
-The architecture phase is **complete**. We are no longer writing RFCs or inventing architecture.
+The architecture phase is **complete**. We are no longer inventing cognitive/platform architecture.
+
+**Exception (Release 1.0):** Product Readiness is an approved **product acceptance** program documented in `RFC-PRODUCT-READINESS.md`. It does **not** redesign Knowledge OS subsystems; it governs Dashboard IA/UX and acceptance.
 
 The AI partner acts as **Lead Engineer** responsible for executing the roadmap.
 
@@ -232,6 +238,7 @@ Before writing code, answer:
 | Can it be tested independently? |
 | Will it still make sense in two years? |
 | Which **release** and **flag** does this ship under? |
+| **Release 1.0:** Will this need a Product Readiness Gate (user-facing) or N/A (backend-only)? |
 
 ---
 
@@ -246,6 +253,46 @@ Every implementation must be:
 - Rollbackable
 - Testable
 - Feature-flagged if risky (see `RFC-100-PRODUCTION-MIGRATION-STRATEGY.md`)
+
+### Release 1.0 Definition of Done (dual)
+
+A Release 1.0 feature is **Done** only if:
+
+1. Engineering complete, tests pass, documentation updated (RFC-100)
+2. **And** a **Product Readiness Gate** record with result `PASS`, `PASS WITH DEBT`, or `N/A` (`RFC-PRODUCT-READINESS.md` §6)
+3. **And** (unless N/A) integrated into the final Information Architecture or Engineering Mode only
+4. **And** Product Debt declared (none / accepted / must resolve before Release 1.0 Acceptance) — invisible debt forbidden
+5. **And** no duplicated functionality/navigation introduced (else Gate `FAIL`)
+
+Gate `FAIL` or missing Gate record ⇒ **not Done**.
+
+### Release 1.0 Definition of Accepted
+
+Release 1.0 cannot be **Accepted** until:
+
+- RFC-100 functional completion
+- **And** Product Readiness Program completion
+- **And** no open Gate `FAIL`s on included changes
+- **And** no open Product Debt of class **must be resolved before Release 1.0 Acceptance**
+
+```
+Release 1.0 Engineering  +  Product Readiness  =  Release 1.0 Accepted Product
+                         ↑
+              Product Readiness Gate (per change)
+```
+
+Product Readiness runs **in parallel** with Steps 063–067. It does not block **starting** Step 063. The Gate blocks **Feature Acceptance** on `FAIL`. Program completion + debt policy block **Release Acceptance**.
+
+### Product Readiness Gate (how implementers run it)
+
+Before workflow Acceptance on any Release 1.0 change:
+
+1. If backend-only / non-user-facing → record **N/A** (&lt; 1 minute).
+2. Otherwise evaluate five areas: Feature Review · Architecture Review · Global Product Impact · Product Debt · Decision.
+3. Record **PASS** | **PASS WITH DEBT** | **FAIL** | **N/A**.
+4. Do not redesign unrelated Dashboard areas in order to pass the Gate.
+
+Authority: `RFC-PRODUCT-READINESS.md` §6.
 
 ---
 
@@ -301,11 +348,14 @@ Small implementation details inside an existing boundary do **not** require ADRs
 4. COGNITIVE_ARCHITECTURE.md          ← what the system knows (frozen)
 5. KNOWLEDGE_OS_ARCHITECTURE_v1.md   ← subsystems & boundaries (frozen)
 6. RFC-100-PRODUCTION-MIGRATION-STRATEGY.md ← what to build next
-7. LIFECYCLE.md                        ← capability states (Draft → Removed)
-8. docs/adr/*.md                     ← rare boundary changes
-9. docs/FEATURE_FLAGS.md             ← runtime flags (when created)
-10. docs/tech-debt/*.md              ← visible shortcuts
-11. docs/releases/RELEASE-CHECKLIST.md ← ops gates
+7. RFC-PRODUCT-READINESS.md              ← product acceptance (parallel with 1.0)
+8. RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md ← Dashboard product SoT
+9. RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md ← Dashboard implementation SoT
+10. LIFECYCLE.md                        ← capability states (Draft → Removed)
+11. docs/adr/*.md                     ← rare boundary changes
+12. docs/FEATURE_FLAGS.md             ← runtime flags (when created)
+13. docs/tech-debt/*.md              ← visible shortcuts
+14. docs/releases/RELEASE-CHECKLIST.md ← ops gates
 ```
 
 ---
@@ -317,6 +367,8 @@ Major capabilities (RFC steps, features, releases) follow [LIFECYCLE.md](LIFECYC
 **Draft → Implementation → Engineering Ready → Staging Validated → Production Ready → Production → Maintenance → Deprecated → Removed**
 
 Engineering progress and operational validation are **independent** after Implementation. Staging gates **production**; it does not block the next additive RFC step with flags OFF.
+
+For **Release 1.0**, Product Readiness is a third parallel track: it does not replace RFC-100, and it does not replace ops gates. See [RFC-PRODUCT-READINESS.md](RFC-PRODUCT-READINESS.md).
 
 Per-release status: `docs/releases/RELEASE-0.x-ACCEPTANCE-REPORT.md`.
 

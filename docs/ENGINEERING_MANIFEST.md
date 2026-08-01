@@ -12,9 +12,13 @@ Every architectural decision must move the system closer to **understanding know
 **Active acquisition:** `docs/RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md`  
 **Engineering architecture (v1 contract):** `docs/KNOWLEDGE_OS_ARCHITECTURE_v1.md`  
 **Production migration (execution):** `docs/RFC-100-PRODUCTION-MIGRATION-STRATEGY.md`  
+**Product Readiness (Release 1.0 acceptance layer + Gate):** `docs/RFC-PRODUCT-READINESS.md`  
+**Dashboard product specification (SoT):** `docs/RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md`  
+**Dashboard implementation architecture:** `docs/RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md`  
 **Development charter (how we work):** `docs/DEVELOPMENT_CHARTER.md`  
 **Architecture RFC:** `docs/RFC-0001-KNOWLEDGE-OS-CORE.md`  
-**Migration roadmap:** `docs/MIGRATION_ROADMAP_KNOWLEDGE_OS.md`
+**Migration roadmap:** `docs/MIGRATION_ROADMAP_KNOWLEDGE_OS.md`  
+**Capability lifecycle:** `docs/LIFECYCLE.md`
 
 This document defines the permanent engineering principles of the entire project.
 

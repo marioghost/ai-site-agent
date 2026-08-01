@@ -38,6 +38,32 @@ Release identity is derived from tip `APP_RELEASE`. A stale configured `RELEASE_
 11. Product staging validation (separate lifecycle; not a deploy stage)  
 12. Staging → Production (when release accepts)
 
+### Release 1.0 acceptance (Product Readiness Gate)
+
+For Release 1.0 work, **step 6 Acceptance** means **both**:
+
+- Functional Acceptance (RFC-100 / `make release-check`)
+- **Product Readiness Gate** result ∈ {`PASS`, `PASS WITH DEBT`, `N/A`}  
+  (`docs/RFC-PRODUCT-READINESS.md` §6)
+
+| Gate result | Step 6 |
+|-------------|--------|
+| PASS | Allowed |
+| PASS WITH DEBT | Allowed; debt recorded |
+| FAIL | **Blocked** |
+| N/A | Allowed (backend-only / non-user-facing; one-line justification) |
+| Missing | **Blocked** |
+
+Product Readiness runs **in parallel** with Release 1.0 engineering. The Gate is **not** a deploy stage and **not** a substitute for One Command Deployment. It does **not** delay starting Step 063.
+
+```
+Release 1.0 Engineering  +  Product Readiness  =  Release 1.0 Accepted Product
+                         ↑
+              Product Readiness Gate (per change)
+```
+
+Release 1.0 cannot be marked **Accepted** until Product Readiness Program completion criteria are met **and** no open Gate debt of class **must be resolved before Release 1.0 Acceptance** remains. See `docs/LIFECYCLE.md`.
+
 ---
 
 ## Normal release (One Command Deployment)

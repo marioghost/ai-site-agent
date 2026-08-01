@@ -775,7 +775,7 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **056** | Golden on generic profile only in CI | Loader fail-closed on `fixture_profile=generic_corporate` — **implemented** (CI/tests only); see `0.8-step-056-implementation.md` |
 | **057** | Release 0.8 | **Closed** — Engineering Ready; staging_validated=false; production_ready=false; see `RELEASE-0.8-ACCEPTANCE-REPORT.md` |
 
-**Release 0.8 engineering accepted** (`closed_0_8: true`). Migrations **0018/0019** are code head only until an approved deploy. Memory assist/shadow remain default OFF. Release **0.9** has not started.
+**Release 0.8 engineering accepted** (`closed_0_8: true`). Migrations **0018/0019** are code head only until an approved deploy. Memory assist/shadow remain default OFF.
 
 ### Release 0.9
 
@@ -787,6 +787,8 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **061** | Metrics: investigations, tension resolved | — |
 | **062** | Release 0.9 | — |
 
+> **Status note (planning):** Release 0.9 engineering is closed and deployed. Historical step write-ups and acceptance reports remain authoritative for 0.9 detail; this table is not rewritten here.
+
 ### Release 1.0
 
 | Step | Title | Detail |
@@ -796,6 +798,33 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | **065** | Remove hybrid flag registry entries | — |
 | **066** | Load test 1hr + rollback drill | — |
 | **067** | GA release + on-call runbook update | — |
+
+#### Product Readiness Program (cross-cutting — parallel with Release 1.0)
+
+Product Readiness is **not** a release number, **not** Phase 0, **not** “0.95,” and **not** post-1.0 cleanup.
+
+It is a **mandatory product acceptance layer** executed **in parallel** with Steps 063–067.
+
+**Enforcement mechanism:** the **Product Readiness Gate** (`docs/RFC-PRODUCT-READINESS.md` §6). It is not a new RFC-100 step, not a deploy stage, and not a CI subsystem.
+
+```
+Release 1.0 Engineering  +  Product Readiness  =  Release 1.0 Accepted Product
+                         ↑
+              Product Readiness Gate (per change)
+```
+
+| Rule | Meaning |
+|------|---------|
+| Engineering plan | Steps 063–067 continue exactly as planned |
+| Starting Step 063 | **Allowed** while Product Readiness is in progress |
+| Feature Done | Functional (this RFC) **and** Gate ∈ {PASS, PASS WITH DEBT, N/A} |
+| Feature Acceptance blocked | Gate FAIL or missing Gate record |
+| Release Accepted | All 1.0 functional intent **and** Product Readiness Program complete **and** no open must-resolve Gate debt |
+| Authority | `docs/RFC-PRODUCT-READINESS.md` + Dashboard SoT `docs/RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md` |
+
+Workstreams (parallel): Dashboard UX · Navigation · Information Architecture · Design System · Engineering Mode · **Product Readiness Gate** · Simplicity Audit · Product Validation.
+
+**Mandatory:** No Release 1.0 feature may be accepted if it duplicates functionality/navigation, exposes engineering concepts to normal users, breaks IA, increases unexplained dashboard complexity, violates Product Readiness principles, or leaves invisible product debt.
 
 ---
 
@@ -818,6 +847,8 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 
 ## 13.3 Success definition for migration complete
 
+### Functional (RFC-100)
+
 - [ ] All chat through Executive + Reasoning + Language  
 - [ ] Claims in Memory authoritative for evidence routing  
 - [ ] Tensions visible and decreasing on steady-state sites  
@@ -826,6 +857,18 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 - [ ] No production dependency on document_type for canonical/scoring  
 - [ ] Observability dashboards operational  
 - [ ] All migration flags removed or at 1.0 defaults only  
+
+### Product Readiness (mandatory for Release 1.0 Accepted Product)
+
+- [ ] Product Readiness Program complete per `docs/RFC-PRODUCT-READINESS.md`  
+- [ ] Information Architecture finalized; navigation by user intent  
+- [ ] No duplicated functionality or navigation in the primary product  
+- [ ] Engineering Mode isolates engineering surfaces from normal users  
+- [ ] Dashboard satisfies simplicity principles without developer coaching  
+- [ ] Visual language and terminology consistent across the product  
+- [ ] Product Readiness Gate used on Release 1.0 changes; no open `FAIL`; no open **must-resolve** debt  
+
+**Release 1.0 Accepted Product** requires **both** checklists. Functional completion alone is insufficient.
 
 ---
 
@@ -839,6 +882,10 @@ Release **0.6 engineering accepted** (`closed_0_6: true`). Runtime migration fla
 | `MIGRATION_ROADMAP_KNOWLEDGE_OS.md` | Superseded by this RFC for execution detail |
 | `docs/FEATURE_FLAGS.md` | Created at step 011 |
 | `docs/releases/0.x-rollback.md` | Per-release rollback runbooks |
+| `docs/RFC-PRODUCT-READINESS.md` | Product Readiness Program + **Product Readiness Gate** (enforcement) for Release 1.0 |
+| `docs/RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md` | **Single source of truth** for Dashboard product architecture |
+| `docs/RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md` | Dashboard **implementation** architecture (HOW); does not redefine product IA |
+| `docs/LIFECYCLE.md` | Capability lifecycle + Release 1.0 dual acceptance |
 
 ---
 
