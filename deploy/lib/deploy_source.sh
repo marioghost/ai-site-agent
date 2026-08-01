@@ -310,7 +310,10 @@ md_deploy_from_main() {
   echo "[deploy 4/13] SCHEMA-FIRST"
   if [[ "$MD_MIGRATION_DECISION" == "schema_first" ]]; then
     echo "[deploy] schema-first required — running migrate release --yes (non-interactive)"
-    if ! MD_SKIP_CLI=1 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
+    # Must use the canonical CLI path (positional "migrate release").
+    # MD_SKIP_CLI=1 forces legacy --mode/--action parsing, which rejects "migrate"
+    # as an unknown option and breaks schema-first (see deploy report 20260801_175059).
+    if ! MD_SKIP_CLI=0 PROJECT_ROOT="$MD_DEPLOY_PROJECT_ROOT" \
          bash "$MD_DEPLOY_SCRIPT_DIR/manage_deploy.sh" migrate release --yes; then
       MD_REPORT_MIGRATION_SCHEMA_FIRST="failed"
       md_deploy_fail schema_first "migrate release failed" || return 1

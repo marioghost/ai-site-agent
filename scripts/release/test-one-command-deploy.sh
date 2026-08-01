@@ -67,6 +67,46 @@ if "md_deploy_fail report" not in text:
 
 if "migrate release --yes" not in text:
     print("FAIL: schema-first must call migrate release --yes", file=sys.stderr); sys.exit(1)
+# Schema-first must reach the CLI subcommand path. MD_SKIP_CLI=1 on that
+# invocation sends "migrate" through legacy parse_args → "Unknown option: migrate".
+import re as _re
+
+sf_section_m = _re.search(
+    r"# --- 4/13 CONDITIONAL SCHEMA-FIRST ---.*?\# --- 5/13 BUILD ---",
+    text,
+    _re.S,
+)
+sf_section = sf_section_m.group(0) if sf_section_m else ""
+if not sf_section:
+    print("FAIL: cannot locate schema-first section", file=sys.stderr)
+    sys.exit(1)
+if "migrate release --yes" not in sf_section:
+    print("FAIL: schema-first section missing migrate release --yes", file=sys.stderr)
+    sys.exit(1)
+# Invocation line(s) only — ignore comments that document the MD_SKIP_CLI=1 failure mode.
+inv_lines = [
+    ln for ln in sf_section.splitlines()
+    if "migrate release --yes" in ln and not ln.lstrip().startswith("#")
+]
+# Also capture the preceding "if !" line that sets MD_SKIP_CLI.
+inv_ctx = []
+lines = sf_section.splitlines()
+for i, ln in enumerate(lines):
+    if "migrate release --yes" in ln and not ln.lstrip().startswith("#"):
+        inv_ctx.extend(lines[max(0, i - 2) : i + 1])
+inv_blob = "\n".join(inv_ctx)
+if "MD_SKIP_CLI=1" in inv_blob:
+    print(
+        "FAIL: schema-first must not set MD_SKIP_CLI=1 when calling migrate release",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+if "MD_SKIP_CLI=0" not in inv_blob:
+    print(
+        "FAIL: schema-first must set MD_SKIP_CLI=0 so migrate release uses the CLI path",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 if "ignoring configured value" not in text:
     print("FAIL: must warn/ignore stale RELEASE_VERSION", file=sys.stderr); sys.exit(1)
 if "deploy_guard_read_app_release" not in text:
