@@ -24,16 +24,23 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=deploy/lib/deploy_guard.sh
 source "$SCRIPT_DIR/lib/deploy_guard.sh"
+# shellcheck source=deploy/lib/release_deploy_env.sh
+source "$SCRIPT_DIR/lib/release_deploy_env.sh"
 
 export PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 # shellcheck source=deploy.conf
 source "$SCRIPT_DIR/deploy.conf"
 
+# One Command: preserve release worktree DEV_CHECKOUT / tip release across local conf.
+md_release_preserve_env_before_local_conf
+
 if [[ "${DEPLOY_SKIP_LOCAL_CONF:-0}" != "1" && -f "$SCRIPT_DIR/deploy.local.conf" ]]; then
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/deploy.local.conf"
 fi
+
+md_release_restore_env_after_local_conf
 
 PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 BACKEND_DIR="${BACKEND_DIR:-$PROJECT_ROOT/backend}"
@@ -1670,7 +1677,15 @@ write_frontend_deploy_identity() {
   [[ -n "$commit" ]] || return 0
   [[ -d "$FRONTEND_BUILD_DIR" ]] || return 0
   release="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('release',''))" 2>/dev/null || true)"
-  [[ -n "$release" ]] || release="${RELEASE_VERSION:-0.7}"
+  # Tip APP_RELEASE / build-info wins; never invent identity from stale RELEASE_VERSION
+  # during One Command (MD_DEPLOY_RELEASE is tip APP_RELEASE).
+  if [[ -z "$release" ]]; then
+    release="${MD_DEPLOY_RELEASE:-}"
+  fi
+  if [[ -z "$release" && "${MD_RELEASE_DEPLOY:-0}" != "1" ]]; then
+    release="${RELEASE_VERSION:-0.7}"
+  fi
+  [[ -n "$release" ]] || release="unknown"
   short="${commit:0:7}"
   mkdir -p "$FRONTEND_BUILD_DIR"
   python3 - <<PY

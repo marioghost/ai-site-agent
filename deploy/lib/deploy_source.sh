@@ -338,6 +338,7 @@ md_deploy_from_main() {
   fi
   MD_DEPLOY_RELEASE="$tip_release"
   MD_REPORT_DEPLOYED_RELEASE="$tip_release"
+  export MD_DEPLOY_RELEASE
   if [[ -n "${MD_DEPLOY_CONFIGURED_RELEASE}" && "$MD_DEPLOY_CONFIGURED_RELEASE" != "$tip_release" ]]; then
     echo "WARN: configured RELEASE_VERSION=$MD_DEPLOY_CONFIGURED_RELEASE differs from tip APP_RELEASE=$tip_release — ignoring configured value for release identity" >&2
   fi
