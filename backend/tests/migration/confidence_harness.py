@@ -46,14 +46,16 @@ class FlagCombo:
         )
 
 
+# Step 064: Executive is the sole API entry. Pipeline matrix is Reasoning × EA
+# under Executive=ON. Executive=false is the emergency kill-switch (503/SSE),
+# covered by Step 064 dedicated tests — not pipeline instrumentation.
 ALL_FLAG_COMBOS: tuple[FlagCombo, ...] = tuple(
-    FlagCombo(e, r, ea)
-    for e in (False, True)
+    FlagCombo(True, r, ea)
     for r in (False, True)
     for ea in (False, True)
 )
 
-BASELINE_COMBO = FlagCombo(False, False, False)
+BASELINE_COMBO = FlagCombo(True, False, False)
 
 
 @dataclass
@@ -172,10 +174,6 @@ def apply_flags(monkeypatch, combo: FlagCombo) -> None:
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
         lambda: combo.executive,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: combo.reasoning,
     )
     monkeypatch.setattr(
         "app.services.retrieval_pipeline_service.evidence_assembly_enabled",
@@ -505,29 +503,13 @@ def run_golden_smoke_for_combo(monkeypatch, combo: FlagCombo) -> list[str]:
     failures: list[str] = []
     apply_flags(monkeypatch, combo)
 
-    class _FixtureRag:
-        def answer(self, message, session_id, **kwargs):
-            item = next(q for q in golden["queries"] if q["query"] == message)
-            return build_fixture_rag_result(golden, item)
-
     class _FixtureExecutive:
         def answer(self, message, session_id, **kwargs):
             item = next(q for q in golden["queries"] if q["query"] == message)
             return build_fixture_rag_result(golden, item)
 
-    class _FixtureReasoning:
-        def answer(self, message, session_id, **kwargs):
-            item = next(q for q in golden["queries"] if q["query"] == message)
-            result = build_fixture_rag_result(golden, item)
-            result.reasoning_path = "reasoning_service"
-            return result
-
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, s: _FixtureRag())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, s: _FixtureExecutive()
-    )
-    monkeypatch.setattr(
-        "app.api.chat.ReasoningService", lambda db, s: _FixtureReasoning()
     )
 
     from app.api.chat import _dispatch_non_stream_answer

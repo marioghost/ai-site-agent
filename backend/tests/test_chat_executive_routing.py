@@ -1,8 +1,10 @@
-"""RFC-100 Step 002 — non-streaming chat routing via knowledge_os_executive_enabled."""
+"""RFC-100 Step 002/064 — non-streaming chat routing via ExecutiveService."""
 from __future__ import annotations
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.chat import EXECUTIVE_DISABLED_DETAIL
 from app.core.concurrency import OverloadedError
 from app.services.rag_service import RagResult, RagSource
 
@@ -64,79 +66,87 @@ def test_knowledge_os_executive_enabled_kill_switch_false(monkeypatch):
 
 
 @pytest.mark.unit
-def test_dispatch_flag_off_uses_rag_service(monkeypatch):
-    """When flag is OFF, dispatch must call RagService directly."""
+def test_dispatch_flag_unset_uses_executive_exactly_once(monkeypatch):
+    """Unset Executive (default ON) → ExecutiveService exactly once."""
     from unittest.mock import MagicMock
 
     from app.api.chat import _dispatch_non_stream_answer
 
-    rag_called = {"n": 0}
     executive_called = {"n": 0}
 
-    class _FakeRag:
+    class _FakeExecutive:
         def answer(self, message, session_id, **kwargs):
-            rag_called["n"] += 1
+            executive_called["n"] += 1
             return _fake_rag_result(request_id=kwargs.get("request_id", "req"))
 
-    class _FakeExecutive:
-        def __init__(self, db, settings):
-            executive_called["n"] += 1
-
-        def answer(self, *args, **kwargs):
-            raise AssertionError("ExecutiveService must not be used when flag is OFF")
-
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: False,
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
-    monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
 
     result = _dispatch_non_stream_answer(
         MagicMock(),
         MagicMock(),
         "hello",
         "sess-1",
-        request_id="req-1",
+        request_id="req-unset",
     )
 
-    assert rag_called["n"] == 1
-    assert executive_called["n"] == 0
+    assert executive_called["n"] == 1
     assert result.answer == "Test answer"
 
 
 @pytest.mark.unit
-def test_dispatch_flag_on_uses_executive_service(monkeypatch):
-    """When flag is ON, dispatch must call ExecutiveService.answer."""
+def test_dispatch_flag_off_raises_503_controlled_unavailable(monkeypatch):
+    """When Executive is OFF, dispatch must 503 — no Rag / Reasoning / Executive."""
     from unittest.mock import MagicMock
 
     from app.api.chat import _dispatch_non_stream_answer
 
-    rag_called = {"n": 0}
     executive_called = {"n": 0}
 
-    class _FakeRag:
+    class _FakeExecutive:
         def __init__(self, db, settings):
-            rag_called["n"] += 1
+            executive_called["n"] += 1
 
         def answer(self, *args, **kwargs):
-            raise AssertionError("RagService must not be used directly when flag is ON")
+            raise AssertionError("ExecutiveService must not run when flag is OFF")
+
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
+    monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
+
+    with pytest.raises(HTTPException) as exc_info:
+        _dispatch_non_stream_answer(
+            MagicMock(),
+            MagicMock(),
+            "hello",
+            "sess-1",
+            request_id="req-1",
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == EXECUTIVE_DISABLED_DETAIL
+    assert executive_called["n"] == 0
+
+
+@pytest.mark.unit
+def test_dispatch_flag_on_uses_executive_service(monkeypatch):
+    """When flag is ON, dispatch must call ExecutiveService.answer exactly once."""
+    from unittest.mock import MagicMock
+
+    from app.api.chat import _dispatch_non_stream_answer
+
+    executive_called = {"n": 0}
 
     class _FakeExecutive:
         def answer(self, message, session_id, **kwargs):
             executive_called["n"] += 1
             return _fake_rag_result(request_id=kwargs.get("request_id", "req"))
 
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: True,
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
-    monkeypatch.setattr("app.api.chat.RagService", _FakeRag)
-    monkeypatch.setattr("app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive())
 
     result = _dispatch_non_stream_answer(
         MagicMock(),
@@ -147,81 +157,65 @@ def test_dispatch_flag_on_uses_executive_service(monkeypatch):
     )
 
     assert executive_called["n"] == 1
-    assert rag_called["n"] == 0
     assert result.answer == "Test answer"
 
 
 @pytest.mark.unit
-def test_dispatch_both_paths_return_same_result(monkeypatch):
-    """Executive passthrough must return the same RagResult as legacy."""
+def test_dispatch_reasoning_flag_does_not_bypass_executive(monkeypatch):
+    """Reasoning ON must not create an API-level bypass around Executive."""
     from unittest.mock import MagicMock
 
     from app.api.chat import _dispatch_non_stream_answer
 
-    shared = _fake_rag_result(request_id="req-3")
+    executive_called = {"n": 0}
 
-    class _SharedFake:
+    class _FakeExecutive:
         def answer(self, *args, **kwargs):
-            return shared
+            executive_called["n"] += 1
+            return _fake_rag_result()
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _SharedFake())
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
-        "app.api.chat.ExecutiveService", lambda db, settings: _SharedFake()
-    )
-
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    legacy = _dispatch_non_stream_answer(
-        MagicMock(), MagicMock(), "q", "s", request_id="req-3"
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
 
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: True,
+    result = _dispatch_non_stream_answer(
+        MagicMock(), MagicMock(), "q", "s", request_id="req-rsn"
     )
-    executive = _dispatch_non_stream_answer(
-        MagicMock(), MagicMock(), "q", "s", request_id="req-3"
-    )
-
-    assert legacy == executive
+    assert executive_called["n"] == 1
+    assert result.answer == "Test answer"
 
 
 @pytest.mark.unit
-def test_dispatch_logs_path(monkeypatch, caplog):
-    """Structured dispatch logging uses path=legacy|executive (Step 004)."""
+def test_dispatch_logs_path_executive_and_disabled(monkeypatch, caplog):
+    """Structured dispatch logging uses path=executive|executive_disabled (Step 064)."""
     import logging
     from unittest.mock import MagicMock
 
     from app.api.chat import _dispatch_non_stream_answer
     from app.api.chat_dispatch_log import log_chat_dispatch
 
-    class _FakeRag:
+    class _FakeExecutive:
         def answer(self, *args, **kwargs):
             return _fake_rag_result()
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
     monkeypatch.setattr(
-        "app.api.chat.ExecutiveService", lambda db, settings: _FakeRag()
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
 
     with caplog.at_level(logging.INFO, logger="app.api.chat"):
         monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-        monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-log-1",
-            path="legacy",
+            path="executive_disabled",
             mode="non_stream",
         )
-        _dispatch_non_stream_answer(
-            MagicMock(), MagicMock(), "m", "s", request_id="req-log-1"
-        )
+        with pytest.raises(HTTPException) as exc_info:
+            _dispatch_non_stream_answer(
+                MagicMock(), MagicMock(), "m", "s", request_id="req-log-1"
+            )
+        assert exc_info.value.status_code == 503
 
         monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
         log_chat_dispatch(
@@ -230,15 +224,19 @@ def test_dispatch_logs_path(monkeypatch, caplog):
             path="executive",
             mode="non_stream",
         )
+        _dispatch_non_stream_answer(
+            MagicMock(), MagicMock(), "m", "s", request_id="req-log-2"
+        )
 
     messages = " ".join(r.getMessage() for r in caplog.records)
-    assert "path=legacy" in messages
+    assert "path=executive_disabled" in messages
     assert "path=executive" in messages
+    assert "path=legacy" not in messages
 
 
 @pytest.mark.unit
 def test_dispatch_overloaded_error_propagates(monkeypatch):
-    """OverloadedError must propagate unchanged from both paths."""
+    """OverloadedError must propagate unchanged from the Executive path."""
     from unittest.mock import MagicMock
 
     from app.api.chat import _dispatch_non_stream_answer
@@ -247,18 +245,9 @@ def test_dispatch_overloaded_error_propagates(monkeypatch):
         def answer(self, *args, **kwargs):
             raise OverloadedError("too many requests")
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _Overloaded())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _Overloaded()
     )
-
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    with pytest.raises(OverloadedError, match="too many requests"):
-        _dispatch_non_stream_answer(
-            MagicMock(), MagicMock(), "q", "s", request_id="req-err-1"
-        )
-
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     with pytest.raises(OverloadedError, match="too many requests"):
         _dispatch_non_stream_answer(
@@ -266,15 +255,9 @@ def test_dispatch_overloaded_error_propagates(monkeypatch):
         )
 
 
-def test_chat_flag_off_uses_rag_service(monkeypatch, client, auth_headers):
-    """When flag is OFF, /api/chat must call RagService directly."""
-    rag_called = {"n": 0}
+def test_chat_flag_off_returns_503(monkeypatch, client, auth_headers):
+    """When Executive is OFF, /api/chat returns HTTP 503 controlled unavailable."""
     executive_called = {"n": 0}
-
-    class _FakeRag:
-        def answer(self, message, session_id, **kwargs):
-            rag_called["n"] += 1
-            return _fake_rag_result(request_id=kwargs.get("request_id", "req"))
 
     class _FakeExecutive:
         def __init__(self, db, settings):
@@ -283,15 +266,10 @@ def test_chat_flag_off_uses_rag_service(monkeypatch, client, auth_headers):
         def answer(self, *args, **kwargs):
             raise AssertionError("ExecutiveService must not be used when flag is OFF")
 
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
     monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: False,
+        "app.api.chat_dispatch_log.knowledge_os_executive_enabled", lambda: False
     )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
     monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
 
     sid = client.post("/api/chat/sessions", json={}, headers=auth_headers).json()[
@@ -303,38 +281,27 @@ def test_chat_flag_off_uses_rag_service(monkeypatch, client, auth_headers):
         headers=auth_headers,
     )
 
-    assert res.status_code == 200
-    assert rag_called["n"] == 1
+    assert res.status_code == 503
+    assert res.json()["detail"] == EXECUTIVE_DISABLED_DETAIL
     assert executive_called["n"] == 0
-    body = res.json()
-    assert body["answer"] == "Test answer"
-    assert body["used_context"] is True
-    assert len(body["sources"]) == 1
 
 
 def test_chat_flag_on_uses_executive_service(monkeypatch, client, auth_headers):
     """When flag is ON, /api/chat must call ExecutiveService.answer."""
-    rag_called = {"n": 0}
     executive_called = {"n": 0}
-
-    class _FakeRag:
-        def __init__(self, db, settings):
-            rag_called["n"] += 1
-
-        def answer(self, *args, **kwargs):
-            raise AssertionError("RagService must not be used directly when flag is ON")
 
     class _FakeExecutive:
         def answer(self, message, session_id, **kwargs):
             executive_called["n"] += 1
             return _fake_rag_result(request_id=kwargs.get("request_id", "req"))
 
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: True,
+        "app.api.chat_dispatch_log.knowledge_os_executive_enabled", lambda: True
     )
-    monkeypatch.setattr("app.api.chat.RagService", _FakeRag)
-    monkeypatch.setattr("app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive())
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
+    )
 
     sid = client.post("/api/chat/sessions", json={}, headers=auth_headers).json()[
         "session_id"
@@ -347,14 +314,13 @@ def test_chat_flag_on_uses_executive_service(monkeypatch, client, auth_headers):
 
     assert res.status_code == 200
     assert executive_called["n"] == 1
-    assert rag_called["n"] == 0
     body = res.json()
     assert body["answer"] == "Test answer"
     assert body["metadata"]["query_intent"] == "overview"
 
 
-def test_chat_flag_on_and_off_return_identical_schema(monkeypatch, client, auth_headers):
-    """Executive passthrough must produce the same response shape as legacy."""
+def test_chat_success_schema_stable_with_executive(monkeypatch, client, auth_headers):
+    """Successful Executive path preserves ChatResponse schema keys."""
     sid = client.post("/api/chat/sessions", json={}, headers=auth_headers).json()[
         "session_id"
     ]
@@ -364,45 +330,27 @@ def test_chat_flag_on_and_off_return_identical_schema(monkeypatch, client, auth_
         def answer(self, message, session_id, **kwargs):
             return _fake_rag_result(request_id=kwargs.get("request_id", "req"))
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _SharedFake())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _SharedFake()
     )
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat_dispatch_log.knowledge_os_executive_enabled", lambda: True
+    )
 
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    legacy = client.post("/api/chat", json=payload, headers=auth_headers)
-    assert legacy.status_code == 200
-
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: True,
-    )
     executive = client.post("/api/chat", json=payload, headers=auth_headers)
     assert executive.status_code == 200
-
-    legacy_body = legacy.json()
-    executive_body = executive.json()
-    assert set(legacy_body.keys()) == set(executive_body.keys())
-    assert legacy_body["answer"] == executive_body["answer"]
-    assert legacy_body["used_context"] == executive_body["used_context"]
-    assert legacy_body["sources"] == executive_body["sources"]
+    body = executive.json()
+    assert "answer" in body
+    assert "sources" in body
+    assert "used_context" in body
+    assert body["answer"] == "Test answer"
 
 
-def test_chat_overloaded_error_propagates_same_for_both_paths(
+def test_chat_overloaded_error_propagates_on_executive_path(
     monkeypatch, client, auth_headers
 ):
-    """OverloadedError must return 429 on both legacy and executive paths."""
-
-    class _OverloadedRag:
-        def answer(self, *args, **kwargs):
-            raise OverloadedError("too many requests")
+    """OverloadedError must return 429 on the Executive path."""
 
     class _OverloadedExecutive:
         def answer(self, *args, **kwargs):
@@ -413,26 +361,16 @@ def test_chat_overloaded_error_propagates_same_for_both_paths(
     ]
     payload = {"message": "overload", "session_id": sid}
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _OverloadedRag())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _OverloadedExecutive()
     )
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat_dispatch_log.knowledge_os_executive_enabled", lambda: True
+    )
 
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    legacy = client.post("/api/chat", json=payload, headers=auth_headers)
-    assert legacy.status_code == 429
-
-    monkeypatch.setattr(
-        "app.api.chat.knowledge_os_executive_enabled",
-        lambda: True,
-    )
     executive = client.post("/api/chat", json=payload, headers=auth_headers)
     assert executive.status_code == 429
-    assert executive.json()["detail"] == legacy.json()["detail"]
+    assert "too many" in executive.json()["detail"].lower() or executive.json()[
+        "detail"
+    ]

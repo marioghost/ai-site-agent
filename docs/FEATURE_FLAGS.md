@@ -22,12 +22,12 @@ allow_legacy_<surface>                        # deprecation gates
 
 | Flag | Surface | Default | Purpose | Activate when | Rollback | Remove |
 |------|---------|---------|---------|---------------|----------|--------|
-| `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **true** | Route `/api/chat` (stream + non-stream) through `ExecutiveService` instead of direct `RagService` | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
+| `knowledge_os_executive_enabled` | Env `KNOWLEDGE_OS_EXECUTIVE_ENABLED` | **true** | Sole API entry for `/api/chat` and `/api/chat/stream` via `ExecutiveService`. Explicit `false` = hard kill-switch (HTTP 503 / SSE `executive_disabled`); no API fallback to Rag or Reasoning (Step 064) | Default ON (Step 063) | Set env `false`; restart — Ask becomes controlled unavailable | After 1.0 stabilization |
 | `reasoning_service_enabled` | Env `REASONING_SERVICE_ENABLED` | **true** | Route chat through `ReasoningService` (Steps 039–045). With EA also ON (Step 041), Reasoning orders RPS prepare→assemble→finalize once. Steps 043–044 add sufficiency + speech-act diagnostics; Step 045 Language UX requires `REASONING_SPEECH_ACTS_ENABLED` | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
 | `evidence_assembly_enabled` | Env `EVIDENCE_ASSEMBLY_ENABLED` | **true** | Route RPS assemble stage through `EvidenceAssemblyService` (Step 040). With Reasoning also ON, Reasoning coordinates that stage | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
 | `reasoning_speech_acts_enabled` | Env `REASONING_SPEECH_ACTS_ENABLED` | **true** | Language consumes Reasoning speech acts (Step 045). **No effect when Reasoning OFF.** When Reasoning ON + this OFF → Step 044 advisory-only. When both ON → clarify/refuse deterministic; qualify limitation; answer unchanged | Default ON (Step 063) | Set env `false`; restart | After 1.0 stabilization |
 
-**Step 042:** All three migration flags validated independently and in all 8 combinations — see [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md).
+**Step 042 / 064:** Pipeline confidence matrix is Reasoning × Evidence Assembly under Executive=ON (4 combos). Executive=`false` is the Step 064 emergency kill-switch — see Step 064 tests. Historical Step 042 also validated pre-064 8-way flag combos — see [MIGRATION_CONFIDENCE_REPORT.md](MIGRATION_CONFIDENCE_REPORT.md).
 | `enable_semantic_diagnostics_v2` | Settings DB column | **true** | Additive debug field `understanding_trace` stub on chat responses when client `debug=true` | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
 | `cache_namespace_v2_enabled` | Settings DB column | **true** | Include `memory_version` in retrieval/answer cache namespace hash via `MemoryVersionService` | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
 | `memory_shadow_write_enabled` | Settings DB column | **true** | After SI generation, persist claim proposals to epistemic tables (shadow only; no retrieval/chat use) | Default ON (Step 063 / migration `0020`) | Set Settings `false`; restart not required | After 1.0 stabilization |
@@ -40,6 +40,8 @@ allow_legacy_<surface>                        # deprecation gates
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
 **Release 1.0 Step 063:** Knowledge OS env + Settings flags above default **ON**. Legacy KP/doc-type flags remain **false**. See [1.0-step-063-implementation.md](releases/1.0-step-063-implementation.md).
+
+**Release 1.0 Step 064:** API chat dispatch is **Executive-only**. `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` is a hard controlled-unavailable kill-switch (HTTP 503 / SSE `error_type=executive_disabled`). Internal Executive → Reasoning / Rag degradation is unchanged. See [1.0-step-064-implementation.md](releases/1.0-step-064-implementation.md).
 
 **Release 0.7–0.9 (historical):** Flags shipped default OFF through Release 0.9 engineering closure. Do not rewrite historical acceptance reports.
 
@@ -74,25 +76,28 @@ cd backend
 
 **Code:** `app/core/config.py` → `app/services/feature_flags.py` → `app/api/chat.py`
 
-**Behavior when OFF (kill-switch):**
+**Behavior when OFF (kill-switch, Step 064):**
 
-- `_dispatch_non_stream_answer()` → `RagService.answer()`
-- `_dispatch_stream_events()` → `RagStreamingService.iter_events()`
-- Structured logs: `path=legacy`
+- `_dispatch_non_stream_answer()` → HTTP **503** (`EXECUTIVE_DISABLED_DETAIL`); no Executive / Reasoning / Rag
+- `_dispatch_stream_events()` → one SSE `error` with `error_type=executive_disabled`; stream closes
+- Structured logs: `path=executive_disabled` (before orchestration)
+- **No** API fallback to Rag or Reasoning
 
-**Behavior when ON (default as of Step 063):**
+**Behavior when ON / unset (default as of Step 063):**
 
-- Both paths delegate to `ExecutiveService` (passthrough to same RAG stack in 0.1)
+- Both routes call `ExecutiveService` exactly once (sole API orchestration entry)
+- Internal: Executive → Reasoning (when enabled) or Executive-owned Rag degrade
 - Structured logs: `path=executive`
 
-**User-visible impact (0.1):** None — Executive is passthrough; parity tests require identical responses.
+**User-visible impact (normal path):** None when Executive remains enabled — Ask contracts unchanged.
 
 **Verification:**
 
 ```bash
 cd backend
 .venv/bin/pytest tests/test_chat_executive_routing.py tests/test_chat_stream_executive_routing.py \
-  tests/test_executive_service.py tests/test_golden_chat_parity.py -v -m unit
+  tests/test_step_064_executive_sole_entry.py tests/test_executive_service.py \
+  tests/test_golden_chat_parity.py -v -m unit
 ```
 
 ---
@@ -281,13 +286,16 @@ Use when Executive path causes regression in staging or production.
 
 1. **Disable flag:** set `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` and restart backend pods/processes.
    (**Do not** rely on unsetting the variable — as of Step 063, unset means **ON**.)
-2. **Clear caches** (optional but recommended after routing change):
-   - Admin → clear retrieval cache / semantic answer cache, or run maintenance script if available.
-3. **Verify:** run golden smoke (see below).
-4. **Observe:** confirm logs show `path=legacy` on new chat requests.
-5. **Post-mortem** within 24h if production was affected.
+2. **Expect controlled unavailable (Step 064):**
+   - `POST /api/chat` → HTTP **503** with operator detail that Executive was disabled.
+   - `POST /api/chat/stream` → SSE `error` with `error_type=executive_disabled` (no token/final).
+   - **No** fallback to direct RagService, RagStreamingService, or ReasoningService.
+3. **Clear caches** (optional): Admin → clear retrieval / semantic answer cache if needed after recovery.
+4. **Verify:** logs show `path=executive_disabled` on new chat requests; golden unit suite still green for Executive ON.
+5. **Recover:** set `KNOWLEDGE_OS_EXECUTIVE_ENABLED=true` (or unset) and restart; confirm `path=executive`.
+6. **Post-mortem** within 24h if production was affected.
 
-Disabling `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` is the primary chat-path kill-switch.
+Disabling `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` is the primary chat-path kill-switch (hard unavailable as of Step 064).
 
 ---
 
@@ -302,9 +310,9 @@ cd backend
 
 **Staging shadow (required before enabling flag in staging/prod):**
 
-1. Deploy with flag **OFF**; confirm golden unit suite green on build.
-2. Enable `KNOWLEDGE_OS_EXECUTIVE_ENABLED=true` on staging only.
-3. Re-run golden smoke; compare `path=executive` logs and response invariants.
+1. Deploy with Executive **ON** (default after Step 063); confirm golden unit suite green on build.
+2. Confirm logs show `path=executive` on Ask requests.
+3. Optional: verify kill-switch briefly on staging only (`=false` → 503 / SSE `executive_disabled`), then restore ON.
 4. Optional HTTP integration: `POSTGRES_TEST_URL=... GOLDEN_CHAT_LIVE=1 pytest tests/test_golden_chat_parity.py -m integration`
 
 See `docs/releases/0.1-rollback.md` for full deploy/rollback steps.

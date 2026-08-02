@@ -97,6 +97,11 @@ RELEASE_1_0_STEPS = (
         "title": "Default knowledge_os flags ON",
         "code": "present",
     },
+    {
+        "step": "064",
+        "title": "Remove legacy direct RagService path from chat (keep emergency env)",
+        "code": "present",
+    },
 )
 
 _SETTINGS_CAPABILITIES = (

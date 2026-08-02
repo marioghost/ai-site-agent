@@ -20,24 +20,21 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_response_builder import ChatResponseBuilder, DiagnosticsCollector
 from app.services.chat_session_service import ChatSessionService
 from app.services.executive import ExecutiveService
-from app.services.feature_flags import (
-    knowledge_os_executive_enabled,
-    reasoning_service_enabled,
-)
-from app.services.rag_streaming import RagStreamingService
-from app.services.rag_service import RagService
-from app.services.reasoning import ReasoningService
+from app.services.feature_flags import knowledge_os_executive_enabled
 from app.services.trace_service import new_request_id
 
 router = APIRouter(tags=["chat"])
 logger = get_logger(__name__)
 
+# RFC-100 Step 064 — frozen operator kill-switch detail (HTTP 503 / SSE message).
+EXECUTIVE_DISABLED_DETAIL = (
+    "Chat Executive path is disabled by operator "
+    "(KNOWLEDGE_OS_EXECUTIVE_ENABLED=false)."
+)
+
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-
 
 
 def _client_ip(request: Request) -> str | None:
@@ -68,36 +65,14 @@ def _dispatch_non_stream_answer(
     debug: bool = False,
     bypass_cache: bool = False,
 ):
-    """Route non-streaming chat (RFC-100 Steps 002 / 039).
+    """Route non-streaming chat (RFC-100 Step 064).
 
-    Order: Executive (if enabled) → else ReasoningService (if enabled) → else Rag.
-    Executive itself may further route through ReasoningService when that flag is ON.
+    Sole API orchestration entry: ExecutiveService.
+    Explicit Executive disable → HTTP 503 (no Rag / Reasoning / retrieval).
     """
-    use_executive = knowledge_os_executive_enabled()
-    if use_executive:
-        return ExecutiveService(db, settings).answer(
-            message,
-            session_id,
-            request_id=request_id,
-            user_ip=user_ip,
-            user_agent=user_agent,
-            referrer=referrer,
-            debug=debug,
-            bypass_cache=bypass_cache,
-        )
-    if reasoning_service_enabled():
-        return ReasoningService(db, settings).answer(
-            message,
-            session_id,
-            request_id=request_id,
-            user_ip=user_ip,
-            user_agent=user_agent,
-            referrer=referrer,
-            debug=debug,
-            bypass_cache=bypass_cache,
-        )
-    rag = RagService(db, settings)
-    return rag.answer(
+    if not knowledge_os_executive_enabled():
+        raise HTTPException(status_code=503, detail=EXECUTIVE_DISABLED_DETAIL)
+    return ExecutiveService(db, settings).answer(
         message,
         session_id,
         request_id=request_id,
@@ -123,36 +98,22 @@ def _dispatch_stream_events(
     debug: bool = False,
     bypass_cache: bool = False,
 ):
-    """Route streaming chat (RFC-100 Steps 003 / 039)."""
-    if knowledge_os_executive_enabled():
-        yield from ExecutiveService(db, settings).answer_stream(
-            message,
-            session_id,
-            request_id=request_id,
-            collector=collector,
-            user_ip=user_ip,
-            user_agent=user_agent,
-            referrer=referrer,
-            debug=debug,
-            bypass_cache=bypass_cache,
+    """Route streaming chat (RFC-100 Step 064).
+
+    Sole API orchestration entry: ExecutiveService.
+    Explicit Executive disable → one SSE error (executive_disabled), then stop.
+    """
+    if not knowledge_os_executive_enabled():
+        yield (
+            "error",
+            {
+                "error_type": "executive_disabled",
+                "message": EXECUTIVE_DISABLED_DETAIL,
+                "partial_diagnostics": {},
+            },
         )
         return
-    if reasoning_service_enabled():
-        yield from ReasoningService(db, settings).answer_stream(
-            message,
-            session_id,
-            request_id=request_id,
-            collector=collector,
-            user_ip=user_ip,
-            user_agent=user_agent,
-            referrer=referrer,
-            debug=debug,
-            bypass_cache=bypass_cache,
-        )
-        return
-    rag = RagService(db, settings)
-    streaming = RagStreamingService(rag)
-    yield from streaming.iter_events(
+    yield from ExecutiveService(db, settings).answer_stream(
         message,
         session_id,
         request_id=request_id,
@@ -402,6 +363,25 @@ def chat_stream(
                         debug=debug,
                         bypass_cache=payload.bypass_cache,
                     ):
+                        if (
+                            event_name == "error"
+                            and event_data.get("error_type") == "executive_disabled"
+                        ):
+                            event_count += 1
+                            yield _sse(event_name, event_data)
+                            log_chat_dispatch(
+                                logger,
+                                request_id=stream_request_id,
+                                path=chat_path,
+                                mode="stream",
+                                stream_lifecycle="error",
+                                error_type="executive_disabled",
+                                events_count=event_count,
+                                duration_ms=int((perf_counter() - started) * 1000),
+                                level=logging.WARNING,
+                            )
+                            yield "data: [DONE]\n\n"
+                            return
                         if event_name == "final":
                             raw = event_data.get("response", event_data)
                             final_response = builder.from_stream_payload(

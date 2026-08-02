@@ -272,7 +272,13 @@ def test_repeated_chat_request_returns_cache_hit(monkeypatch, client, auth_heade
                 cache_type="retrieval" if cache_hit else "none",
             )
 
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeRag()
+    )
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat_dispatch_log.knowledge_os_executive_enabled", lambda: True
+    )
 
     sid = client.post("/api/chat/sessions", json={}, headers=auth_headers).json()[
         "session_id"

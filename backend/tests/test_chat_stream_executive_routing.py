@@ -1,4 +1,4 @@
-"""RFC-100 Step 003 — streaming chat routing via knowledge_os_executive_enabled."""
+"""RFC-100 Step 003/064 — streaming chat routing via ExecutiveService."""
 from __future__ import annotations
 
 import logging
@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.api.chat import EXECUTIVE_DISABLED_DETAIL
 from app.services.chat_response_builder import ChatResponseBuilder, DiagnosticsCollector
 
 
@@ -26,7 +27,7 @@ def _parse_sse_events(body: str) -> list[tuple[str, dict]]:
 
 
 def _golden_stream_events() -> list[tuple[str, dict]]:
-    """Canonical streaming session for golden parity (legacy vs executive)."""
+    """Canonical streaming session for golden parity under Executive."""
     builder = ChatResponseBuilder(_SettingsStub())
     collector = DiagnosticsCollector(request_id="req-golden", session_id="sess-golden")
     from app.services.rag_service import RagResult, RagSource
@@ -95,33 +96,16 @@ class _SettingsStub:
     retrieval_mode = "hybrid"
 
 
-def _collect_dispatch_events(monkeypatch, *, executive: bool) -> list[tuple[str, dict]]:
+def _collect_dispatch_events(monkeypatch) -> list[tuple[str, dict]]:
     from app.api.chat import _dispatch_stream_events
 
     golden = _golden_stream_events()
-
-    class _FakeStreaming:
-        def iter_events(self, *args, **kwargs):
-            return iter(golden)
 
     class _FakeExecutive:
         def answer_stream(self, *args, **kwargs):
             return iter(golden)
 
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: executive)
-    # Legacy stream path under test is RagStreamingService (not Reasoning seam).
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.RagStreamingService",
-        lambda rag: _FakeStreaming(),
-    )
-    monkeypatch.setattr(
-        "app.api.chat.RagService",
-        lambda db, settings: MagicMock(),
-    )
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService",
         lambda db, settings: _FakeExecutive(),
@@ -141,27 +125,19 @@ def _collect_dispatch_events(monkeypatch, *, executive: bool) -> list[tuple[str,
 
 
 @pytest.mark.unit
-def test_stream_dispatch_flag_off_uses_rag_streaming(monkeypatch):
+def test_stream_dispatch_flag_off_emits_executive_disabled(monkeypatch):
     from app.api.chat import _dispatch_stream_events
 
-    streaming_called = {"n": 0}
     executive_called = {"n": 0}
-    golden = _golden_stream_events()
-
-    class _FakeStreaming:
-        def iter_events(self, *args, **kwargs):
-            streaming_called["n"] += 1
-            return iter(golden)
 
     class _FakeExecutive:
-        def answer_stream(self, *args, **kwargs):
+        def __init__(self, *a, **k):
             executive_called["n"] += 1
+
+        def answer_stream(self, *args, **kwargs):
             raise AssertionError("Executive must not be used when flag is OFF")
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _FakeStreaming())
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
     monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
 
     events = list(
@@ -174,26 +150,19 @@ def test_stream_dispatch_flag_off_uses_rag_streaming(monkeypatch):
         )
     )
 
-    assert streaming_called["n"] == 1
     assert executive_called["n"] == 0
-    assert events[0][0] == "start"
-    assert events[-1][0] == "final"
+    assert len(events) == 1
+    assert events[0][0] == "error"
+    assert events[0][1]["error_type"] == "executive_disabled"
+    assert events[0][1]["message"] == EXECUTIVE_DISABLED_DETAIL
 
 
 @pytest.mark.unit
 def test_stream_dispatch_flag_on_uses_executive(monkeypatch):
     from app.api.chat import _dispatch_stream_events
 
-    streaming_called = {"n": 0}
     executive_called = {"n": 0}
     golden = _golden_stream_events()
-
-    class _FakeStreaming:
-        def __init__(self, rag):
-            streaming_called["n"] += 1
-
-        def iter_events(self, *args, **kwargs):
-            raise AssertionError("RagStreamingService must not be used when flag is ON")
 
     class _FakeExecutive:
         def answer_stream(self, *args, **kwargs):
@@ -201,8 +170,6 @@ def test_stream_dispatch_flag_on_uses_executive(monkeypatch):
             return iter(golden)
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
-    monkeypatch.setattr("app.api.chat.RagStreamingService", _FakeStreaming)
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
@@ -218,38 +185,13 @@ def test_stream_dispatch_flag_on_uses_executive(monkeypatch):
     )
 
     assert executive_called["n"] == 1
-    assert streaming_called["n"] == 0
     assert len(events) == len(golden)
-
-
-@pytest.mark.unit
-def test_stream_golden_parity_legacy_vs_executive(monkeypatch):
-    """Golden session: legacy and executive paths must produce identical events."""
-    legacy = _collect_dispatch_events(monkeypatch, executive=False)
-    executive = _collect_dispatch_events(monkeypatch, executive=True)
-
-    assert len(legacy) == len(executive)
-    assert [name for name, _ in legacy] == [name for name, _ in executive]
-
-    for (legacy_name, legacy_data), (exec_name, exec_data) in zip(legacy, executive):
-        assert legacy_name == exec_name
-        assert set(legacy_data.keys()) == set(exec_data.keys())
-        if legacy_name == "final":
-            legacy_resp = legacy_data["response"]
-            exec_resp = exec_data["response"]
-            assert set(legacy_resp.keys()) == set(exec_resp.keys())
-            assert legacy_resp["answer"] == exec_resp["answer"]
-            assert legacy_resp["sources"] == exec_resp["sources"]
-            assert legacy_resp["used_context"] == exec_resp["used_context"]
-        elif legacy_name == "token":
-            assert legacy_data["delta"] == exec_data["delta"]
-            assert legacy_data["text"] == exec_data["text"]
 
 
 @pytest.mark.unit
 def test_stream_golden_event_sequence_contract(monkeypatch):
     """Validate first, intermediate, final, diagnostics, and source events."""
-    events = _collect_dispatch_events(monkeypatch, executive=False)
+    events = _collect_dispatch_events(monkeypatch)
     names = [name for name, _ in events]
 
     assert names[0] == "start"
@@ -283,14 +225,14 @@ def test_stream_error_event_passes_through_unchanged(monkeypatch):
     )
 
     class _ErrorStream:
-        def iter_events(self, *args, **kwargs):
+        def answer_stream(self, *args, **kwargs):
             yield ("start", {"request_id": "req-err", "session_id": "s", "streaming": True})
             yield error_event
 
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _ErrorStream())
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, settings: _ErrorStream()
+    )
 
     events = list(
         _dispatch_stream_events(
@@ -310,14 +252,14 @@ def test_stream_dispatch_cancellation_propagates(monkeypatch):
         yield ("token", {"delta": "a", "text": "a"})
         yield ("token", {"delta": "b", "text": "b"})
 
-    class _FakeStreaming:
-        def iter_events(self, *args, **kwargs):
+    class _FakeExecutive:
+        def answer_stream(self, *args, **kwargs):
             yield from _slow_stream()
 
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.RagStreamingService", lambda rag: _FakeStreaming())
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: MagicMock())
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
+    )
 
     stream = _dispatch_stream_events(
         MagicMock(), MagicMock(), "q", "s", request_id="req-cancel"
@@ -337,14 +279,14 @@ def test_stream_event_generator_logs_lifecycle(monkeypatch, caplog):
         log_chat_dispatch(
             logger,
             request_id="req-log-stream",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="start",
         )
         log_chat_dispatch(
             logger,
             request_id="req-log-stream",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="end",
             events_count=7,
@@ -352,10 +294,11 @@ def test_stream_event_generator_logs_lifecycle(monkeypatch, caplog):
         )
 
     messages = " ".join(r.getMessage() for r in caplog.records)
-    assert "path=legacy" in messages
+    assert "path=executive" in messages
     assert "stream_lifecycle=start" in messages
     assert "stream_lifecycle=end" in messages
     assert "events_count=7" in messages
+    assert "path=legacy" not in messages
 
 
 @pytest.mark.unit
@@ -366,7 +309,7 @@ def test_stream_event_generator_logs_error_on_overloaded(caplog):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-err-stream",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="error",
             error_type="overloaded",

@@ -185,18 +185,13 @@ def _install_legacy_spies(monkeypatch) -> dict[str, list]:
 def _run_non_stream_dispatch(
     monkeypatch,
     *,
-    executive: bool,
     settings: Settings | LegacyJsonAccessTracker,
 ) -> object:
     from app.api.chat import _dispatch_non_stream_answer
 
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
-        lambda: executive,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
+        lambda: True,
     )
     monkeypatch.setattr(
         "app.services.executive.executive_service.reasoning_service_enabled",
@@ -207,7 +202,7 @@ def _run_non_stream_dispatch(
         settings,
         "What does the company do?",
         "guard-session",
-        request_id=f"guard-non-stream-{'exec' if executive else 'legacy'}",
+        request_id="guard-non-stream-exec",
         bypass_cache=True,
     )
 
@@ -215,7 +210,6 @@ def _run_non_stream_dispatch(
 def _run_stream_dispatch(
     monkeypatch,
     *,
-    executive: bool,
     settings: Settings | LegacyJsonAccessTracker,
 ) -> list[tuple[str, dict]]:
     from app.api.chat import _dispatch_stream_events
@@ -223,18 +217,14 @@ def _run_stream_dispatch(
 
     monkeypatch.setattr(
         "app.api.chat.knowledge_os_executive_enabled",
-        lambda: executive,
-    )
-    monkeypatch.setattr(
-        "app.api.chat.reasoning_service_enabled",
-        lambda: False,
+        lambda: True,
     )
     monkeypatch.setattr(
         "app.services.executive.executive_service.reasoning_service_enabled",
         lambda: False,
     )
     collector = DiagnosticsCollector(
-        request_id=f"guard-stream-{'exec' if executive else 'legacy'}",
+        request_id="guard-stream-exec",
         session_id="guard-session",
     )
     return list(
@@ -251,14 +241,13 @@ def _run_stream_dispatch(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("executive", [False, True], ids=["legacy", "executive"])
-def test_non_stream_chat_does_not_call_build_boost_tables(monkeypatch, executive):
+def test_non_stream_chat_does_not_call_build_boost_tables(monkeypatch):
     """Production non-streaming chat must not invoke build_boost_tables()."""
     calls = _install_legacy_spies(monkeypatch)
     _install_chat_mocks(monkeypatch)
     settings = _minimal_chat_settings()
 
-    result = _run_non_stream_dispatch(monkeypatch, executive=executive, settings=settings)
+    result = _run_non_stream_dispatch(monkeypatch, settings=settings)
 
     assert result.answer
     assert result.used_context is True
@@ -266,28 +255,26 @@ def test_non_stream_chat_does_not_call_build_boost_tables(monkeypatch, executive
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("executive", [False, True], ids=["legacy", "executive"])
-def test_non_stream_chat_does_not_call_category_boost(monkeypatch, executive):
+def test_non_stream_chat_does_not_call_category_boost(monkeypatch):
     """Production non-streaming chat must not invoke category_boost()."""
     calls = _install_legacy_spies(monkeypatch)
     _install_chat_mocks(monkeypatch)
     settings = _minimal_chat_settings()
 
-    result = _run_non_stream_dispatch(monkeypatch, executive=executive, settings=settings)
+    result = _run_non_stream_dispatch(monkeypatch, settings=settings)
 
     assert result.answer
     assert calls["category_boost"] == []
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("executive", [False, True], ids=["legacy", "executive"])
-def test_stream_chat_does_not_call_legacy_boost_helpers(monkeypatch, executive):
+def test_stream_chat_does_not_call_legacy_boost_helpers(monkeypatch):
     """Production streaming chat must not invoke build_boost_tables or category_boost."""
     calls = _install_legacy_spies(monkeypatch)
     _install_chat_mocks(monkeypatch)
     settings = _minimal_chat_settings()
 
-    events = _run_stream_dispatch(monkeypatch, executive=executive, settings=settings)
+    events = _run_stream_dispatch(monkeypatch, settings=settings)
 
     assert events[0][0] == "start"
     event_names = [name for name, _ in events]
@@ -297,34 +284,28 @@ def test_stream_chat_does_not_call_legacy_boost_helpers(monkeypatch, executive):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("executive", [False, True], ids=["legacy", "executive"])
-def test_legacy_json_columns_not_read_during_non_stream_routing(monkeypatch, executive):
+def test_legacy_json_columns_not_read_during_non_stream_routing(monkeypatch):
     """Legacy JSON weight columns are not required for production chat routing."""
     _install_legacy_spies(monkeypatch)
     _install_chat_mocks(monkeypatch)
     inner = _minimal_chat_settings()
     tracked = LegacyJsonAccessTracker(inner)
 
-    result = _run_non_stream_dispatch(
-        monkeypatch, executive=executive, settings=tracked
-    )
+    result = _run_non_stream_dispatch(monkeypatch, settings=tracked)
 
     assert result.answer
     assert tracked.reads == []
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("executive", [False, True], ids=["legacy", "executive"])
-def test_legacy_json_columns_not_read_during_stream_routing(monkeypatch, executive):
+def test_legacy_json_columns_not_read_during_stream_routing(monkeypatch):
     """Legacy JSON weight columns are not read on the streaming chat path."""
     _install_legacy_spies(monkeypatch)
     _install_chat_mocks(monkeypatch)
     inner = _minimal_chat_settings()
     tracked = LegacyJsonAccessTracker(inner)
 
-    events = _run_stream_dispatch(
-        monkeypatch, executive=executive, settings=tracked
-    )
+    events = _run_stream_dispatch(monkeypatch, settings=tracked)
 
     assert events[0][0] == "start"
     assert tracked.reads == []

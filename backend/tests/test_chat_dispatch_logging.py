@@ -1,21 +1,22 @@
-"""RFC-100 Step 004 — structured chat dispatch logging."""
+"""RFC-100 Step 004/064 — structured chat dispatch logging."""
 from __future__ import annotations
 
 import logging
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.chat_dispatch_log import log_chat_dispatch, resolve_chat_path
 
 
 @pytest.mark.unit
-def test_log_chat_dispatch_non_stream_legacy(caplog):
+def test_log_chat_dispatch_non_stream_executive_disabled(caplog):
     with caplog.at_level(logging.INFO, logger="app.api.chat"):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-1",
-            path="legacy",
+            path="executive_disabled",
             mode="non_stream",
             duration_ms=42,
         )
@@ -23,10 +24,11 @@ def test_log_chat_dispatch_non_stream_legacy(caplog):
     assert len(caplog.records) == 1
     msg = caplog.records[0].getMessage()
     assert "request_id=req-1" in msg
-    assert "path=legacy" in msg
+    assert "path=executive_disabled" in msg
     assert "mode=non_stream" in msg
     assert "duration_ms=42" in msg
     assert "stream_lifecycle" not in msg
+    assert "path=legacy" not in msg
 
 
 @pytest.mark.unit
@@ -52,14 +54,14 @@ def test_log_chat_dispatch_stream_start_end(caplog):
         log_chat_dispatch(
             logger,
             request_id="req-3",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="start",
         )
         log_chat_dispatch(
             logger,
             request_id="req-3",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="end",
             events_count=7,
@@ -99,10 +101,10 @@ def test_log_chat_dispatch_stream_error(caplog):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-5",
-            path="legacy",
+            path="executive_disabled",
             mode="stream",
             stream_lifecycle="error",
-            error_type="overloaded",
+            error_type="executive_disabled",
             events_count=1,
             duration_ms=5,
             level=logging.WARNING,
@@ -111,7 +113,7 @@ def test_log_chat_dispatch_stream_error(caplog):
     assert caplog.records[0].levelno == logging.WARNING
     msg = caplog.records[0].getMessage()
     assert "stream_lifecycle=error" in msg
-    assert "error_type=overloaded" in msg
+    assert "error_type=executive_disabled" in msg
 
 
 @pytest.mark.unit
@@ -120,7 +122,7 @@ def test_log_chat_dispatch_omits_none_fields(caplog):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-6",
-            path="legacy",
+            path="executive",
             mode="non_stream",
         )
 
@@ -136,7 +138,7 @@ def test_resolve_chat_path_respects_flag(monkeypatch):
         "app.api.chat_dispatch_log.knowledge_os_executive_enabled",
         lambda: False,
     )
-    assert resolve_chat_path() == "legacy"
+    assert resolve_chat_path() == "executive_disabled"
 
     monkeypatch.setattr(
         "app.api.chat_dispatch_log.knowledge_os_executive_enabled",
@@ -146,41 +148,29 @@ def test_resolve_chat_path_respects_flag(monkeypatch):
 
 
 @pytest.mark.unit
-def test_non_stream_dispatch_logs_path_legacy(monkeypatch, caplog):
+def test_non_stream_dispatch_logs_path_executive_disabled(monkeypatch, caplog):
     from app.api.chat import _dispatch_non_stream_answer
 
-    class _FakeRag:
-        def answer(self, *args, **kwargs):
-            from app.services.rag_service import RagResult
-
-            return RagResult(answer="ok", sources=[], used_context=False, request_id="req-ns")
-
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, settings: _FakeRag())
     monkeypatch.setattr("app.api.chat.ExecutiveService", MagicMock())
 
     with caplog.at_level(logging.INFO, logger="app.api.chat"):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-ns",
-            path="legacy",
+            path="executive_disabled",
             mode="non_stream",
         )
-        _dispatch_non_stream_answer(
-            MagicMock(), MagicMock(), "hello", "sess", request_id="req-ns"
-        )
-        log_chat_dispatch(
-            logging.getLogger("app.api.chat"),
-            request_id="req-ns",
-            path="legacy",
-            mode="non_stream",
-            duration_ms=1,
-        )
+        with pytest.raises(HTTPException) as exc_info:
+            _dispatch_non_stream_answer(
+                MagicMock(), MagicMock(), "hello", "sess", request_id="req-ns"
+            )
+        assert exc_info.value.status_code == 503
 
     messages = " ".join(r.getMessage() for r in caplog.records)
-    assert "path=legacy" in messages
+    assert "path=executive_disabled" in messages
     assert "mode=non_stream" in messages
+    assert "path=legacy" not in messages
 
 
 @pytest.mark.unit
@@ -194,7 +184,6 @@ def test_non_stream_dispatch_logs_path_executive(monkeypatch, caplog):
             return RagResult(answer="ok", sources=[], used_context=False, request_id="req-ex")
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
-    monkeypatch.setattr("app.api.chat.RagService", MagicMock())
     monkeypatch.setattr(
         "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
@@ -228,14 +217,14 @@ def test_stream_dispatch_logs_lifecycle_via_helper(caplog):
         log_chat_dispatch(
             logger,
             request_id="req-st",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="start",
         )
         log_chat_dispatch(
             logger,
             request_id="req-st",
-            path="legacy",
+            path="executive",
             mode="stream",
             stream_lifecycle="end",
             events_count=5,
@@ -254,7 +243,7 @@ def test_log_does_not_contain_sensitive_content(caplog):
         log_chat_dispatch(
             logging.getLogger("app.api.chat"),
             request_id="req-safe",
-            path="legacy",
+            path="executive",
             mode="non_stream",
             duration_ms=3,
         )

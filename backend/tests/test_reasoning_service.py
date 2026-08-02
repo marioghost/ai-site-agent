@@ -179,22 +179,13 @@ def test_reasoning_stream_stamps_path_on_final(monkeypatch):
 
 
 @pytest.mark.unit
-def test_dispatch_flag_off_does_not_use_reasoning(monkeypatch):
-    from app.api.chat import _dispatch_non_stream_answer
+def test_dispatch_executive_disabled_does_not_use_reasoning(monkeypatch):
+    """Step 064: Executive=false is controlled unavailable — no Reasoning at API."""
+    from fastapi import HTTPException
 
-    calls = {"rag": 0, "reasoning": 0, "executive": 0}
+    from app.api.chat import EXECUTIVE_DISABLED_DETAIL, _dispatch_non_stream_answer
 
-    class _FakeRag:
-        def answer(self, *args, **kwargs):
-            calls["rag"] += 1
-            return _fake_rag_result()
-
-    class _FakeReasoning:
-        def __init__(self, *a, **k):
-            calls["reasoning"] += 1
-
-        def answer(self, *a, **k):
-            raise AssertionError("ReasoningService must not run when flag OFF")
+    calls = {"executive": 0}
 
     class _FakeExecutive:
         def __init__(self, *a, **k):
@@ -204,50 +195,38 @@ def test_dispatch_flag_off_does_not_use_reasoning(monkeypatch):
             raise AssertionError("Executive must not run when executive flag OFF")
 
     monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.RagService", lambda db, s: _FakeRag())
-    monkeypatch.setattr("app.api.chat.ReasoningService", _FakeReasoning)
     monkeypatch.setattr("app.api.chat.ExecutiveService", _FakeExecutive)
 
-    result = _dispatch_non_stream_answer(
-        MagicMock(), MagicMock(), "q", "s", request_id="r"
-    )
-    assert calls == {"rag": 1, "reasoning": 0, "executive": 0}
-    assert result.answer == "Grounded answer"
-    assert result.reasoning_path is None
+    with pytest.raises(HTTPException) as exc_info:
+        _dispatch_non_stream_answer(
+            MagicMock(), MagicMock(), "q", "s", request_id="r"
+        )
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == EXECUTIVE_DISABLED_DETAIL
+    assert calls["executive"] == 0
 
 
 @pytest.mark.unit
-def test_dispatch_reasoning_flag_on_uses_reasoning_service(monkeypatch):
+def test_dispatch_reasoning_flag_on_still_enters_executive(monkeypatch):
+    """Step 064: Reasoning ON does not bypass Executive at the API layer."""
     from app.api.chat import _dispatch_non_stream_answer
 
-    calls = {"reasoning": 0, "rag": 0}
+    calls = {"executive": 0}
 
-    class _FakeReasoning:
-        def __init__(self, *a, **k):
-            pass
-
+    class _FakeExecutive:
         def answer(self, *args, **kwargs):
-            calls["reasoning"] += 1
+            calls["executive"] += 1
             return _fake_rag_result(reasoning_path=REASONING_PATH_SERVICE)
 
-    class _FakeRag:
-        def __init__(self, *a, **k):
-            calls["rag"] += 1
-
-        def answer(self, *a, **k):
-            raise AssertionError("RagService must not be constructed by dispatch when reasoning ON")
-
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: True)
-    monkeypatch.setattr("app.api.chat.ReasoningService", _FakeReasoning)
-    monkeypatch.setattr("app.api.chat.RagService", _FakeRag)
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, s: _FakeExecutive()
+    )
 
     result = _dispatch_non_stream_answer(
         MagicMock(), MagicMock(), "q", "s", request_id="r"
     )
-    assert calls["reasoning"] == 1
-    assert calls["rag"] == 0
+    assert calls["executive"] == 1
     assert result.reasoning_path == REASONING_PATH_SERVICE
 
 
@@ -390,12 +369,13 @@ def test_chat_response_builder_includes_reasoning_path_in_debug():
 
 
 @pytest.mark.unit
-def test_stream_dispatch_reasoning_flag_on(monkeypatch):
+def test_stream_dispatch_reasoning_via_executive(monkeypatch):
+    """Step 064: stream enters Executive; Reasoning is internal to Executive."""
     from app.api.chat import _dispatch_stream_events
 
     seen = {"n": 0}
 
-    class _FakeReasoning:
+    class _FakeExecutive:
         def __init__(self, *a, **k):
             pass
 
@@ -403,9 +383,10 @@ def test_stream_dispatch_reasoning_flag_on(monkeypatch):
             seen["n"] += 1
             yield ("final", {"answer": "ok", "reasoning_path": REASONING_PATH_SERVICE})
 
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: True)
-    monkeypatch.setattr("app.api.chat.ReasoningService", _FakeReasoning)
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.api.chat.ExecutiveService", lambda db, s: _FakeExecutive()
+    )
 
     events = list(
         _dispatch_stream_events(MagicMock(), MagicMock(), "q", "s", request_id="r")

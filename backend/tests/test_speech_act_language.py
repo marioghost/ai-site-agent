@@ -63,8 +63,6 @@ def test_flag_defaults_true(monkeypatch):
 @pytest.mark.unit
 def test_reasoning_off_ignores_speech_acts_flag(monkeypatch):
     """Speech-acts flag alone must not change Rag when Reasoning is not used."""
-    from app.api import chat as chat_api
-
     calls: list[dict] = []
 
     class _FakeRag:
@@ -77,7 +75,6 @@ def test_reasoning_off_ignores_speech_acts_flag(monkeypatch):
                 request_id="r",
             )
 
-    monkeypatch.setattr(chat_api, "reasoning_service_enabled", lambda: False)
     monkeypatch.setenv("REASONING_SPEECH_ACTS_ENABLED", "true")
     from app.core.config import get_config
 

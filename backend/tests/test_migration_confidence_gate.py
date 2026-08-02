@@ -128,8 +128,11 @@ def test_migration_gate_golden_smoke_suite(monkeypatch, combo: FlagCombo):
 
 
 def test_migration_gate_all_combos_covered():
-    assert len(ALL_FLAG_COMBOS) == 8
-    assert len({c.label for c in ALL_FLAG_COMBOS}) == 8
+    # Step 064: Executive always ON; matrix is Reasoning × Evidence Assembly (4).
+    assert len(ALL_FLAG_COMBOS) == 4
+    assert len({c.label for c in ALL_FLAG_COMBOS}) == 4
+    assert all(c.executive for c in ALL_FLAG_COMBOS)
+    assert BASELINE_COMBO.executive is True
 
 
 def test_migration_gate_cache_namespace_unchanged(monkeypatch):

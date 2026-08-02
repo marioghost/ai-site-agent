@@ -518,15 +518,14 @@ def test_golden_parity_with_both_migration_flags_on(monkeypatch):
     item = golden["queries"][0]
     fixture = build_fixture_rag_result(golden, item)
 
-    class _FakeReasoning:
+    class _FakeExecutive:
         def answer(self, *args, **kwargs):
             fixture.reasoning_path = "reasoning_service"
             return fixture
 
-    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: False)
-    monkeypatch.setattr("app.api.chat.reasoning_service_enabled", lambda: True)
+    monkeypatch.setattr("app.api.chat.knowledge_os_executive_enabled", lambda: True)
     monkeypatch.setattr(
-        "app.api.chat.ReasoningService", lambda db, settings: _FakeReasoning()
+        "app.api.chat.ExecutiveService", lambda db, settings: _FakeExecutive()
     )
     monkeypatch.setenv("EVIDENCE_ASSEMBLY_ENABLED", "true")
 

@@ -1,6 +1,9 @@
-"""Structured observability for chat dispatch (RFC-100 Step 004).
+"""Structured observability for chat dispatch (RFC-100 Step 004 / Step 064).
 
 Logs metadata only — never prompts, answers, sources, or user content.
+
+Step 064 path vocabulary (complete allow-list for API chat dispatch):
+  executive | executive_disabled
 """
 from __future__ import annotations
 
@@ -9,13 +12,13 @@ from typing import Literal
 
 from app.services.feature_flags import knowledge_os_executive_enabled
 
-ChatPath = Literal["legacy", "executive"]
+ChatPath = Literal["executive", "executive_disabled"]
 ChatMode = Literal["non_stream", "stream"]
 StreamLifecycle = Literal["start", "end", "cancelled", "error"]
 
 
 def resolve_chat_path() -> ChatPath:
-    return "executive" if knowledge_os_executive_enabled() else "legacy"
+    return "executive" if knowledge_os_executive_enabled() else "executive_disabled"
 
 
 def log_chat_dispatch(
