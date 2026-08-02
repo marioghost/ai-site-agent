@@ -1,10 +1,14 @@
 # Feature Flags — Knowledge OS Migration
 
-**RFC-100 Release 0.1+** (updated **Release 1.0 Step 063** — Knowledge OS flags default **ON**)  
+**RFC-100 Release 0.1+** (updated **Release 1.0 Step 065** — canonical registry ownership)  
 **Owner:** Platform / migration lead  
 **Principle:** Default **ON** for Knowledge OS path at Release 1.0 (Step 063). Legacy surfaces stay **OFF**. Kill-switch = explicit `false` + restart (unset no longer disables env flags).
 
-This registry tracks migration flags only. Existing Settings toggles (reranking, caches, tracing, etc.) are unchanged and documented in the dashboard Settings UI.
+**Canonical definition owner:** `backend/app/services/feature_flags.py` → `FLAG_DEFINITIONS`  
+**Effective-value owners:** helpers in `feature_flags.py` (KOS/Settings); `maintenance_orchestration` for maintenance execution/budget.  
+**Observation:** `GET /api/build` derives metadata from `FLAG_DEFINITIONS` + helpers; additive `maintenance_observation` carries the typed budget integer. Product Settings does **not** own migration flags. Engineering Mode UI is not implemented — operators use `/api/build` and this document.
+
+This registry documents the same inventory as `FLAG_DEFINITIONS`. Existing product Settings toggles (reranking, caches, tracing, etc.) remain in the dashboard Settings UI.
 
 ---
 
@@ -36,12 +40,19 @@ allow_legacy_<surface>                        # deprecation gates
 | `allow_legacy_kp_presets` | Settings DB column | **false** | Allow GET/POST Knowledge Profile industry preset APIs; **410** when false (Step 054) | Ops rollback only — keep false in normal operation | Set Settings `true` | Release 1.0+ |
 | `legacy_doc_type_canonical_enabled` | Settings DB column | **false** | When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (Step 055) | Ops rollback to restore pre-055 reorder | Set Settings `true` | Release 1.0+ |
 | `MAINTENANCE_EXECUTION_ENABLED` | Env | **true** when unset | Gate maintenance investigation execution (Step 059+) | Default ON unset (Step 063); budget still defaults to **0** (no work) | Set env `false`; restart | After 1.0 stabilization |
+| `MAINTENANCE_INVESTIGATIONS_PER_CYCLE` | Env (int) | **0** | Max investigations selected per maintenance cycle | Ops raise when execution should run work | Lower/set `0`; restart | After 1.0 stabilization |
+
+**Maintenance observation (Step 065):** effective values come from `maintenance_orchestration` (`rollout_flag_enabled` / `operational_budget`). `GET /api/build` exposes them as additive `maintenance_observation` (`execution_enabled: bool`, `investigations_per_cycle: int`) — the budget is **not** placed in `env_flags` (bool map).
 
 **Step 046 (Memory read views):** no runtime flag — `read_region()` is internal-only until Step 047 wires assist.
 
 **Release 1.0 Step 063:** Knowledge OS env + Settings flags above default **ON**. Legacy KP/doc-type flags remain **false**. See [1.0-step-063-implementation.md](releases/1.0-step-063-implementation.md).
 
 **Release 1.0 Step 064:** API chat dispatch is **Executive-only**. `KNOWLEDGE_OS_EXECUTIVE_ENABLED=false` is a hard controlled-unavailable kill-switch (HTTP 503 / SSE `error_type=executive_disabled`). Internal Executive → Reasoning / Rag degradation is unchanged. See [1.0-step-064-implementation.md](releases/1.0-step-064-implementation.md).
+
+**Release 1.0 Step 065:** Hybrid flag registry entries removed — one definition owner (`FLAG_DEFINITIONS`), build-info derivation, Product Settings migration flag grid unmounted, Overview raw flag tags removed. Runtime defaults and kill-switches unchanged. See [1.0-step-065-implementation.md](releases/1.0-step-065-implementation.md).
+
+**Product visibility:** Technical migration/kill-switch flags are **not** product Settings controls (`product_visibility=false`). Ordinary product Settings jobs are unchanged.
 
 **Release 0.7–0.9 (historical):** Flags shipped default OFF through Release 0.9 engineering closure. Do not rewrite historical acceptance reports.
 

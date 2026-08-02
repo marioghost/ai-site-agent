@@ -273,6 +273,18 @@ export interface DeployedCapability {
   default: boolean;
   effect: string;
   rollout: string;
+  classification?: string | null;
+  runtime_owner?: string | null;
+  effective?: boolean | null;
+  skipped_reason?: string | null;
+}
+
+/** Additive typed maintenance observation (Step 065). Not in env_flags bool maps. */
+export interface MaintenanceObservation {
+  execution_enabled: boolean;
+  investigations_per_cycle: number;
+  surface: string;
+  runtime_owner: string;
 }
 
 export interface ReleaseStatus {
@@ -299,6 +311,7 @@ export interface BuildInfo {
   feature_flags: Record<string, boolean>;
   env_flags: Record<string, boolean>;
   settings_flags: Record<string, boolean>;
+  maintenance_observation?: MaintenanceObservation | null;
   release_status: ReleaseStatus | null;
   deployed_capabilities: Record<string, DeployedCapability>;
 }

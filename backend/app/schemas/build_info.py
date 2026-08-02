@@ -20,6 +20,17 @@ class DeployedCapability(BaseModel):
     code_present: bool | None = None
     effective: bool | None = None
     skipped_reason: str | None = None
+    classification: str | None = None
+    runtime_owner: str | None = None
+
+
+class MaintenanceObservation(BaseModel):
+    """Additive typed maintenance observation (Step 065). Not in env_flags bool maps."""
+
+    execution_enabled: bool
+    investigations_per_cycle: int
+    surface: str = "env"
+    runtime_owner: str = "maintenance_orchestration"
 
 
 class ReleaseCapabilityState(BaseModel):
@@ -77,5 +88,6 @@ class BuildInfoResponse(BaseModel):
     feature_flags: dict[str, bool] = Field(default_factory=dict)
     env_flags: dict[str, bool] = Field(default_factory=dict)
     settings_flags: dict[str, bool] = Field(default_factory=dict)
+    maintenance_observation: MaintenanceObservation | None = None
     release_status: ReleaseStatus | None = None
     deployed_capabilities: dict[str, DeployedCapability] = Field(default_factory=dict)

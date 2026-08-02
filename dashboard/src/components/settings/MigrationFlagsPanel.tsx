@@ -1,3 +1,8 @@
+/**
+ * Technical migration-flag catalog for future Engineering Mode reuse.
+ * RFC-100 Step 065: intentionally unmounted from Product Settings
+ * (`SettingsPage`). Do not remount on product surfaces.
+ */
 import { useEffect, useState } from "react";
 import { getBuildInfo } from "../../api/client";
 import { useTranslation } from "../../i18n";

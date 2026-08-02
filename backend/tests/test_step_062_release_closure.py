@@ -63,7 +63,7 @@ def test_release_0_9_closure_metadata():
         "061",
         "062",
     ]
-    assert [s["step"] for s in rs["steps_063"]] == ["063", "064"]
+    assert [s["step"] for s in rs["steps_063"]] == ["063", "064", "065"]
     caps9 = rs["release_0_9_capabilities"]
     assert caps9["index_integrate_compose"]["code_present"] is True
     assert caps9["investigation_metrics"]["code_present"] is True

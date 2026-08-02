@@ -9,19 +9,12 @@ type Props = {
   isAdmin?: boolean;
 };
 
-function flagLabel(on: boolean | undefined, t: (k: string) => string): string {
-  if (on === true) return t("overview.kos.flag_on");
-  if (on === false) return t("overview.kos.flag_off");
-  return t("common.dash");
-}
-
 export default function OverviewKnowledgeOsPanel({
   build,
   summary,
   isAdmin = false,
 }: Props) {
   const { t } = useTranslation();
-  const caps = build?.deployed_capabilities ?? {};
   const release = build?.release_status;
 
   return (
@@ -59,28 +52,6 @@ export default function OverviewKnowledgeOsPanel({
           </Tag>
         </div>
       ) : null}
-
-      <p className="ds-text-secondary" style={{ fontSize: "0.9rem" }}>
-        {t("overview.kos.flags_intro")}
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "1rem" }}>
-        {(
-          [
-            "KNOWLEDGE_OS_EXECUTIVE_ENABLED",
-            "REASONING_SERVICE_ENABLED",
-            "EVIDENCE_ASSEMBLY_ENABLED",
-            "memory_shadow_write_enabled",
-          ] as const
-        ).map((key) => {
-          const cap = caps[key];
-          const name = cap?.friendly_name || key;
-          return (
-            <Tag key={key}>
-              {name}: {flagLabel(cap?.value ?? build?.feature_flags?.[key], t)}
-            </Tag>
-          );
-        })}
-      </div>
 
       {isAdmin && summary ? (
         <MetricGrid columns={3}>

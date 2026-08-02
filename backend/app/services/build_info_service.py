@@ -10,6 +10,11 @@ from sqlalchemy.orm import Session
 from app.core.config import AppConfig, get_config
 from app.core.database import current_db_revision
 from app.repositories.settings_repository import SettingsRepository
+from app.services.feature_flags import (
+    env_bool_flag_definitions,
+    maintenance_observation,
+    settings_flag_definitions,
+)
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
@@ -55,41 +60,6 @@ RELEASE_0_9_STEPS = (
     {"step": "062", "title": "Release 0.9 engineering closure", "code": "present"},
 )
 
-_ENV_CAPABILITIES = (
-    (
-        "KNOWLEDGE_OS_EXECUTIVE_ENABLED",
-        "knowledge_os_executive_enabled",
-        "Executive seam",
-        True,
-        "Route chat through ExecutiveService instead of direct RagService",
-        "Step 063 — default ON; kill-switch = env false + restart",
-    ),
-    (
-        "REASONING_SERVICE_ENABLED",
-        "reasoning_service_enabled",
-        "Reasoning seam",
-        True,
-        "Route chat through ReasoningService (diagnostics + optional Language)",
-        "Step 063 — default ON; kill-switch = env false + restart",
-    ),
-    (
-        "EVIDENCE_ASSEMBLY_ENABLED",
-        "evidence_assembly_enabled",
-        "Evidence Assembly seam",
-        True,
-        "Route RPS assemble stage through EvidenceAssemblyService",
-        "Step 063 — default ON; kill-switch = env false + restart",
-    ),
-    (
-        "REASONING_SPEECH_ACTS_ENABLED",
-        "reasoning_speech_acts_enabled",
-        "Speech-act Language rendering",
-        True,
-        "Language applies clarify/refuse/qualify when Reasoning is ON",
-        "Step 063 — default ON; requires Reasoning ON; kill-switch = env false",
-    ),
-)
-
 # Release 1.0 (in progress) — Step 063+
 RELEASE_1_0_STEPS = (
     {
@@ -102,58 +72,11 @@ RELEASE_1_0_STEPS = (
         "title": "Remove legacy direct RagService path from chat (keep emergency env)",
         "code": "present",
     },
-)
-
-_SETTINGS_CAPABILITIES = (
-    (
-        "enable_semantic_diagnostics_v2",
-        "Semantic diagnostics v2 stub",
-        True,
-        "Empty understanding_trace on chat when debug enabled",
-        "Step 063 — default ON",
-    ),
-    (
-        "cache_namespace_v2_enabled",
-        "Cache namespace v2",
-        True,
-        "Include memory_version in retrieval/answer cache namespace",
-        "Step 063 — default ON",
-    ),
-    (
-        "memory_shadow_write_enabled",
-        "Memory shadow write",
-        True,
-        "Persist SI claim proposals to Epistemic Memory (shadow; not used by chat)",
-        "Step 063 — default ON",
-    ),
-    (
-        "memory_evidence_assist_enabled",
-        "Memory evidence assist",
-        True,
-        "Advisory Memory region read in Reasoning before Evidence Assembly",
-        "Step 063 — default ON; effective when Reasoning + cache_namespace_v2 ON",
-    ),
-    (
-        "memory_canonical_shadow_enabled",
-        "Memory canonical shadow",
-        True,
-        "Diagnostic Memory vs retrieval source-set comparison (shadow only)",
-        "Step 063 — default ON; effective when Reasoning + assist + cache v2 ON",
-    ),
-    (
-        "allow_legacy_kp_presets",
-        "Legacy KP presets",
-        False,
-        "Allow GET/POST Knowledge Profile industry preset APIs (410 when false)",
-        "Default OFF at Step 054; rollback = Settings true",
-    ),
-    (
-        "legacy_doc_type_canonical_enabled",
-        "Legacy document-type canonical selection",
-        False,
-        "When true, RPS finalize runs KP doc-type CanonicalSourceService reorder; when false, skip (DFP/score order)",
-        "Default OFF at Step 055; rollback = Settings true; not Memory authority",
-    ),
+    {
+        "step": "065",
+        "title": "Remove hybrid flag registry entries",
+        "code": "present",
+    },
 )
 
 
@@ -187,40 +110,52 @@ class BuildInfoService:
 
         env_flags: dict[str, bool] = {}
         deployed: dict[str, dict] = {}
+        maint = maintenance_observation()
 
-        for flag_name, attr, friendly, default, effect, rollout in _ENV_CAPABILITIES:
-            supported = attr in fields
-            value: bool | None = None
-            if supported:
-                raw = getattr(self._config, attr, False)
-                value = raw if isinstance(raw, bool) else False
-                env_flags[flag_name] = value
-            deployed[flag_name] = {
+        for definition in env_bool_flag_definitions():
+            if definition.key == "MAINTENANCE_EXECUTION_ENABLED":
+                supported = True
+                value = bool(maint["execution_enabled"])
+            else:
+                attr = definition.config_attr or ""
+                supported = attr in fields
+                value = None
+                if supported:
+                    raw = getattr(self._config, attr, False)
+                    value = raw if isinstance(raw, bool) else False
+            if value is not None:
+                env_flags[definition.key] = value
+            deployed[definition.key] = {
                 "supported": supported,
                 "value": value,
                 "surface": "env",
-                "friendly_name": friendly,
-                "default": default,
-                "effect": effect,
-                "rollout": rollout,
+                "friendly_name": definition.friendly_name,
+                "default": definition.default,
+                "effect": definition.effect,
+                "rollout": definition.rollout,
                 "active": bool(value),
                 "code_present": supported,
+                "classification": definition.classification,
+                "runtime_owner": definition.runtime_owner,
             }
 
         settings_flags: dict[str, bool] = {}
-        for flag_name, friendly, default, effect, rollout in _SETTINGS_CAPABILITIES:
+        for definition in settings_flag_definitions():
+            flag_name = definition.key
             value = bool(getattr(settings, flag_name, False))
             settings_flags[flag_name] = value
             entry = {
                 "supported": True,
                 "value": value,
                 "surface": "settings",
-                "friendly_name": friendly,
-                "default": default,
-                "effect": effect,
-                "rollout": rollout,
+                "friendly_name": definition.friendly_name,
+                "default": definition.default,
+                "effect": definition.effect,
+                "rollout": definition.rollout,
                 "active": bool(value),
                 "code_present": True,
+                "classification": definition.classification,
+                "runtime_owner": definition.runtime_owner,
             }
             if flag_name == "memory_evidence_assist_enabled":
                 entry["effective"] = bool(
@@ -270,6 +205,7 @@ class BuildInfoService:
             "feature_flags": {**env_flags, **settings_flags},
             "env_flags": env_flags,
             "settings_flags": settings_flags,
+            "maintenance_observation": maint,
             "release_status": {
                 "accepted": "0.9",
                 "in_progress": "1.0",

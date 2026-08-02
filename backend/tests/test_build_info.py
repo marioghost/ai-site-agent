@@ -105,6 +105,8 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["release_status"]["in_progress"] == "1.0"
     assert body["release_status"]["steps_063"][0]["step"] == "063"
     assert body["release_status"]["steps_063"][1]["step"] == "064"
+    assert body["release_status"]["steps_063"][2]["step"] == "065"
+    assert body["maintenance_observation"]["investigations_per_cycle"] == 0
     caps = body["release_status"]["release_0_7_capabilities"]
     assert caps["memory_region_reads"]["code_present"] is True
     assert caps["memory_evidence_assist"]["code_present"] is True
