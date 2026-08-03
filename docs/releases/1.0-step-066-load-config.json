@@ -1,0 +1,26 @@
+{
+  "step": "066",
+  "tip_sha": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "rollback_tip_sha": "148138eb1f27c85a23c0ddfb47f0ad812d90a36e",
+  "base_url": "http://127.0.0.1:8000",
+  "environment": "designated_/opt_staging",
+  "project_root": "/opt/ai-site-agent",
+  "session_prefix": "step066-load-",
+  "warmup_seconds": 600,
+  "sustained_seconds": 3600,
+  "steady_state_concurrency": 2,
+  "stream_fraction": 0.5,
+  "cancel_target": 20,
+  "overload_burst": 20,
+  "request_timeout_seconds": 180,
+  "stream_first_byte_timeout_seconds": 120,
+  "queries": {
+    "known_answer": "What is this website about?",
+    "broad": "Tell me everything important about the organization.",
+    "no_evidence": "What is the exact warranty policy for product ZX-999 that does not exist on this site?"
+  },
+  "acceptance": {
+    "max_unexpected_5xx_rate": 0.01,
+    "p95_ratio_limit": 1.05
+  }
+}

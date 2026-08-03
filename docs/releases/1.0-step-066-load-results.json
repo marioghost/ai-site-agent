@@ -1,0 +1,87 @@
+{
+  "step": "066",
+  "started_at": "2026-08-03T05:54:15.264928+00:00",
+  "finished_at": "2026-08-03T07:07:33.901365+00:00",
+  "config_path": "docs/releases/1.0-step-066-load-config.json",
+  "base_url": "http://127.0.0.1:8000",
+  "tip_expected": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "tip_observed_before": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "tip_observed_after": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "release": null,
+  "warmup": {
+    "sample_count": 358,
+    "nonstream_p95_ms": 286.1492880037986,
+    "stream_ttfb_p95_ms": 55.475635977927595
+  },
+  "sustained": {
+    "sample_count": 254,
+    "nonstream_p95_ms": 335.53739500348456,
+    "stream_ttfb_p95_ms": 265.9494459803682,
+    "unexpected_5xx_rate": 0.9349593495934959
+  },
+  "maintenance_investigations_planned_before": 0,
+  "maintenance_investigations_planned_after": 0,
+  "maintenance_investigations_planned_delta": 0,
+  "metrics_operational_before": {
+    "memory_version": 181,
+    "knowledge_version": 28,
+    "open_tensions": 27,
+    "support_deficit_tensions": 17,
+    "conflict_tensions": 10,
+    "tension_claim_scan_limit": 500
+  },
+  "metrics_operational_after": {
+    "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/metrics/operational'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+  },
+  "environment": "designated_/opt_staging",
+  "project_root": "/opt/ai-site-agent",
+  "probes": {
+    "cancel_count": 8,
+    "overload_controlled": false,
+    "health_after_probes": false,
+    "overload": {
+      "status_counts": {
+        "500": 24
+      },
+      "overload_controlled": false,
+      "health_status": 500
+    },
+    "post_errors": [
+      "metrics_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/metrics/operational'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "maint_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/metrics'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "build_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/build'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    ]
+  },
+  "acceptance": {
+    "unexpected_5xx_rate": 0.9349593495934959,
+    "unexpected_5xx_ok": false,
+    "warmup_nonstream_p95_ms": 286.1492880037986,
+    "sustained_nonstream_p95_ms": 335.53739500348456,
+    "warmup_stream_ttfb_p95_ms": 55.475635977927595,
+    "sustained_stream_ttfb_p95_ms": 265.9494459803682,
+    "nonstream_p95_ratio": 1.1725955963204437,
+    "stream_p95_ratio": 4.79398642831572,
+    "nonstream_p95_ok": false,
+    "stream_p95_ok": false,
+    "cancel_count": 8,
+    "cancel_ok": false,
+    "overload_controlled": false,
+    "health_after_probes": false,
+    "verdict": "FAIL",
+    "sustained_wall_seconds": 3600.0,
+    "total_wall_seconds": 4398.636305727996,
+    "duration_ok": true,
+    "maintenance_delta": 0,
+    "maintenance_budget_ok": true,
+    "post_phase_errors": [
+      "metrics_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/metrics/operational'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "maint_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/metrics'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "build_after:Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/build'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    ]
+  },
+  "samples_summary": {
+    "warmup": 358,
+    "sustained": 254,
+    "cancels": 8
+  }
+}

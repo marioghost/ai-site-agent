@@ -1,0 +1,23 @@
+{
+  "step": "066",
+  "drill": "code_tip_rollback",
+  "finished_at": "2026-08-03T08:05:00+00:00",
+  "rollback_tip_requested": "148138eb1f27c85a23c0ddfb47f0ad812d90a36e",
+  "restore_tip_requested": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "method": "git revert (no force-push) + sudo deploy full twice — NOT EXECUTED",
+  "db_restore": false,
+  "qdrant_restore": false,
+  "force_push": false,
+  "backup_validated": {
+    "path": "/opt/ai-site-agent/backups/ai_site_agent.20260802_181340.dump",
+    "exists": true,
+    "size_bytes": 13571957
+  },
+  "blocked_reasons": [
+    "Agent lacks non-interactive sudo required for One Command deploy full",
+    "User STOP forbade commit/push/deploy of Step 066 tooling; tip-drill push/deploy requires operator TTY",
+    "Working tree dirty with Step 066 untracked files"
+  ],
+  "script_ready": "scripts/release/step066_tip_drill.sh",
+  "verdict": "FAIL"
+}

@@ -1,0 +1,13 @@
+{
+  "step": "066",
+  "drill": "service_restart",
+  "finished_at": "2026-08-03T05:54:15.165740+00:00",
+  "tip_expected": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "tip_before": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "tip_after": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "health_ok": true,
+  "method": "sigterm_hung_uvicorn_then_start_same_/opt_binary",
+  "preferred_command": "sudo bash deploy/manage_deploy.sh --action restart --module backend",
+  "deviation": "sudo non-interactive unavailable in agent; recovered APP_USER-owned /opt uvicorn (equivalent stop_backend pkill fallback + start). Identity unchanged.",
+  "verdict": "PASS"
+}
