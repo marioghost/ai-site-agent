@@ -138,4 +138,31 @@ class OperationalMetricsService:
                 f"kos_ask_cancel_cleanup_total {cancel_cleanup_count()}",
             ]
         )
+        # Step 066 limiter remediation — admission proof signals (no Dashboard).
+        from app.core.concurrency import concurrency as _concurrency
+
+        lim = _concurrency.limiter_instrumentation()
+        chat = lim["chat"]  # type: ignore[index]
+        lines.extend(
+            [
+                "# HELP kos_limiter_configure_total Concurrency configure/apply calls (process-local).",
+                "# TYPE kos_limiter_configure_total counter",
+                f"kos_limiter_configure_total {int(lim['configure_count'])}",
+                "# HELP kos_limiter_limit_change_total Concurrency limit value changes (process-local).",
+                "# TYPE kos_limiter_limit_change_total counter",
+                f"kos_limiter_limit_change_total {int(lim['limit_change_count'])}",
+                "# HELP kos_limiter_chat_active Current chat admission holders (process-local).",
+                "# TYPE kos_limiter_chat_active gauge",
+                f"kos_limiter_chat_active {int(chat['active'])}",
+                "# HELP kos_limiter_chat_limit Configured chat admission limit (process-local).",
+                "# TYPE kos_limiter_chat_limit gauge",
+                f"kos_limiter_chat_limit {int(chat['limit'])}",
+                "# HELP kos_limiter_chat_domain_id Chat admission domain id (stable single domain).",
+                "# TYPE kos_limiter_chat_domain_id gauge",
+                f"kos_limiter_chat_domain_id {int(chat['domain_id'])}",
+                "# HELP kos_limiter_chat_timeout_total Chat admission wait timeouts (process-local).",
+                "# TYPE kos_limiter_chat_timeout_total counter",
+                f"kos_limiter_chat_timeout_total {int(chat['timeout_count'])}",
+            ]
+        )
         return "\n".join(lines) + "\n"
