@@ -1,0 +1,18 @@
+{
+  "step": "066-remediation",
+  "drill": "code_tip_rollback",
+  "finished_at": "2026-08-03T09:25:00+00:00",
+  "rollback_tip_requested": "148138eb1f27c85a23c0ddfb47f0ad812d90a36e",
+  "restore_tip_requested": "remediation_tip_after_publish",
+  "method": "clean tree + One Command deploy full twice — NOT EXECUTED",
+  "db_restore": false,
+  "qdrant_restore": false,
+  "force_push": false,
+  "verdict": "NOT_EXECUTED",
+  "blocked_reasons": [
+    "Implementation STOP forbids commit/push/deploy before Evidence Review",
+    "Tip drill requires published remediation tip on origin/main and operator TTY sudo",
+    "Working tree dirty with uncommitted remediation changes"
+  ],
+  "script_ready": "scripts/release/step066_tip_drill.sh"
+}

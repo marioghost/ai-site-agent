@@ -224,6 +224,16 @@ class RagStreamingService:
             prepared.trace.begin("llm_generation")
         yield ("status", collector.status("generation", "running"))
 
+        # Step 066 remediation: release pool connection for the entire token stream.
+        from app.core.ask_db import (
+            park_session_for_llm,
+            record_cancel_cleanup,
+            unpark_session_after_llm,
+        )
+
+        park_session_for_llm(self.rag)
+        self.db = None
+
         t_gen = perf_counter()
         first_token_ms: int | None = None
         parts: list[str] = []
@@ -231,122 +241,135 @@ class RagStreamingService:
         call_tracker = LlmCallTracker()
         env = collect_runtime_environment()
         try:
-            for chunk in self.ollama.chat_stream(
-                model=self.settings.llm_model,
-                system_prompt=prepared.gen_system,
-                user_prompt=prepared.gen_user,
-                temperature=prepared.llm_opts["temperature"],
-                max_tokens=prepared.llm_opts["num_predict"],
-                num_ctx=prepared.llm_opts["num_ctx"],
-                top_p=prepared.llm_opts.get("top_p"),
-                repeat_penalty=prepared.llm_opts.get("repeat_penalty"),
-                timeout=float(
-                    prepared.llm_opts.get("generation_timeout_seconds")
-                    or self.settings.ollama_generation_timeout_seconds
-                    or 45
-                ),
-                keep_alive=prepared.llm_opts.get("keep_alive"),
-            ):
-                if chunk.text:
-                    if first_token_ms is None:
-                        first_token_ms = int((perf_counter() - t_gen) * 1000)
-                        yield (
-                            "llm.first_token",
-                            {"time_to_first_token_ms": first_token_ms},
-                        )
-                    parts.append(chunk.text)
-                    yield ("token", {"delta": chunk.text, "text": chunk.text})
-                if chunk.done and chunk.stats:
-                    stream_stats = chunk.stats
-                    call_tracker.record("rag_generation_stream")
-        except OllamaError as exc:
-            if prepared.trace:
-                prepared.trace.end("llm_generation", status="error", details={"error": str(exc)})
-            generation_ms = int((perf_counter() - t_gen) * 1000)
-            is_timeout = "timeout" in str(exc).lower()
-            err_type = "llm_timeout" if is_timeout else "llm_error"
-            yield (
-                "error",
-                {
-                    "error_type": err_type,
-                    "message": str(exc),
-                    "partial_response": None,
-                    "partial_diagnostics": {
-                        **prepared.prompt_diagnostics,
-                        "generation_ms": generation_ms,
-                        "time_to_first_token_ms": first_token_ms,
-                        "pipeline_stages": collector.stages,
+            try:
+                for chunk in self.ollama.chat_stream(
+                    model=self.settings.llm_model,
+                    system_prompt=prepared.gen_system,
+                    user_prompt=prepared.gen_user,
+                    temperature=prepared.llm_opts["temperature"],
+                    max_tokens=prepared.llm_opts["num_predict"],
+                    num_ctx=prepared.llm_opts["num_ctx"],
+                    top_p=prepared.llm_opts.get("top_p"),
+                    repeat_penalty=prepared.llm_opts.get("repeat_penalty"),
+                    timeout=float(
+                        prepared.llm_opts.get("generation_timeout_seconds")
+                        or self.settings.ollama_generation_timeout_seconds
+                        or 45
+                    ),
+                    keep_alive=prepared.llm_opts.get("keep_alive"),
+                ):
+                    if chunk.text:
+                        if first_token_ms is None:
+                            first_token_ms = int((perf_counter() - t_gen) * 1000)
+                            yield (
+                                "llm.first_token",
+                                {"time_to_first_token_ms": first_token_ms},
+                            )
+                        parts.append(chunk.text)
+                        yield ("token", {"delta": chunk.text, "text": chunk.text})
+                    if chunk.done and chunk.stats:
+                        stream_stats = chunk.stats
+                        call_tracker.record("rag_generation_stream")
+            except GeneratorExit:
+                record_cancel_cleanup()
+                # Connection already returned to pool via park — do not reopen.
+                raise
+            except OllamaError as exc:
+                unpark_session_after_llm(self.rag)
+                self.db = self.rag.db
+                if prepared.trace:
+                    prepared.trace.end("llm_generation", status="error", details={"error": str(exc)})
+                generation_ms = int((perf_counter() - t_gen) * 1000)
+                is_timeout = "timeout" in str(exc).lower()
+                err_type = "llm_timeout" if is_timeout else "llm_error"
+                yield (
+                    "error",
+                    {
+                        "error_type": err_type,
+                        "message": str(exc),
+                        "partial_response": None,
+                        "partial_diagnostics": {
+                            **prepared.prompt_diagnostics,
+                            "generation_ms": generation_ms,
+                            "time_to_first_token_ms": first_token_ms,
+                            "pipeline_stages": collector.stages,
+                        },
                     },
-                },
-            )
-            result = RagResult(
-                answer=LLM_TIMEOUT_MESSAGE if is_timeout else prepared.fallback,
-                sources=sources if is_timeout else [],
-                used_context=bool(prepared.hits),
-                request_id=request_id,
-                cache_hit=prepared.cache_hit,
-                cache_type=prepared.cache_type,
-                retrieval_ms=prepared.retrieval_ms,
-                generation_ms=generation_ms,
-                retrieval_debug=prepared.retrieval_debug,
-                retrieval_diagnostics=(
-                    prepared.pipeline_diagnostics.to_dict()
-                    if prepared.pipeline_diagnostics
-                    else None
-                ),
-                query_intent=prepared.query_intent,
-                applied_knowledge_config=prepared.applied_config.model_dump(),
-                cache=prepared.cache_info,
-                error_type=err_type,
-                prompt_diagnostics=prepared.prompt_diagnostics,
-            )
-            finalized = self.rag._finalize(
-                result,
-                message,
-                session_id,
-                prepared.trace,
-                user_ip,
-                user_agent,
-                referrer,
-                prepared.normalized,
-                prepared.expanded,
-            )
-            yield (
-                "final",
-                self._final_event(
-                    finalized,
+                )
+                result = RagResult(
+                    answer=LLM_TIMEOUT_MESSAGE if is_timeout else prepared.fallback,
+                    sources=sources if is_timeout else [],
+                    used_context=bool(prepared.hits),
+                    request_id=request_id,
+                    cache_hit=prepared.cache_hit,
+                    cache_type=prepared.cache_type,
+                    retrieval_ms=prepared.retrieval_ms,
+                    generation_ms=generation_ms,
+                    retrieval_debug=prepared.retrieval_debug,
+                    retrieval_diagnostics=(
+                        prepared.pipeline_diagnostics.to_dict()
+                        if prepared.pipeline_diagnostics
+                        else None
+                    ),
+                    query_intent=prepared.query_intent,
+                    applied_knowledge_config=prepared.applied_config.model_dump(),
+                    cache=prepared.cache_info,
+                    error_type=err_type,
+                    prompt_diagnostics=prepared.prompt_diagnostics,
+                )
+                finalized = self.rag._finalize(
+                    result,
+                    message,
                     session_id,
-                    request_id,
+                    prepared.trace,
                     user_ip,
                     user_agent,
                     referrer,
-                    debug=prepared.debug,
-                ),
-            )
-            return
+                    prepared.normalized,
+                    prepared.expanded,
+                )
+                yield (
+                    "final",
+                    self._final_event(
+                        finalized,
+                        session_id,
+                        request_id,
+                        user_ip,
+                        user_agent,
+                        referrer,
+                        debug=prepared.debug,
+                    ),
+                )
+                return
 
-        answer = "".join(parts)
-        generation_ms = int((perf_counter() - t_gen) * 1000)
-        prepared.metrics.streaming_enabled = True
-        prepared.metrics.model_status = ModelWarmupService.get_status(self.settings.llm_model)
-        if stream_stats:
-            prepared.metrics.apply_ollama_stats(
-                stream_stats,
-                first_token_ms=first_token_ms,
-                generation_ms=generation_ms,
-                gpu_visible=bool(env.get("nvidia_gpu_visible")),
-            )
-        else:
-            out_tokens = max(1, len(answer) // 4)
-            prepared.metrics.time_to_first_token_ms = first_token_ms
-            prepared.metrics.generation_ms = generation_ms
-            prepared.metrics.total_tokens_out = out_tokens
-            prepared.metrics.tokens_per_second = compute_tokens_per_second(out_tokens, generation_ms)
-        prepared.metrics.apply_call_tracker(call_tracker)
-        prepared.prompt_diagnostics.update(prepared.metrics.to_dict())
+            unpark_session_after_llm(self.rag)
+            self.db = self.rag.db
 
-        if prepared.trace:
-            prepared.trace.end("llm_generation", details={"chars": len(answer)})
+            answer = "".join(parts)
+            generation_ms = int((perf_counter() - t_gen) * 1000)
+            prepared.metrics.streaming_enabled = True
+            prepared.metrics.model_status = ModelWarmupService.get_status(self.settings.llm_model)
+            if stream_stats:
+                prepared.metrics.apply_ollama_stats(
+                    stream_stats,
+                    first_token_ms=first_token_ms,
+                    generation_ms=generation_ms,
+                    gpu_visible=bool(env.get("nvidia_gpu_visible")),
+                )
+            else:
+                out_tokens = max(1, len(answer) // 4)
+                prepared.metrics.time_to_first_token_ms = first_token_ms
+                prepared.metrics.generation_ms = generation_ms
+                prepared.metrics.total_tokens_out = out_tokens
+                prepared.metrics.tokens_per_second = compute_tokens_per_second(out_tokens, generation_ms)
+            prepared.metrics.apply_call_tracker(call_tracker)
+            prepared.prompt_diagnostics.update(prepared.metrics.to_dict())
+
+            if prepared.trace:
+                prepared.trace.end("llm_generation", details={"chars": len(answer)})
+        except GeneratorExit:
+            record_cancel_cleanup()
+            raise
 
         context_text = (
             prepared.pipeline_context.prompt_text

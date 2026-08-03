@@ -1,0 +1,24 @@
+{
+  "step": "066-remediation",
+  "artifact": "load_results",
+  "status": "NOT_EXECUTED",
+  "finished_at": "2026-08-03T09:25:00+00:00",
+  "supersedes": "docs/releases/1.0-step-066-load-results.json",
+  "historical_fail_immutable": true,
+  "blocked_reasons": [
+    "Implementation STOP forbids deploy before Evidence Review",
+    "Designated runtime /opt still on failed tip a41198f without ask_db.py",
+    "Load against unfixed runtime would not validate remediation"
+  ],
+  "workspace_tip": "325f5beef206d4638f766d9f6478f99ba7190fb0",
+  "runtime_tip_observed": "a41198f28f59c2d22c78e63f0afec9448ca8fe0c",
+  "phases": {
+    "short_diagnostic": "NOT_EXECUTED",
+    "preflight": "NOT_EXECUTED",
+    "full_1hr": "NOT_EXECUTED"
+  },
+  "acceptance": {
+    "verdict": "NOT_EXECUTED",
+    "note": "Re-run after authorized deploy of remediation tip to /opt"
+  }
+}

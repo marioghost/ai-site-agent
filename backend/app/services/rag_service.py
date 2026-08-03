@@ -581,18 +581,25 @@ class RagService:
             pipeline_diagnostics.prompt_length = prompt_chars
             pipeline_diagnostics.prompt_diagnostics = prompt_diagnostics
 
-        gen_result = LlmGenerationService(self.ollama, s).generate(
-            message=message,
-            system_prompt=gen_system,
-            user_prompt=gen_user,
-            hits=hits,
-            pipeline_context=pipeline_context,
-            llm_opts=llm_opts,
-            metrics=metrics,
-            query_intent=query_intent,
-            db=self.db,
-            call_tracker=call_tracker,
-        )
+        # Step 066 remediation: return pool connection before model wait.
+        from app.core.ask_db import park_session_for_llm, unpark_session_after_llm
+
+        park_session_for_llm(self)
+        try:
+            gen_result = LlmGenerationService(self.ollama, s).generate(
+                message=message,
+                system_prompt=gen_system,
+                user_prompt=gen_user,
+                hits=hits,
+                pipeline_context=pipeline_context,
+                llm_opts=llm_opts,
+                metrics=metrics,
+                query_intent=query_intent,
+                db=None,
+                call_tracker=call_tracker,
+            )
+        finally:
+            unpark_session_after_llm(self)
         if trace and "answer" in gen_result:
             trace.end("llm_generation", details={"chars": len(gen_result["answer"])})
         elif trace and gen_result.get("error_type"):

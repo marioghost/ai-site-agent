@@ -1,0 +1,12 @@
+{
+  "step": "066-remediation",
+  "drill": "restart",
+  "finished_at": "2026-08-03T09:25:00+00:00",
+  "method": "sudo bash deploy/manage_deploy.sh --action restart --module backend",
+  "verdict": "NOT_EXECUTED",
+  "blocked_reasons": [
+    "Deferred until remediation tip is authorized for deploy after Evidence Review",
+    "Restart drill on pre-remediation tip would not validate remediated process"
+  ],
+  "script_ready": "scripts/release/step066_restart_drill.sh"
+}

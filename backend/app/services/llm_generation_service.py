@@ -130,14 +130,18 @@ class LlmGenerationService:
         tracker: LlmCallTracker,
     ) -> dict:
         compact_hits = hits[:2]
-        builder = RetrievalContextBuilder(db)
-        compact_ctx, _ = builder.build(
-            compact_hits,
-            settings=self.settings,
-            user_message=message,
-            max_pages=2,
-            max_chunks_per_page=1,
-        )
+        if db is not None:
+            builder = RetrievalContextBuilder(db)
+            compact_ctx, _ = builder.build(
+                compact_hits,
+                settings=self.settings,
+                user_message=message,
+                max_pages=2,
+                max_chunks_per_page=1,
+            )
+        else:
+            # Step 066: generation may run with DB parked — compact without ORM.
+            compact_ctx = pipeline_context
         _, compact_user = CompactPromptBuilder.build(
             message=message,
             hits=compact_hits,

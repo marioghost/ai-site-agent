@@ -109,4 +109,33 @@ class OperationalMetricsService:
             "# TYPE kos_investigations_failed_total counter",
             f"kos_investigations_failed_total {counters.investigations_failed_total}",
         ]
+        # Step 066 remediation — minimal Ask pool / cancel signals (no Dashboard).
+        from app.core.ask_db import (
+            cancel_cleanup_count,
+            park_count,
+            pool_timeout_count,
+            unpark_count,
+        )
+        from app.core.database import pool_diagnostics
+
+        pool = pool_diagnostics()
+        lines.extend(
+            [
+                "# HELP kos_db_pool_checked_out Current SQLAlchemy pool checked-out connections.",
+                "# TYPE kos_db_pool_checked_out gauge",
+                f"kos_db_pool_checked_out {int(pool.get('checked_out') or 0)}",
+                "# HELP kos_db_pool_timeout_total Ask-path QueuePool acquire timeouts (process-local).",
+                "# TYPE kos_db_pool_timeout_total counter",
+                f"kos_db_pool_timeout_total {pool_timeout_count()}",
+                "# HELP kos_ask_db_park_total Ask sessions parked before LLM wait (process-local).",
+                "# TYPE kos_ask_db_park_total counter",
+                f"kos_ask_db_park_total {park_count()}",
+                "# HELP kos_ask_db_unpark_total Ask sessions reopened after LLM wait (process-local).",
+                "# TYPE kos_ask_db_unpark_total counter",
+                f"kos_ask_db_unpark_total {unpark_count()}",
+                "# HELP kos_ask_cancel_cleanup_total Stream cancel cleanups observed (process-local).",
+                "# TYPE kos_ask_cancel_cleanup_total counter",
+                f"kos_ask_cancel_cleanup_total {cancel_cleanup_count()}",
+            ]
+        )
         return "\n".join(lines) + "\n"
