@@ -17,6 +17,13 @@ md_rollback_recommendation() {
     schema_first)
       echo "review_schema_no_autodowngrade"
       ;;
+    # FE publish failed before/during swap with live tree left untouched (amendment Part 7).
+    frontend_publish)
+      echo "none_live_untouched"
+      ;;
+    frontend_provenance|frontend_identity)
+      echo "redeploy_known_good_tip"
+      ;;
     sync|post_sync_migrate|restart|health|verify_release|smoke|report)
       echo "redeploy_known_good_tip"
       ;;

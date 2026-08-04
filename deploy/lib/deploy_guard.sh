@@ -192,18 +192,44 @@ deploy_guard_assert_build_info_matches_commit() {
   return 0
 }
 
+# Single provenance verifier entrypoint (amendment Part 3).
+deploy_guard_assert_frontend_provenance() {
+  local dist_root="$1"
+  local expected_commit="${2:-}"
+  local script
+  script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/frontend_provenance.py"
+  if [[ ! -f "$script" ]]; then
+    echo "ERROR: missing $script" >&2
+    return 1
+  fi
+  if [[ -n "$expected_commit" ]]; then
+    python3 "$script" verify --dist "$dist_root" --expected-commit "$expected_commit"
+  else
+    python3 "$script" verify --dist "$dist_root"
+  fi
+}
+
 deploy_guard_assert_frontend_identity() {
   local root="$1"
   local expected="$2"
-  local path="$root/dashboard/dist/.deploy-identity.json"
+  local dist="$root/dashboard/dist"
+  local path="$dist/.deploy-identity.json"
   if [[ ! -f "$path" ]]; then
     echo "ERROR: missing frontend identity $path" >&2
     return 1
   fi
-  local fe
+  # Identity is only valid with matching live provenance (I1/I11).
+  deploy_guard_assert_frontend_provenance "$dist" "$expected" || return 1
+  local fe tree_id tree_prov
   fe="$(python3 -c "import json; print(json.load(open('$path')).get('git_commit',''))" 2>/dev/null || echo "")"
   if [[ "$fe" != "$expected" ]]; then
     echo "ERROR: frontend identity ($fe) != expected ($expected)" >&2
+    return 1
+  fi
+  tree_id="$(python3 -c "import json; print(json.load(open('$path')).get('provenance_tree_sha256',''))" 2>/dev/null || echo "")"
+  tree_prov="$(python3 -c "import json; print(json.load(open('$dist/.frontend-provenance.json')).get('tree_sha256',''))" 2>/dev/null || echo "")"
+  if [[ -z "$tree_id" || "$tree_id" != "$tree_prov" ]]; then
+    echo "ERROR: identity provenance_tree_sha256 ($tree_id) != provenance tree_sha256 ($tree_prov)" >&2
     return 1
   fi
   return 0

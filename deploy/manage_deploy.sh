@@ -1666,19 +1666,19 @@ ensure_project_writable() {
   return 1
 }
 
-# Stamp dashboard/dist so verify-release / deploy stage 4 can match origin/main.
-# Vite rebuild wipes this file unless rewritten after build.
+# Stamp live dashboard/dist only after provenance PASS (single stamp path).
+# Release One Command stamps via deploy_source md_stamp_frontend_identity.
+# Non-release build_frontend uses this after writing+verifying provenance.
 write_frontend_deploy_identity() {
   local commit="${MD_DEPLOY_COMMIT:-}"
-  local release short
+  local release
+  local py="$SCRIPT_DIR/lib/frontend_provenance.py"
   if [[ -z "$commit" && -f "$PROJECT_ROOT/.build-info.json" ]]; then
     commit="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('git_commit',''))" 2>/dev/null || true)"
   fi
   [[ -n "$commit" ]] || return 0
   [[ -d "$FRONTEND_BUILD_DIR" ]] || return 0
   release="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('release',''))" 2>/dev/null || true)"
-  # Tip APP_RELEASE / build-info wins; never invent identity from stale RELEASE_VERSION
-  # during One Command (MD_DEPLOY_RELEASE is tip APP_RELEASE).
   if [[ -z "$release" ]]; then
     release="${MD_DEPLOY_RELEASE:-}"
   fi
@@ -1686,27 +1686,18 @@ write_frontend_deploy_identity() {
     release="${RELEASE_VERSION:-0.7}"
   fi
   [[ -n "$release" ]] || release="unknown"
-  short="${commit:0:7}"
-  mkdir -p "$FRONTEND_BUILD_DIR"
-  python3 - <<PY
-import json
-from pathlib import Path
-payload = {
-    "git_commit": "$commit",
-    "git_commit_short": "$short",
-    "release": "$release",
-    "artifact": "dashboard/dist",
-}
-Path("$FRONTEND_BUILD_DIR/.deploy-identity.json").write_text(
-    json.dumps(payload, indent=2) + "\n", encoding="utf-8"
-)
-print("OK: frontend identity → $FRONTEND_BUILD_DIR/.deploy-identity.json")
-PY
+  if [[ ! -f "$FRONTEND_BUILD_DIR/.frontend-provenance.json" ]]; then
+    log_error "Refusing identity stamp without provenance: $FRONTEND_BUILD_DIR/.frontend-provenance.json"
+    return 1
+  fi
+  python3 "$py" stamp --dist "$FRONTEND_BUILD_DIR" --commit "$commit" --release "$release"
 }
 
 build_frontend() {
   require_dev_sync_for_ui || return 1
   local npm_bin
+  local py="$SCRIPT_DIR/lib/frontend_provenance.py"
+  local commit release build_time
   if ! npm_bin="$(npm_cmd)"; then
     log_error "npm not installed (needed for dashboard build)"
     log_info "Install Node.js 18+ system-wide, or set NPM_BIN in deploy/deploy.local.conf"
@@ -1730,7 +1721,25 @@ build_frontend() {
     log_error "Build output missing: $FRONTEND_BUILD_DIR/index.html"
     return 1
   fi
-  write_frontend_deploy_identity
+  commit="${MD_DEPLOY_COMMIT:-}"
+  if [[ -z "$commit" && -f "$PROJECT_ROOT/.build-info.json" ]]; then
+    commit="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('git_commit',''))" 2>/dev/null || true)"
+  fi
+  if [[ -z "$commit" ]]; then
+    commit="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  fi
+  release="${MD_DEPLOY_RELEASE:-}"
+  if [[ -z "$release" && -f "$PROJECT_ROOT/.build-info.json" ]]; then
+    release="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/.build-info.json')).get('release',''))" 2>/dev/null || true)"
+  fi
+  [[ -n "$release" ]] || release="${RELEASE_VERSION:-unknown}"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  python3 "$py" write \
+    --dist "$FRONTEND_BUILD_DIR" \
+    --commit "${commit:-unknown}" \
+    --release "$release" \
+    --build-time "$build_time" || return 1
+  write_frontend_deploy_identity || return 1
   log_ok "Frontend built → $FRONTEND_BUILD_DIR"
 }
 
@@ -1860,11 +1869,10 @@ deploy_frontend() {
   log_section "Frontend deploy"
   ensure_project_writable || return 1
   update_source_code || return 1
-  # Release stage 2 already built+rsynced dist (incl. .deploy-identity.json);
-  # a second vite build would wipe the identity stamp.
-  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" && -f "$FRONTEND_BUILD_DIR/index.html" ]]; then
-    log_info "Release deploy: frontend artifact already present — skip duplicate npm build"
-    write_frontend_deploy_identity
+  # Release FE publication is owned by deploy_source Part 1 (dist.next → swap → stamp).
+  # Illegal skip+stamp path removed (amendment Part 1.4 / Part 6.2).
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" ]]; then
+    log_info "Release deploy: frontend publish owned by One Command (deploy_source) — skip local rebuild"
   else
     build_frontend || return 1
   fi
@@ -1886,10 +1894,10 @@ mode_full() {
   # Build UI before final chown so APP_USER!=deploy-user cannot break npm mid-run.
   SKIP_FIX_OWNERSHIP=yes deploy_backend || return 1
   ensure_project_writable || return 1
-  # Release stage 2 already built+rsynced dist; duplicate vite build wipes identity.
-  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" && -f "$FRONTEND_BUILD_DIR/index.html" ]]; then
-    log_info "Release deploy: frontend artifact already present — skip duplicate npm build"
-    write_frontend_deploy_identity
+  # Release FE publication is owned by deploy_source (amendment Part 8).
+  # Do not skip-stamp onto stale /opt dist.
+  if [[ "${MD_RELEASE_DEPLOY:-0}" == "1" ]]; then
+    log_info "Release deploy: frontend publish owned by One Command (deploy_source) — no local FE stamp"
   else
     build_frontend || return 1
   fi

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # One Command Deployment — canonical clean-worktree deploy from origin/main.
 #
-# Frozen pipeline (deploy full):
+# Frozen pipeline (deploy full) — amendment Part 8 FE publish after sync:
 #   1 preflight → 2 backup → 3 migration decision → 4 conditional schema-first
-#   → 5 build → 6 sync → 7 post-sync migrate → 8 restart → 9 health
-#   → 10 verify-release → 11 smoke → 12 report → 13 SUCCESS
+#   → 5 build (+ provenance) → 6 sync → 6b publish/swap/stamp → 7 post-sync migrate
+#   → 8 restart → 9 health → 10 verify-release → 11 smoke → 12 report → 13 SUCCESS
 set -euo pipefail
 
 md_deploy_source_init() {
@@ -152,27 +152,127 @@ md_deploy_success_summary() {
   echo "  duration_seconds:        $duration"
 }
 
-md_write_frontend_identity() {
-  local root="$1"
-  local commit="$2"
-  local short release
-  short="$(git -C "$root" rev-parse --short "$commit" 2>/dev/null || echo "${commit:0:7}")"
-  release="${MD_DEPLOY_RELEASE}"
-  mkdir -p "$root/dashboard/dist"
-  python3 - <<PY
-import json
-from pathlib import Path
-payload = {
-    "git_commit": "$commit",
-    "git_commit_short": "$short",
-    "release": "$release",
-    "artifact": "dashboard/dist",
+# FE publication helpers (amendment Part 1 / Part 8) — single path.
+md_frontend_provenance_py() {
+  echo "$MD_DEPLOY_SCRIPT_DIR/lib/frontend_provenance.py"
 }
-Path("$root/dashboard/dist/.deploy-identity.json").write_text(
-    json.dumps(payload, indent=2) + "\n", encoding="utf-8"
-)
-print("OK: frontend identity → $root/dashboard/dist/.deploy-identity.json")
+
+md_write_frontend_provenance() {
+  local dist="$1"
+  local commit="$2"
+  local release="$3"
+  local build_time
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  python3 "$(md_frontend_provenance_py)" write \
+    --dist "$dist" \
+    --commit "$commit" \
+    --release "$release" \
+    --build-time "$build_time"
+}
+
+# Single identity stamp — only after provenance PASS (stamp cmd verifies first).
+md_stamp_frontend_identity() {
+  local dist="$1"
+  local commit="$2"
+  local release="$3"
+  python3 "$(md_frontend_provenance_py)" stamp \
+    --dist "$dist" \
+    --commit "$commit" \
+    --release "$release"
+}
+
+md_reload_nginx_after_publish() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    nginx -t && systemctl reload nginx
+  else
+    sudo nginx -t && sudo systemctl reload nginx
+  fi
+}
+
+# Part 1 — sole legal publication path (worktree dist → dist.next → swap → live → stamp).
+# Sets MD_FE_PUBLISH_FAIL_STAGE on failure for md_deploy_fail.
+md_publish_frontend_artifact() {
+  local worktree="$1"
+  local project_root="$2"
+  local commit="$3"
+  local release="$4"
+  local src="${worktree}/dashboard/dist"
+  local dash="${project_root}/dashboard"
+  local live="${dash}/dist"
+  local next="${dash}/dist.next"
+  local old="${dash}/dist.old"
+
+  MD_FE_PUBLISH_FAIL_STAGE="frontend_publish"
+
+  [[ -f "$src/index.html" ]] || {
+    echo "ERROR: missing worktree dist index.html: $src/index.html" >&2
+    return 1
+  }
+  [[ -f "$src/.frontend-provenance.json" ]] || {
+    echo "ERROR: missing worktree provenance: $src/.frontend-provenance.json" >&2
+    return 1
+  }
+
+  mkdir -p "$dash"
+  rm -rf "$next"
+  mkdir -p "$next"
+  if ! rsync -a --delete "$src/" "$next/"; then
+    echo "ERROR: failed to materialize dist.next from worktree dist" >&2
+    rm -rf "$next"
+    return 1
+  fi
+
+  MD_FE_PUBLISH_FAIL_STAGE="frontend_provenance"
+  if ! deploy_guard_assert_frontend_provenance "$next" "$commit"; then
+    rm -rf "$next"
+    return 1
+  fi
+
+  MD_FE_PUBLISH_FAIL_STAGE="frontend_publish"
+  # Atomic swap on same filesystem.
+  if [[ -e "$live" ]]; then
+    rm -rf "$old"
+    if ! mv "$live" "$old"; then
+      echo "ERROR: failed to move live dist → dist.old" >&2
+      rm -rf "$next"
+      return 1
+    fi
+  fi
+  if ! mv "$next" "$live"; then
+    echo "ERROR: failed to move dist.next → dist; restoring prior tree if present" >&2
+    if [[ -e "$old" ]]; then
+      mv "$old" "$live" || true
+    fi
+    rm -rf "$next"
+    return 1
+  fi
+  rm -rf "$old"
+
+  MD_FE_PUBLISH_FAIL_STAGE="frontend_provenance"
+  if ! deploy_guard_assert_frontend_provenance "$live" "$commit"; then
+    return 1
+  fi
+
+  MD_FE_PUBLISH_FAIL_STAGE="frontend_identity"
+  if ! md_stamp_frontend_identity "$live" "$commit" "$release"; then
+    return 1
+  fi
+
+  # Align build-info frontend_commit to tip after successful stamp (full/frontend).
+  if [[ -f "$project_root/.build-info.json" ]]; then
+    python3 - "$project_root/.build-info.json" "$commit" <<'PY'
+import json, sys
+path, commit = sys.argv[1], sys.argv[2]
+data = json.load(open(path, encoding="utf-8"))
+data["frontend_commit"] = commit
+open(path, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+print(f"OK: build-info frontend_commit → {commit}")
 PY
+  fi
+
+  MD_FE_PUBLISH_FAIL_STAGE=""
+  echo "OK: frontend published + stamped → $live"
+  return 0
 }
 
 md_deploy_strip_no_backup_args() {
@@ -326,7 +426,7 @@ md_deploy_from_main() {
   fi
 
   # --- 5/13 BUILD ---
-  echo "[deploy 5/13] BUILD (worktree + identity)"
+  echo "[deploy 5/13] BUILD (worktree + provenance)"
   MD_DEPLOY_WORKTREE="$(mktemp -d /tmp/ai-site-agent-deploy-XXXXXX)"
   echo "[deploy] clean worktree: $MD_DEPLOY_WORKTREE"
   git -C "$repo" worktree add --detach "$MD_DEPLOY_WORKTREE" "$commit" >/dev/null
@@ -366,7 +466,10 @@ md_deploy_from_main() {
     "$npm" run build || { md_deploy_fail build "frontend build failed" || return 1; }
     [[ -f "$MD_DEPLOY_WORKTREE/dashboard/dist/index.html" ]] \
       || { md_deploy_fail build "frontend build missing index.html" || return 1; }
-    md_write_frontend_identity "$MD_DEPLOY_WORKTREE" "$commit"
+    # Identity is stamped only after live provenance PASS (amendment Part 8).
+    md_write_frontend_provenance \
+      "$MD_DEPLOY_WORKTREE/dashboard/dist" "$commit" "$MD_DEPLOY_RELEASE" \
+      || { md_deploy_fail build "frontend provenance write failed" || return 1; }
   fi
   echo "[deploy 5/13] BUILD OK"
 
@@ -407,14 +510,24 @@ md_deploy_from_main() {
   unset MD_SKIP_RUN_MIGRATIONS || true
   echo "[deploy 6/13] SYNC OK"
 
-  # On-disk identity after sync (still sync stage — artifacts must match tip)
   deploy_guard_assert_build_info_matches_commit "$MD_DEPLOY_PROJECT_ROOT" "$commit" \
     || { md_deploy_fail sync "synced build-info mismatch" || return 1; }
   deploy_guard_assert_release_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE" \
     || { md_deploy_fail sync "synced release identity mismatch" || return 1; }
+
+  # --- 6b FE PUBLISH (amendment Part 1 / Part 8) — after source sync, before migrate ---
   if [[ "$mode" == "full" || "$mode" == "frontend" ]]; then
+    echo "[deploy 6b] FRONTEND PUBLISH (dist.next → atomic swap → stamp)"
+    if ! md_publish_frontend_artifact \
+         "$MD_DEPLOY_WORKTREE" "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE"; then
+      md_deploy_fail "${MD_FE_PUBLISH_FAIL_STAGE:-frontend_publish}" \
+        "frontend publication failed" || return 1
+    fi
     deploy_guard_assert_frontend_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit" \
-      || { md_deploy_fail sync "synced frontend identity mismatch" || return 1; }
+      || { md_deploy_fail frontend_identity "live frontend identity mismatch" || return 1; }
+    md_reload_nginx_after_publish \
+      || { md_deploy_fail frontend_publish "nginx reload after FE publish failed" || return 1; }
+    echo "[deploy 6b] FRONTEND PUBLISH OK"
   fi
 
   # --- 7/13 POST-SYNC MIGRATE (mandatory; distinct failed_stage) ---
