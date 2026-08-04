@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { I18nProvider } from "./i18n";
 import { AuthProvider } from "./context/AuthContext";
+import { EngineeringModeProvider } from "./context/EngineeringModeContext";
 import { ChatSessionProvider } from "./context/ChatSessionContext";
 import App from "./App";
 import { ThemeProvider } from "./ui";
@@ -16,9 +17,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>
-            <ChatSessionProvider>
-              <App />
-            </ChatSessionProvider>
+            <EngineeringModeProvider>
+              <ChatSessionProvider>
+                <App />
+              </ChatSessionProvider>
+            </EngineeringModeProvider>
           </AuthProvider>
         </I18nProvider>
       </ThemeProvider>

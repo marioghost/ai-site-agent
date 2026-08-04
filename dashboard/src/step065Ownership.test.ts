@@ -1,6 +1,6 @@
 /**
  * RFC-100 Step 065 — Product Settings / Overview ownership cleanup.
- * Source contracts via Vite `?raw` (no Node builtins; tsc-safe).
+ * S001 superseded the “no Engineering Mode routes” contract (Strategy §6.8).
  */
 import { describe, expect, it } from "vitest";
 import settingsPageSource from "./pages/SettingsPage.tsx?raw";
@@ -36,9 +36,11 @@ describe("Step 065 Dashboard ownership", () => {
     expect(overviewSource).toMatch(/memory_version/);
   });
 
-  it("no Engineering Mode routes invented; settings route unchanged", () => {
-    expect(appSource).not.toMatch(/\/engineering/);
-    expect(appSource).toMatch(/path=["']\/settings["']/);
+  it("S001: Engineering Mode routes exist; /settings is layout with general child", () => {
+    expect(appSource).toMatch(/\/engineering/);
+    expect(appSource).toMatch(/RequireEngineeringMode/);
+    expect(appSource).toMatch(/path="\/settings"/);
+    expect(appSource).toMatch(/path="general"/);
   });
 
   it("BuildInfo types allow additive maintenance_observation", () => {

@@ -1,66 +1,13 @@
 import { useState } from "react";
-import {
-  BarChart3,
-  Bot,
-  Brain,
-  FileStack,
-  LayoutDashboard,
-  MessageSquare,
-  Moon,
-  RefreshCw,
-  ScrollText,
-  Settings,
-  Stethoscope,
-  Sun,
-  TriangleAlert,
-  Users,
-} from "lucide-react";
+import { Moon, Sun, Bot } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useEngineeringMode } from "../../context/EngineeringModeContext";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTranslation } from "../../i18n";
+import { buildNavEntries } from "../../lib/navConfig";
 import { canAccessRoute } from "../../lib/permissions";
+import { resetEngineeringModeOff } from "../../lib/engineeringModeStorage";
 import { Avatar, NavigationItem, Sidebar, useTheme } from "../../ui";
-
-type NavEntry =
-  | {
-      kind: "item";
-      to: string;
-      key: string;
-      Icon: typeof LayoutDashboard;
-    }
-  | {
-      kind: "section";
-      key: string;
-      items: Array<{
-        to: string;
-        key: string;
-        Icon: typeof LayoutDashboard;
-      }>;
-    };
-
-const navEntries: NavEntry[] = [
-  { kind: "item", to: "/overview", key: "nav.overview", Icon: LayoutDashboard },
-  { kind: "item", to: "/indexing", key: "nav.indexing", Icon: RefreshCw },
-  { kind: "item", to: "/sources", key: "nav.sources", Icon: FileStack },
-  { kind: "item", to: "/chat", key: "nav.chat_test", Icon: MessageSquare },
-  { kind: "item", to: "/analytics", key: "nav.analytics", Icon: BarChart3 },
-  { kind: "item", to: "/logs", key: "nav.logs", Icon: ScrollText },
-  {
-    kind: "section",
-    key: "nav.diagnostics",
-    items: [
-      {
-        to: "/diagnostics/epistemic-health",
-        key: "nav.epistemic_health",
-        Icon: TriangleAlert,
-      },
-      { to: "/chat", key: "nav.chat_diagnostics", Icon: Stethoscope },
-    ],
-  },
-  { kind: "item", to: "/users", key: "nav.users", Icon: Users },
-  { kind: "item", to: "/knowledge-profile", key: "nav.knowledge_profile", Icon: Brain },
-  { kind: "item", to: "/settings", key: "nav.agent_settings", Icon: Settings },
-];
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -71,14 +18,17 @@ function initials(name: string): string {
 export default function AppSidebar() {
   const { t } = useTranslation();
   const { user, logout, hasRole } = useAuth();
+  const { enabled: engineeringModeOn } = useEngineeringMode();
   const { mode, toggleMode } = useTheme();
   const { collapsed } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const role = user?.role;
+  const navEntries = buildNavEntries(engineeringModeOn && hasRole("admin"));
 
   async function onLogout() {
     setMenuOpen(false);
+    resetEngineeringModeOff();
     await logout();
     window.location.href = "/login";
   }
@@ -147,14 +97,14 @@ export default function AppSidebar() {
       {navEntries.map((entry) => {
         if (entry.kind === "item") {
           if (!role || !canAccessRoute(role, entry.to)) return null;
-          const { to, key, Icon } = entry;
+          const { to, labelKey, Icon } = entry;
           return (
             <NavigationItem
-              key={to === "/chat" ? "nav-chat-main" : to}
+              key={to}
               to={to}
               collapsed={collapsed}
               icon={<Icon size={18} strokeWidth={1.75} />}
-              label={t(key)}
+              label={t(labelKey)}
             />
           );
         }
@@ -165,17 +115,17 @@ export default function AppSidebar() {
         if (visibleItems.length === 0) return null;
 
         return (
-          <div key={entry.key} className="ds-sidebar__section">
+          <div key={entry.labelKey} className="ds-sidebar__section">
             {!collapsed ? (
-              <div className="ds-sidebar__section-label">{t(entry.key)}</div>
+              <div className="ds-sidebar__section-label">{t(entry.labelKey)}</div>
             ) : null}
-            {visibleItems.map(({ to, key, Icon }) => (
+            {visibleItems.map(({ to, labelKey, Icon }) => (
               <NavigationItem
-                key={`${entry.key}-${to}-${key}`}
+                key={`${entry.labelKey}-${to}`}
                 to={to}
                 collapsed={collapsed}
                 icon={<Icon size={18} strokeWidth={1.75} />}
-                label={t(key)}
+                label={t(labelKey)}
               />
             ))}
           </div>

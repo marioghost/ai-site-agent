@@ -9,6 +9,7 @@ import {
 } from "react";
 import { getMe, login as apiLogin, logout as apiLogout, setAuthToken } from "../api/client";
 import type { AuthUser, UserRole } from "../types";
+import { resetEngineeringModeOff } from "../lib/engineeringModeStorage";
 
 const TOKEN_KEY = "ai-site-agent-auth-token";
 
@@ -82,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    resetEngineeringModeOff();
     storeToken(null);
     setToken(null);
     setUser(null);
