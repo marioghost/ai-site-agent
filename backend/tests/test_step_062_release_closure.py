@@ -14,7 +14,8 @@ from app.services.tension_surfacing.tension_surfacing_service import TensionCoun
 
 @pytest.mark.unit
 def test_app_release_is_0_9():
-    assert APP_RELEASE == "0.9"
+    """Release 0.9 remains closed; APP_RELEASE is now 1.0 after Step 067."""
+    assert APP_RELEASE == "1.0"
 
 
 @pytest.mark.unit
@@ -46,16 +47,16 @@ def test_release_0_9_closure_metadata():
         data = svc.collect()
 
     rs = data["release_status"]
-    assert rs["accepted"] == "0.9"
+    assert rs["accepted"] == "1.0"
     assert rs["closed_0_6"] is True
     assert rs["closed_0_7"] is True
     assert rs["closed_0_8"] is True
     assert rs["closed_0_9"] is True
+    assert rs["closed_1_0"] is True
     assert rs["engineering_ready"] is True
     assert rs["staging_validated"] is False
     assert rs["production_ready"] is False
-    # Step 063 marks Release 1.0 in progress; 0.9 remains accepted/closed.
-    assert rs["in_progress"] == "1.0"
+    assert rs["in_progress"] is None
     assert [s["step"] for s in rs["steps_058_062"]] == [
         "058",
         "059",
@@ -63,7 +64,7 @@ def test_release_0_9_closure_metadata():
         "061",
         "062",
     ]
-    assert [s["step"] for s in rs["steps_063"]] == ["063", "064", "065"]
+    assert [s["step"] for s in rs["steps_063"]] == ["063", "064", "065", "066", "067"]
     caps9 = rs["release_0_9_capabilities"]
     assert caps9["index_integrate_compose"]["code_present"] is True
     assert caps9["investigation_metrics"]["code_present"] is True

@@ -18,8 +18,8 @@ from app.services.feature_flags import (
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.memory_version_service import MemoryVersionService
 
-# Last accepted RFC-100 release (engineering closure 2026-07-31).
-APP_RELEASE = "0.9"
+# RFC-100 Release 1.0 engineering closure (Step 067).
+APP_RELEASE = "1.0"
 
 # Release 0.6 cognitive pipeline — code present when repo includes Steps 039–045.
 RELEASE_0_6_STEPS = (
@@ -60,7 +60,7 @@ RELEASE_0_9_STEPS = (
     {"step": "062", "title": "Release 0.9 engineering closure", "code": "present"},
 )
 
-# Release 1.0 (in progress) — Step 063+
+# Release 1.0 — Steps 063–067 (engineering closure at 067).
 RELEASE_1_0_STEPS = (
     {
         "step": "063",
@@ -75,6 +75,16 @@ RELEASE_1_0_STEPS = (
     {
         "step": "065",
         "title": "Remove hybrid flag registry entries",
+        "code": "present",
+    },
+    {
+        "step": "066",
+        "title": "Load test 1hr + rollback drill",
+        "code": "present",
+    },
+    {
+        "step": "067",
+        "title": "GA release + on-call runbook update",
         "code": "present",
     },
 )
@@ -207,12 +217,13 @@ class BuildInfoService:
             "settings_flags": settings_flags,
             "maintenance_observation": maint,
             "release_status": {
-                "accepted": "0.9",
-                "in_progress": "1.0",
+                "accepted": "1.0",
+                "in_progress": None,
                 "closed_0_6": True,
                 "closed_0_7": True,
                 "closed_0_8": True,
                 "closed_0_9": True,
+                "closed_1_0": True,
                 "engineering_ready": True,
                 "staging_validated": False,
                 "production_ready": False,
@@ -369,15 +380,49 @@ class BuildInfoService:
                         "note": "Step 062 — engineering closure only; no runtime subsystem",
                     },
                 },
+                "release_1_0_capabilities": {
+                    "kos_defaults_on": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 063 — Alembic 0020 defaults ON; no new migration at 067",
+                    },
+                    "executive_only_api_routing": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 064 — Executive sole API chat entry; emergency env retained",
+                    },
+                    "canonical_flag_registry": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 065 — FLAG_DEFINITIONS owner; product grid removed",
+                    },
+                    "load_and_rollback_drill": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": (
+                            "Step 066 — 1hr load + restart + tip rollback evidence accepted; "
+                            "AdmissionGate single-domain invariant frozen"
+                        ),
+                    },
+                    "release_1_0_engineering_closure": {
+                        "code_present": True,
+                        "enabled": None,
+                        "effective": None,
+                        "note": "Step 067 — GA release metadata + on-call runbook; no runtime feature delta",
+                    },
+                },
                 "note": (
-                    "Release 0.9 accepted; Release 1.0 in progress (Step 063 — "
-                    "knowledge_os flags default ON). "
-                    "APP_RELEASE remains 0.9 until 1.0 engineering closure. "
-                    "Legacy flags allow_legacy_kp_presets / "
-                    "legacy_doc_type_canonical_enabled stay default OFF. "
-                    "MAINTENANCE_EXECUTION_ENABLED default ON when unset; "
+                    "Release 1.0 engineering closure (Step 067). APP_RELEASE=1.0; accepted=1.0. "
+                    "Prior releases 0.6–0.9 remain closed. "
+                    "Ops gates staging_validated/production_ready stay false until separately "
+                    "authorized per LIFECYCLE.md — not implied by engineering closure alone. "
+                    "Legacy flags allow_legacy_kp_presets / legacy_doc_type_canonical_enabled "
+                    "stay default OFF. MAINTENANCE_EXECUTION_ENABLED default ON when unset; "
                     "budget still defaults to 0 (no work). "
-                    "staging_validated=false; production_ready=false. "
                     "code_present ≠ configured ≠ enabled ≠ effective ≠ deployed. "
                     "Live /api/build reflects this metadata only after approved deploy+restart."
                 ),

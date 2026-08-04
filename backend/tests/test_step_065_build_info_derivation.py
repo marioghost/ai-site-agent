@@ -145,7 +145,8 @@ def test_build_info_helper_parity_and_executive_description(build_client: TestCl
     assert "effective" in shadow
 
     rs = body["release_status"]
-    assert rs["accepted"] == "0.9"
-    assert rs["in_progress"] == "1.0"
+    assert rs["accepted"] == "1.0"
+    assert rs["in_progress"] is None
+    assert rs["closed_1_0"] is True
     assert rs["staging_validated"] is False
     assert rs["production_ready"] is False

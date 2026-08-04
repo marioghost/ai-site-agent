@@ -63,6 +63,7 @@ echo "==> Backend unit tests (excluding golden parity)"
   tests/test_index_integrate_compose.py \
   tests/test_maintenance_metrics.py \
   tests/test_step_062_release_closure.py \
+  tests/test_step_067_release_closure.py \
   tests/test_step_066_remediation_session_lifetime.py \
   tests/test_step_066_remediation_regressions.py \
   tests/test_db_isolation.py \

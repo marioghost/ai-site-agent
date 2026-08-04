@@ -16,8 +16,8 @@ MIGRATIONS = ROOT / "migrations" / "versions"
 
 
 @pytest.mark.unit
-def test_app_release_still_0_9_until_1_0_closure():
-    assert APP_RELEASE == "0.9"
+def test_app_release_is_1_0_after_step_067_closure():
+    assert APP_RELEASE == "1.0"
     assert RELEASE_1_0_STEPS[0]["step"] == "063"
 
 

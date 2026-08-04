@@ -94,18 +94,21 @@ def test_build_info_endpoint(build_client: TestClient):
     assert body["knowledge_version"] == 5
     assert body["feature_flags"]["KNOWLEDGE_OS_EXECUTIVE_ENABLED"] is False
     assert body["settings_flags"]["cache_namespace_v2_enabled"] is False
-    assert body["release_status"]["accepted"] == "0.9"
+    assert body["release_status"]["accepted"] == "1.0"
     assert body["release_status"]["closed_0_6"] is True
     assert body["release_status"]["closed_0_7"] is True
     assert body["release_status"]["closed_0_8"] is True
     assert body["release_status"]["closed_0_9"] is True
+    assert body["release_status"]["closed_1_0"] is True
     assert body["release_status"]["engineering_ready"] is True
     assert body["release_status"]["staging_validated"] is False
     assert body["release_status"]["production_ready"] is False
-    assert body["release_status"]["in_progress"] == "1.0"
+    assert body["release_status"]["in_progress"] is None
     assert body["release_status"]["steps_063"][0]["step"] == "063"
     assert body["release_status"]["steps_063"][1]["step"] == "064"
     assert body["release_status"]["steps_063"][2]["step"] == "065"
+    assert body["release_status"]["steps_063"][3]["step"] == "066"
+    assert body["release_status"]["steps_063"][4]["step"] == "067"
     assert body["maintenance_observation"]["investigations_per_cycle"] == 0
     caps = body["release_status"]["release_0_7_capabilities"]
     assert caps["memory_region_reads"]["code_present"] is True

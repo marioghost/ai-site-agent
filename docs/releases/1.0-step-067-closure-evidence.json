@@ -1,0 +1,46 @@
+{
+  "step": "067",
+  "profile": "release_1_0_closure",
+  "verdict": "NOT_EXECUTED",
+  "runtime_validation": "NOT_EXECUTED",
+  "method": "canonical One Command deploy full — pending Evidence Review",
+  "db_restore": false,
+  "qdrant_restore": false,
+  "force_push": false,
+  "baseline_accepted_tree": "72e9e418087ecb0350ebdc4db80eac937df95651",
+  "baseline_accepted_tip": "e74d04a94a21ff91eae7a7e2da883eecfd4cf862",
+  "expected_after_closure": {
+    "APP_RELEASE": "1.0",
+    "accepted": "1.0",
+    "in_progress": null,
+    "closed_1_0": true,
+    "staging_validated": false,
+    "production_ready": false,
+    "alembic_head": "0020_step_063_kos_flags_default_on"
+  },
+  "identity_chain": {
+    "origin_main": null,
+    "build_info": null,
+    "frontend": null,
+    "api_build": null,
+    "aligned": null
+  },
+  "health": {
+    "app": null,
+    "database": null,
+    "migration_version": null,
+    "ollama": null,
+    "qdrant": null
+  },
+  "admission_gate_after_closure": {
+    "kos_limiter_chat_domain_id": null,
+    "kos_limiter_chat_limit": null,
+    "kos_limiter_chat_active": null
+  },
+  "deploy_report_path": null,
+  "verify_release_verdict": null,
+  "smoke_verdict": null,
+  "product_readiness_gate": "PASS",
+  "step_066_reopened": false,
+  "notes": "Scaffold only — populate during Step 067 runtime validation after approved deploy."
+}
