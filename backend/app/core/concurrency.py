@@ -3,27 +3,20 @@
 Protects local Ollama from overload by limiting concurrent chat, LLM and
 embedding requests. Tracks active/queued counts and recent latencies for the
 performance API.
-
-Step 066 limiter remediation: each limiter kind uses one logical admission
-domain (condition + counter). configure() never replaces the domain; unchanged
-limits are a no-op; increases/decreases adjust the target without capacity
-inflation across generations.
 """
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TypeVar
+from typing import Callable, TypeVar
 
 T = TypeVar("T")
 
 _OVERLOAD_MSG = (
     "Система тимчасово перевантажена. Спробуйте ще раз за кілька секунд."
 )
-_logger = logging.getLogger(__name__)
 
 
 class OverloadedError(Exception):
@@ -78,219 +71,43 @@ class PerformanceMetrics:
             return self.cache_hits / total if total else 0.0
 
 
-@dataclass(frozen=True)
-class _NormalizedLimits:
-    max_concurrent_chat_requests: int
-    max_concurrent_llm_requests: int
-    max_concurrent_embedding_requests: int
-    max_concurrent_background_embedding_requests: int
-
-    @classmethod
-    def from_limits(cls, limits: ConcurrencyLimits) -> _NormalizedLimits:
-        llm = max(1, int(limits.max_concurrent_llm_requests))
-        return cls(
-            max_concurrent_chat_requests=max(1, int(limits.max_concurrent_chat_requests)),
-            max_concurrent_llm_requests=llm,
-            max_concurrent_embedding_requests=max(
-                1, int(limits.max_concurrent_embedding_requests)
-            ),
-            max_concurrent_background_embedding_requests=max(
-                1, int(limits.max_concurrent_background_embedding_requests)
-            ),
-        )
-
-    def as_concurrency_limits(self) -> ConcurrencyLimits:
-        return ConcurrencyLimits(
-            max_concurrent_chat_requests=self.max_concurrent_chat_requests,
-            max_concurrent_llm_requests=self.max_concurrent_llm_requests,
-            max_concurrent_embedding_requests=self.max_concurrent_embedding_requests,
-            max_concurrent_background_embedding_requests=(
-                self.max_concurrent_background_embedding_requests
-            ),
-        )
-
-    @property
-    def bg_llm_limit(self) -> int:
-        return max(1, self.max_concurrent_llm_requests - 1)
-
-
-class _AdmissionGate:
-    """Single-domain admission gate: process-wide holders ≤ limit.
-
-    Limit changes adjust the target on this same domain. The domain is never
-    replaced, so concurrent configure/acquire cannot inflate capacity via
-    orphaned semaphore generations.
-    """
-
-    def __init__(self, name: str, limit: int, domain_id: int = 1) -> None:
-        self.name = name
-        self._domain_id = domain_id
-        self._cond = threading.Condition()
-        self._limit = max(1, limit)
-        self._active = 0
-        self._peak_active = 0
-        self._timeout_count = 0
-        self._last_queue_wait_ms = 0.0
-        self._acquire_count = 0
-        self._release_count = 0
-
-    @property
-    def domain_id(self) -> int:
-        return self._domain_id
-
-    def snapshot(self) -> dict[str, float | int | str]:
-        with self._cond:
-            return {
-                "name": self.name,
-                "domain_id": self._domain_id,
-                "limit": self._limit,
-                "active": self._active,
-                "peak_active": self._peak_active,
-                "timeout_count": self._timeout_count,
-                "last_queue_wait_ms": self._last_queue_wait_ms,
-                "acquire_count": self._acquire_count,
-                "release_count": self._release_count,
-            }
-
-    def set_limit(self, limit: int) -> None:
-        with self._cond:
-            self._limit = max(1, limit)
-            self._cond.notify_all()
-
-    def acquire_timed(self, wait_seconds: float) -> bool:
-        deadline = time.monotonic() + wait_seconds
-        started = time.monotonic()
-        with self._cond:
-            while True:
-                if self._active < self._limit:
-                    self._active += 1
-                    self._acquire_count += 1
-                    if self._active > self._peak_active:
-                        self._peak_active = self._active
-                    self._last_queue_wait_ms = (time.monotonic() - started) * 1000.0
-                    _logger.debug(
-                        "limiter_acquire kind=%s domain_id=%s active=%s limit=%s",
-                        self.name,
-                        self._domain_id,
-                        self._active,
-                        self._limit,
-                    )
-                    return True
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    self._timeout_count += 1
-                    self._last_queue_wait_ms = (time.monotonic() - started) * 1000.0
-                    _logger.debug(
-                        "limiter_timeout kind=%s domain_id=%s active=%s limit=%s wait_ms=%.1f",
-                        self.name,
-                        self._domain_id,
-                        self._active,
-                        self._limit,
-                        self._last_queue_wait_ms,
-                    )
-                    return False
-                self._cond.wait(timeout=remaining)
-
-    def acquire_blocking(self) -> None:
-        with self._cond:
-            while self._active >= self._limit:
-                self._cond.wait()
-            self._active += 1
-            self._acquire_count += 1
-            if self._active > self._peak_active:
-                self._peak_active = self._active
-            _logger.debug(
-                "limiter_acquire kind=%s domain_id=%s active=%s limit=%s blocking=1",
-                self.name,
-                self._domain_id,
-                self._active,
-                self._limit,
-            )
-
-    def release(self) -> None:
-        with self._cond:
-            if self._active <= 0:
-                return
-            self._active -= 1
-            self._release_count += 1
-            _logger.debug(
-                "limiter_release kind=%s domain_id=%s active=%s limit=%s",
-                self.name,
-                self._domain_id,
-                self._active,
-                self._limit,
-            )
-            self._cond.notify()
-
-
 class ConcurrencyManager:
     def __init__(self) -> None:
         self.limits = ConcurrencyLimits()
         self.metrics = PerformanceMetrics()
-        defaults = _NormalizedLimits.from_limits(self.limits)
-        self._chat = _AdmissionGate("chat", defaults.max_concurrent_chat_requests)
-        self._llm = _AdmissionGate("llm", defaults.max_concurrent_llm_requests)
-        self._embed = _AdmissionGate("embed", defaults.max_concurrent_embedding_requests)
-        self._bg_embed = _AdmissionGate(
-            "bg_embed", defaults.max_concurrent_background_embedding_requests
-        )
-        self._bg_llm = _AdmissionGate("bg_llm", defaults.bg_llm_limit)
+        self._chat_sem = threading.Semaphore(20)
+        self._llm_sem = threading.Semaphore(2)
+        self._embed_sem = threading.Semaphore(2)
+        self._bg_embed_sem = threading.Semaphore(1)
+        # Background LLM may hold at most (N-1) of the N shared LLM slots, so an
+        # interactive chat generation can always reach a slot. Total Ollama load
+        # stays bounded by max_concurrent_llm_requests.
+        self._bg_llm_sem = threading.Semaphore(1)
         self._lock = threading.Lock()
-        self._configure_count = 0
-        self._limit_change_count = 0
-        self._applied = defaults
 
     def configure(self, limits: ConcurrencyLimits) -> None:
-        """Apply limits to the single admission domain per kind.
-
-        Unchanged limits are a no-op (no domain recreation). Increased/decreased
-        limits adjust the target on the existing domain only.
-        """
-        normalized = _NormalizedLimits.from_limits(limits)
         with self._lock:
-            self._configure_count += 1
-            if normalized == self._applied:
-                return
-            self._limit_change_count += 1
-            self._applied = normalized
-            self.limits = normalized.as_concurrency_limits()
-            self._chat.set_limit(normalized.max_concurrent_chat_requests)
-            self._llm.set_limit(normalized.max_concurrent_llm_requests)
-            self._embed.set_limit(normalized.max_concurrent_embedding_requests)
-            self._bg_embed.set_limit(
-                normalized.max_concurrent_background_embedding_requests
+            self.limits = limits
+            self._chat_sem = threading.Semaphore(max(1, limits.max_concurrent_chat_requests))
+            self._llm_sem = threading.Semaphore(max(1, limits.max_concurrent_llm_requests))
+            self._embed_sem = threading.Semaphore(
+                max(1, limits.max_concurrent_embedding_requests)
             )
-            self._bg_llm.set_limit(normalized.bg_llm_limit)
-            _logger.debug(
-                "limiter_limit_change configure_count=%s change_count=%s limits=%s",
-                self._configure_count,
-                self._limit_change_count,
-                normalized,
+            self._bg_embed_sem = threading.Semaphore(
+                max(1, limits.max_concurrent_background_embedding_requests)
             )
-
-    def limiter_instrumentation(self) -> dict[str, object]:
-        """Proof-window instrumentation (no Dashboard)."""
-        with self._lock:
-            configure_count = self._configure_count
-            limit_change_count = self._limit_change_count
-        return {
-            "configure_count": configure_count,
-            "limit_change_count": limit_change_count,
-            "chat": self._chat.snapshot(),
-            "llm": self._llm.snapshot(),
-            "embed": self._embed.snapshot(),
-            "bg_embed": self._bg_embed.snapshot(),
-            "bg_llm": self._bg_llm.snapshot(),
-        }
+            self._bg_llm_sem = threading.Semaphore(
+                max(1, limits.max_concurrent_llm_requests - 1)
+            )
 
     def chat_slot(self, wait_seconds: float = 2.0):
-        return _Slot(self._chat, self.metrics, "chat", wait_seconds)
+        return _Slot(self._chat_sem, self.metrics, "chat", wait_seconds)
 
     def llm_slot(self, wait_seconds: float = 5.0):
-        return _Slot(self._llm, self.metrics, "llm", wait_seconds)
+        return _Slot(self._llm_sem, self.metrics, "llm", wait_seconds)
 
     def embed_slot(self, wait_seconds: float = 5.0):
-        return _Slot(self._embed, self.metrics, "embed", wait_seconds)
+        return _Slot(self._embed_sem, self.metrics, "embed", wait_seconds)
 
     def background_embed_slot(self):
         """Blocking slot for bulk indexing/reprocess embeddings.
@@ -298,7 +115,7 @@ class ConcurrencyManager:
         Background work waits for its dedicated pool instead of raising, so it
         never competes with the interactive embedding slots used by chat.
         """
-        return _BlockingSlot(self._bg_embed)
+        return _BlockingSlot(self._bg_embed_sem)
 
     def background_llm_slot(self):
         """Blocking slot for background LLM work (Source Intelligence).
@@ -307,36 +124,37 @@ class ConcurrencyManager:
         total Ollama concurrency stays bounded and at least one LLM slot remains
         reachable by interactive chat generation.
         """
-        return _NestedBlockingSlot(self._bg_llm, self._llm)
+        return _NestedBlockingSlot(self._bg_llm_sem, self._llm_sem)
 
 
 class _Slot:
     def __init__(
         self,
-        gate: _AdmissionGate,
+        sem: threading.Semaphore,
         metrics: PerformanceMetrics,
         kind: str,
         wait_seconds: float,
     ) -> None:
-        self._gate = gate
+        self._sem = sem
         self._metrics = metrics
         self._kind = kind
         self._wait = wait_seconds
         self._acquired = False
-        self.domain_id = gate.domain_id
 
     def __enter__(self) -> _Slot:
         if self._kind == "chat":
             with self._metrics._lock:
                 self._metrics.queued_chat += 1
-        if self._gate.acquire_timed(self._wait):
-            self._acquired = True
-            self.domain_id = self._gate.domain_id
-            if self._kind == "chat":
-                with self._metrics._lock:
-                    self._metrics.queued_chat -= 1
-                    self._metrics.active_chat += 1
-            return self
+        deadline = time.monotonic() + self._wait
+        while time.monotonic() < deadline:
+            if self._sem.acquire(blocking=False):
+                self._acquired = True
+                if self._kind == "chat":
+                    with self._metrics._lock:
+                        self._metrics.queued_chat -= 1
+                        self._metrics.active_chat += 1
+                return self
+            time.sleep(0.05)
         if self._kind == "chat":
             with self._metrics._lock:
                 self._metrics.queued_chat -= 1
@@ -344,54 +162,47 @@ class _Slot:
 
     def __exit__(self, *args: object) -> None:
         if self._acquired:
-            self._gate.release()
+            self._sem.release()
             if self._kind == "chat":
                 with self._metrics._lock:
                     self._metrics.active_chat -= 1
 
 
 class _BlockingSlot:
-    """Acquire a gate, blocking until available (no overload error)."""
+    """Acquire a semaphore, blocking until available (no overload error)."""
 
-    def __init__(self, gate: _AdmissionGate) -> None:
-        self._gate = gate
+    def __init__(self, sem: threading.Semaphore) -> None:
+        self._sem = sem
         self._acquired = False
-        self.domain_id = gate.domain_id
 
     def __enter__(self) -> _BlockingSlot:
-        self._gate.acquire_blocking()
+        self._sem.acquire()
         self._acquired = True
-        self.domain_id = self._gate.domain_id
         return self
 
     def __exit__(self, *args: object) -> None:
         if self._acquired:
-            self._gate.release()
+            self._sem.release()
 
 
 class _NestedBlockingSlot:
-    """Acquire an outer reservation then an inner shared gate (blocking).
+    """Acquire an outer reservation then an inner shared semaphore (blocking).
 
     Releases in reverse order. Used so background LLM work reserves capacity but
     still counts against the shared LLM limit, leaving headroom for chat.
     """
 
-    def __init__(self, outer: _AdmissionGate, inner: _AdmissionGate) -> None:
+    def __init__(self, outer: threading.Semaphore, inner: threading.Semaphore) -> None:
         self._outer = outer
         self._inner = inner
         self._outer_acquired = False
         self._inner_acquired = False
 
     def __enter__(self) -> _NestedBlockingSlot:
-        self._outer.acquire_blocking()
+        self._outer.acquire()
         self._outer_acquired = True
-        try:
-            self._inner.acquire_blocking()
-            self._inner_acquired = True
-        except BaseException:
-            self._outer.release()
-            self._outer_acquired = False
-            raise
+        self._inner.acquire()
+        self._inner_acquired = True
         return self
 
     def __exit__(self, *args: object) -> None:
