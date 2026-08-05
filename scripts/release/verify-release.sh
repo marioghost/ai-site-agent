@@ -2,6 +2,7 @@
 # Release verification — thin wrapper over shared core.
 # Usage: bash scripts/release/verify-release.sh
 #        bash deploy/manage_deploy.sh verify-release
+# Optional: MD_VERIFY_MODE=full|frontend|backend|standalone (default standalone)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -10,4 +11,4 @@ source "$ROOT/deploy/lib/verify_release.sh"
 # shellcheck source=scripts/lib/deploy-env.sh
 source "$ROOT/scripts/lib/deploy-env.sh" 2>/dev/null || true
 
-md_verify_release_run "$ROOT" "${PROJECT_ROOT:-/opt/ai-site-agent}" "" ""
+md_verify_release_run "$ROOT" "${PROJECT_ROOT:-/opt/ai-site-agent}" "" "" "${MD_VERIFY_MODE:-standalone}"

@@ -153,6 +153,32 @@ fi
 grep -q 'md_verify_release_run' "$DS" || fail "deploy full must call shared verify core"
 pass "verify-release shared core (deploy + CLI)"
 
+# --- Phase 2 contracts (T19/T20/T22/T24) ---
+grep -q 'md_verify_frontend_served_tree' "$VR" || fail "Phase2: missing md_verify_frontend_served_tree"
+grep -q 'mktemp -d /tmp/ai-site-agent-vr-' "$VR" || fail "Phase2: verify must use writable mktemp workspace"
+if grep -E '/tmp/vr-(health|build|overview|qdrant)\.json' "$VR"; then
+  fail "Phase2: fixed /tmp/vr-*.json must be removed"
+fi
+grep -q 'md_preserve_backend_frontend_identity' "$DS" || fail "Phase2: missing backend FE preserve helper"
+grep -q 'md_publish_frontend_artifact' "$DS" || fail "Phase2: Phase1 publish helper must remain"
+grep -q 'dist.next' "$DS" || fail "Phase2: dist.next publication must remain"
+# verify mode passed from deploy
+grep -q 'md_verify_release_run.*"\$mode"\|md_verify_release_run .*\$mode' "$DS" \
+  || grep -q 'md_verify_release_run "$repo" "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE" "$mode"' "$DS" \
+  || fail "Phase2: deploy must pass mode into md_verify_release_run"
+python3 - <<'PY' || exit 1
+from pathlib import Path
+import os, sys
+body = Path(os.environ["ROOT"], "deploy/lib/deploy_source.sh").read_text().split("md_deploy_from_main()",1)[1]
+i_v = body.find("md_deploy_fail verify_release")
+i_s = body.find("md_deploy_fail smoke")
+if not (0 <= i_v < i_s):
+    print("FAIL: verify_release fail must precede smoke fail", file=sys.stderr)
+    sys.exit(1)
+print("OK: verify/smoke gate order")
+PY
+pass "Phase 2 verify/smoke/temps/backend-preserve/publication freeze contracts"
+
 # --- Migration decision outcomes ---
 [[ -f "$MD_DEC" ]] || fail "missing migration_decision.sh"
 grep -q 'schema_first' "$MD_DEC" || fail "decision must emit schema_first"

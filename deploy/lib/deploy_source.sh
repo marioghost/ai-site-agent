@@ -275,6 +275,69 @@ PY
   return 0
 }
 
+# Phase 2 D — backend mode: preserve live FE bytes; rewrite frontend_commit from identity.
+# Must not build, publish, or stamp tip onto FE identity/provenance.
+md_preserve_backend_frontend_identity() {
+  local project_root="$1"
+  local backend_tip_commit="$2"
+  local dist="$project_root/dashboard/dist"
+  local ident="$dist/.deploy-identity.json"
+  local prov="$dist/.frontend-provenance.json"
+  local build_file="$project_root/.build-info.json"
+
+  [[ -f "$ident" ]] || {
+    echo "ERROR: missing preserved FE identity $ident" >&2
+    return 1
+  }
+  [[ -f "$prov" ]] || {
+    echo "ERROR: missing preserved FE provenance $prov" >&2
+    return 1
+  }
+
+  local fe_commit
+  fe_commit="$(python3 -c "import json; print(json.load(open('$ident')).get('git_commit') or '')" 2>/dev/null || echo "")"
+  [[ -n "$fe_commit" ]] || {
+    echo "ERROR: preserved FE identity missing git_commit" >&2
+    return 1
+  }
+
+  # Self-check Part 3 against preserved identity commit (not backend tip).
+  # shellcheck source=deploy/lib/deploy_guard.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/deploy_guard.sh"
+  if ! deploy_guard_assert_frontend_provenance "$dist" "$fe_commit"; then
+    echo "ERROR: preserved FE provenance invalid" >&2
+    return 1
+  fi
+
+  local tree_id tree_prov
+  tree_id="$(python3 -c "import json; print(json.load(open('$ident')).get('provenance_tree_sha256') or '')" 2>/dev/null || echo "")"
+  tree_prov="$(python3 -c "import json; print(json.load(open('$prov')).get('tree_sha256') or '')" 2>/dev/null || echo "")"
+  if [[ -z "$tree_id" || "$tree_id" != "$tree_prov" ]]; then
+    echo "ERROR: preserved identity tree ($tree_id) != provenance tree ($tree_prov)" >&2
+    return 1
+  fi
+
+  [[ -f "$build_file" ]] || {
+    echo "ERROR: missing $build_file for frontend_commit rewrite" >&2
+    return 1
+  }
+
+  python3 - "$build_file" "$fe_commit" "$backend_tip_commit" <<'PY'
+import json, sys
+path, fe_commit, tip = sys.argv[1], sys.argv[2], sys.argv[3]
+data = json.load(open(path, encoding="utf-8"))
+data["frontend_commit"] = fe_commit
+# Keep tip identity for backend fields; do not stamp tip onto FE identity files.
+data["backend_commit"] = tip
+data["git_commit"] = tip
+short = tip[:7] if len(tip) >= 7 else tip
+data["git_commit_short"] = short
+open(path, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+print(f"OK: backend mode frontend_commit preserved → {fe_commit} (backend tip {tip})")
+PY
+  return 0
+}
+
 md_deploy_strip_no_backup_args() {
   MD_DEPLOY_FORWARD_ARGS=()
   local a
@@ -528,6 +591,13 @@ md_deploy_from_main() {
     md_reload_nginx_after_publish \
       || { md_deploy_fail frontend_publish "nginx reload after FE publish failed" || return 1; }
     echo "[deploy 6b] FRONTEND PUBLISH OK"
+  elif [[ "$mode" == "backend" ]]; then
+    echo "[deploy 6b] BACKEND MODE — preserve live FE identity (no publish)"
+    if ! md_preserve_backend_frontend_identity "$MD_DEPLOY_PROJECT_ROOT" "$commit"; then
+      md_deploy_fail frontend_identity \
+        "backend mode FE identity preservation failed" || return 1
+    fi
+    echo "[deploy 6b] BACKEND FE PRESERVE OK"
   fi
 
   # --- 7/13 POST-SYNC MIGRATE (mandatory; distinct failed_stage) ---
@@ -550,7 +620,7 @@ md_deploy_from_main() {
 
   # --- 10/13 VERIFY RELEASE ---
   echo "[deploy 10/13] VERIFY RELEASE"
-  if ! md_verify_release_run "$repo" "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE"; then
+  if ! md_verify_release_run "$repo" "$MD_DEPLOY_PROJECT_ROOT" "$commit" "$MD_DEPLOY_RELEASE" "$mode"; then
     MD_REPORT_VERIFY_RESULT="fail"
     md_deploy_fail verify_release "verify-release critical failures" || return 1
   fi

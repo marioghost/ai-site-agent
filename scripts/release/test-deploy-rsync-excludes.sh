@@ -23,6 +23,7 @@ REQUIRED=(
   "exclude 'deployments/'"
   "exclude 'backend/ai_site_agent.db'"
   "exclude 'backend/ai_site_agent.db-*'"
+  "exclude 'dashboard/dist/'"
 )
 
 missing=()
@@ -77,4 +78,4 @@ rsync -a --delete \
   exit 1
 }
 
-echo "OK: deploy rsync excludes .env, backups, logs, deployments/, and local DB artifacts"
+echo "OK: deploy rsync excludes .env, backups, logs, deployments/, dashboard/dist/, and local DB artifacts"

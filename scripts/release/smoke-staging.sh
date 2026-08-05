@@ -36,6 +36,96 @@ pass() { echo "OK: $*"; }
 warn() { echo "WARN: $*"; }
 fail() { echo "FAIL: $*"; failures=$((failures + 1)); }
 
+# Public site base for static FE checks (nginx), NOT the API BASE.
+PUBLIC_BASE="${SMOKE_PUBLIC_BASE_URL:-http://127.0.0.1}"
+PUBLIC_BASE="${PUBLIC_BASE%/}"
+
+smoke_fetch_public() {
+  local path="$1"
+  local out="$2"
+  local code
+  code="$(curl -sS -o "$out" -w '%{http_code}' --max-time "${CURL_TIMEOUT:-30}" "${PUBLIC_BASE}${path}" 2>/dev/null || echo "000")"
+  if [[ "$code" != "200" ]]; then
+    fail "GET ${PUBLIC_BASE}${path} (HTTP $code)"
+    return 1
+  fi
+  return 0
+}
+
+smoke_assert_root_marker() {
+  local file="$1"
+  if grep -q 'id="root"' "$file"; then
+    pass "public / root mount marker id=\"root\""
+    return 0
+  fi
+  fail "public / missing root mount marker id=\"root\""
+  return 1
+}
+
+smoke_parse_index_assets() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+refs = re.findall(r"""(?:src|href)\s*=\s*["'](/assets/[^"']+)["']""", text, flags=re.I)
+# unique preserve order
+seen = set()
+out = []
+for r in refs:
+    if r not in seen:
+        seen.add(r)
+        out.append(r)
+if not out:
+    sys.exit(2)
+print("\n".join(out))
+PY
+}
+
+smoke_assert_asset() {
+  local path="$1"
+  local tmp="$SMOKE_TMP/asset-meta.txt"
+  local code ctype
+  # Fetch headers + body status
+  code="$(curl -sS -o "$SMOKE_TMP/asset-body.bin" -D "$tmp" -w '%{http_code}' --max-time "${CURL_TIMEOUT:-30}" "${PUBLIC_BASE}${path}" 2>/dev/null || echo "000")"
+  if [[ "$code" != "200" ]]; then
+    fail "GET ${PUBLIC_BASE}${path} (HTTP $code)"
+    return 1
+  fi
+  ctype="$(tr -d '\r' <"$tmp" | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')"
+  ctype="${ctype%%;*}"
+  case "$path" in
+    *.js)
+      if [[ "$ctype" != *javascript* && "$ctype" != "application/octet-stream" ]]; then
+        fail "GET ${PUBLIC_BASE}${path} bad Content-Type ($ctype) — reject text/html SPA fallback"
+        return 1
+      fi
+      if [[ "$ctype" == *html* ]]; then
+        fail "GET ${PUBLIC_BASE}${path} Content-Type text/html (missing asset)"
+        return 1
+      fi
+      ;;
+    *.css)
+      if [[ "$ctype" != *css* ]]; then
+        fail "GET ${PUBLIC_BASE}${path} bad Content-Type ($ctype)"
+        return 1
+      fi
+      if [[ "$ctype" == *html* ]]; then
+        fail "GET ${PUBLIC_BASE}${path} Content-Type text/html (missing asset)"
+        return 1
+      fi
+      ;;
+    *)
+      if [[ "$ctype" == *html* ]]; then
+        fail "GET ${PUBLIC_BASE}${path} Content-Type text/html (missing asset)"
+        return 1
+      fi
+      ;;
+  esac
+  pass "GET ${path} (200, $ctype)"
+  return 0
+}
+
 curl_json() {
   curl -sf --max-time "${CURL_TIMEOUT:-30}" "$@"
 }
@@ -113,6 +203,24 @@ assert all(k in d for k in ('knowledge_version','memory_version','cache_namespac
     fail "GET /api/settings"
   fi
 fi
+
+# --- Phase 2 B: static frontend checks against public site (nginx), not API BASE ---
+echo "==> Smoke static frontend: $PUBLIC_BASE"
+if smoke_fetch_public "/" "$SMOKE_TMP/public-index.html"; then
+  pass "GET ${PUBLIC_BASE}/"
+  smoke_assert_root_marker "$SMOKE_TMP/public-index.html" || true
+  ASSET_LIST=""
+  if ASSET_LIST="$(smoke_parse_index_assets "$SMOKE_TMP/public-index.html")"; then
+    while IFS= read -r asset_path; do
+      [[ -z "$asset_path" ]] && continue
+      smoke_assert_asset "$asset_path" || true
+    done <<< "$ASSET_LIST"
+  else
+    fail "public / has no /assets/ references"
+  fi
+fi
+smoke_fetch_public "/overview" "$SMOKE_TMP/public-overview.html" && pass "GET ${PUBLIC_BASE}/overview" || true
+smoke_fetch_public "/settings/general" "$SMOKE_TMP/public-settings-general.html" && pass "GET ${PUBLIC_BASE}/settings/general" || true
 
 if [[ "${SMOKE_CHAT:-0}" == "1" && -n "$TOKEN" ]]; then
   CHAT_PAYLOAD='{"message":"What is on the homepage?","debug":false,"bypass_cache":true}'
