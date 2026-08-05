@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import type { IndexJobStatus } from "../../types";
-import { indexJobErrorMessage } from "../../lib/indexJobUtils";
-import { mapIndexStatusToViewModel } from "../../lib/indexStatus";
+import type { IndexJobStatus } from "../../../../types";
+import { indexJobErrorMessage } from "../../../../lib/indexJobUtils";
+import { mapIndexStatusToViewModel } from "../../../../lib/indexStatus";
 
 type Props = {
   status: IndexJobStatus | null;

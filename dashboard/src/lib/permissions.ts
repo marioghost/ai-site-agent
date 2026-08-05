@@ -12,7 +12,7 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   "/chat": ["admin", "operator"],
   "/analytics": ["admin", "operator", "viewer"],
   "/logs": ["admin", "operator", "viewer"],
-  "/knowledge-profile": ["admin"],
+  "/knowledge-profile": ["admin", "operator"],
   "/understanding": ["admin"],
   "/diagnostics/epistemic-health": ["admin"],
   "/users": ["admin"],

@@ -30,7 +30,7 @@ export default function KnowledgeBaseStatusCard({ data, t }: Props) {
       {notReady ? (
         <div className="ds-kb-status__warning">
           <p className="ds-kb-status__summary">{t("overview.kb.not_ready")}</p>
-          <Link to="/indexing">
+          <Link to="/knowledge/update">
             <Button variant="primary" size="sm">
               {t("overview.kb.start_indexing")}
             </Button>
@@ -69,12 +69,12 @@ export default function KnowledgeBaseStatusCard({ data, t }: Props) {
       </p>
 
       <div className="ds-kb-status__actions">
-        <Link to="/indexing">
+        <Link to="/knowledge/update">
           <Button variant="secondary" size="sm">
             {t("overview.kb.go_indexing")}
           </Button>
         </Link>
-        <Link to="/sources">
+        <Link to="/knowledge/library">
           <Button variant="secondary" size="sm">
             {t("overview.kb.go_sources")}
           </Button>

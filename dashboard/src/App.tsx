@@ -115,6 +115,14 @@ export default function App() {
               }
             />
             <Route
+              path="/knowledge-profile"
+              element={
+                <LazyPage>
+                  <KnowledgeProfilePage />
+                </LazyPage>
+              }
+            />
+            <Route
               path="/chat"
               element={
                 <LazyPage>
@@ -184,14 +192,6 @@ export default function App() {
               <Route path="access" element={<AccessScreen />} />
             </Route>
 
-            <Route
-              path="/knowledge-profile"
-              element={
-                <LazyPage>
-                  <KnowledgeProfilePage />
-                </LazyPage>
-              }
-            />
             <Route
               path="/diagnostics/epistemic-health"
               element={

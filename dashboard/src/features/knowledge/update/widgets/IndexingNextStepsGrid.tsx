@@ -6,8 +6,8 @@ import {
   Database,
   MessageSquare,
 } from "lucide-react";
-import type { IndexStatusViewModel } from "../../lib/indexStatus";
-import { SectionCard } from "../../ui";
+import type { IndexStatusViewModel } from "../../../../lib/indexStatus";
+import { SectionCard } from "../../../../ui";
 
 type Props = {
   live: IndexStatusViewModel;
