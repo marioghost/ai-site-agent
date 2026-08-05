@@ -35,7 +35,7 @@ export default function EngTensionsScreen() {
   }, []);
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader title={t("nav.eng_tensions")} subtitle={t("eng.tensions.subtitle")} />
 
       {loading ? (

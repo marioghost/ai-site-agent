@@ -1,185 +1,213 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getChatLogs } from "../../../api/client";
 import { useTranslation } from "../../../i18n";
+import { filterActivityPage } from "../../../lib/activityFilter";
 import type { ChatLog } from "../../../types";
 import {
   Button,
-  DataTable,
+  EmptyState,
+  ErrorState,
   Field,
-  FilterBar,
   Input,
   PageHeader,
   PageLayout,
   Pagination,
   StatusBadge,
 } from "../../../ui";
-import type { Column } from "../../../ui";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25;
+
+function truncate(text: string, max = 220): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  return `${cleaned.slice(0, max - 1)}…`;
+}
 
 export default function ActivityScreen() {
-  const { t, cacheTypeLabel } = useTranslation();
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<ChatLog[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [sessionFilter, setSessionFilter] = useState("");
-  const [appliedSession, setAppliedSession] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
 
-  const load = async (p = page, sessionId = appliedSession) => {
+  const load = async (p = 1) => {
     setLoading(true);
     try {
-      const res = await getChatLogs(p, PAGE_SIZE, sessionId);
+      const res = await getChatLogs(p, PAGE_SIZE);
       setLogs(res.items);
       setTotal(res.total);
       setPage(res.page);
+      setErrorKey(null);
+    } catch {
+      setErrorKey("activity.error_description");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void load(1, appliedSession);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedSession]);
+    void load(1);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = useMemo(() => filterActivityPage(logs, appliedQuery), [logs, appliedQuery]);
+  const hasQuery = appliedQuery.trim().length > 0;
 
-  const columns: Column<ChatLog>[] = useMemo(
-    () => [
-      {
-        id: "created_at",
-        header: t("logs.col.created_at"),
-        cell: (log) =>
-          log.created_at ? new Date(log.created_at).toLocaleString() : t("common.dash"),
-      },
-      {
-        id: "session_id",
-        header: t("logs.col.session_id"),
-        cell: (log) => (
-          <span style={{ fontSize: 11, wordBreak: "break-all" }}>
-            {log.session_id || t("common.dash")}
-          </span>
-        ),
-      },
-      {
-        id: "request_id",
-        header: t("logs.col.request_id"),
-        cell: (log) => (
-          <span style={{ fontSize: 11, wordBreak: "break-all" }}>
-            {log.request_id || t("common.dash")}
-          </span>
-        ),
-      },
-      {
-        id: "user_message",
-        header: t("logs.col.user_message"),
-        cell: (log) => log.user_message,
-      },
-      {
-        id: "assistant_answer",
-        header: t("logs.col.assistant_answer"),
-        cell: (log) => log.assistant_answer,
-      },
-      {
-        id: "used_context",
-        header: t("logs.col.used_context"),
-        cell: (log) => (
-          <StatusBadge
-            variant={log.used_context ? "ready" : "stopped"}
-            label={log.used_context ? t("common.yes") : t("common.no")}
-          />
-        ),
-      },
-      {
-        id: "cache",
-        header: t("logs.col.cache"),
-        cell: (log) =>
-          log.cache_hit ? (
-            <StatusBadge variant="completed" label={cacheTypeLabel(log.cache_type)} />
-          ) : (
-            <span className="ds-caption">{t("common.dash")}</span>
-          ),
-      },
-      {
-        id: "timing",
-        header: t("logs.col.timing"),
-        cell: (log) => (
-          <span className="ds-caption">
-            {t("logs.timing_prefix", {
-              retrieval: log.retrieval_ms,
-              generation: log.generation_ms,
-            })}
-            {log.polish_ms > 0 ? t("logs.timing_polish", { polish: log.polish_ms }) : ""}
-          </span>
-        ),
-      },
-      {
-        id: "sources",
-        header: t("logs.col.sources"),
-        cell: (log) =>
-          log.sources.length === 0 ? (
-            <span className="ds-caption">{t("common.dash")}</span>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: 16 }}>
-              {log.sources.map((s, i) => (
-                <li key={i}>
-                  <a href={s.url} target="_blank" rel="noreferrer">
-                    {s.title || s.url}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ),
-      },
-    ],
-    [t, cacheTypeLabel]
-  );
+  const clearSearch = () => {
+    setQuery("");
+    setAppliedQuery("");
+  };
+
+  const onPageChange = (p: number) => {
+    void load(p);
+  };
 
   return (
-    <PageLayout>
-      <PageHeader title={t("logs.title", { total })} subtitle={t("logs.subtitle")} />
-
-      <FilterBar
+    <PageLayout className="ds-page--wide">
+      <PageHeader
+        title={t("activity.title")}
+        subtitle={t("activity.subtitle")}
         actions={
-          <Button variant="secondary" onClick={() => void load()} disabled={loading}>
-            {loading ? t("common.loading") : t("common.refresh")}
-          </Button>
-        }
-      >
-        <Field label={t("logs.filter.session")}>
-          <Input
-            value={sessionFilter}
-            onChange={(e) => setSessionFilter(e.target.value)}
-            placeholder={t("logs.filter.session")}
-          />
-        </Field>
-        <Button
-          variant="secondary"
-          onClick={() => setAppliedSession(sessionFilter.trim() ? sessionFilter.trim() : null)}
-        >
-          {t("logs.filter.apply")}
-        </Button>
-      </FilterBar>
-
-      <DataTable
-        columns={columns}
-        data={logs}
-        keyFn={(log) => log.id}
-        loading={loading}
-        emptyTitle={t("logs.empty")}
-        footer={
-          totalPages > 1 ? (
-            <Pagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              total={total}
-              onPageChange={(p) => void load(p)}
-              infoLabel={t("common.page_of", { page, total: totalPages })}
-            />
-          ) : undefined
+          <Link to="/ask">
+            <Button variant="primary">{t("activity.ask_cta")}</Button>
+          </Link>
         }
       />
+
+      <div className="ds-activity-toolbar">
+        <Field label={t("activity.filter.search_page")}>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("activity.filter.search_placeholder")}
+            aria-describedby="activity-search-scope"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setAppliedQuery(query);
+            }}
+          />
+          <p id="activity-search-scope" className="ds-field__hint">
+            {t("activity.filter.search_help")}
+          </p>
+        </Field>
+        <Button variant="secondary" onClick={() => setAppliedQuery(query)}>
+          {t("common.search")}
+        </Button>
+        {hasQuery && (
+          <Button variant="outline" onClick={clearSearch}>
+            {t("activity.filter.clear")}
+          </Button>
+        )}
+        <Button variant="outline" onClick={() => void load(page)} disabled={loading}>
+          {loading ? t("common.loading") : t("common.refresh")}
+        </Button>
+      </div>
+
+      {errorKey ? (
+        <ErrorState
+          title={t("activity.error_title")}
+          description={t(errorKey)}
+          action={
+            <Button variant="secondary" onClick={() => void load(page)}>
+              {t("home.retry")}
+            </Button>
+          }
+        />
+      ) : loading && logs.length === 0 ? (
+        <EmptyState title={t("common.loading")} />
+      ) : total === 0 ? (
+        <EmptyState
+          title={t("activity.empty")}
+          description={t("activity.empty_hint")}
+          action={
+            <Link to="/ask">
+              <Button variant="primary">{t("activity.ask_cta")}</Button>
+            </Link>
+          }
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={t("activity.no_match")}
+          description={t("activity.no_match_hint")}
+          action={
+            <Button variant="secondary" onClick={clearSearch}>
+              {t("activity.filter.clear")}
+            </Button>
+          }
+        />
+      ) : (
+        <div className="ds-activity-list" aria-busy={loading || undefined}>
+          {hasQuery && (
+            <p className="ds-caption" role="status">
+              {t("activity.filter.page_results", {
+                shown: filtered.length,
+                page,
+                totalPages,
+              })}
+            </p>
+          )}
+          {filtered.map((log) => {
+            const sourceList = log.sources ?? [];
+            const sourced = Boolean(log.used_context && sourceList.length > 0);
+            return (
+              <article key={log.id} className="ds-activity-card">
+                <div className="ds-activity-card__top">
+                  <time className="ds-activity-card__time" dateTime={log.created_at || undefined}>
+                    {log.created_at ? new Date(log.created_at).toLocaleString() : t("common.dash")}
+                  </time>
+                  <div className="ds-activity-card__meta">
+                    <StatusBadge
+                      variant={sourced ? "ready" : "warning"}
+                      label={
+                        sourced
+                          ? t("activity.status.sourced", { count: sourceList.length })
+                          : t("activity.status.no_sources")
+                      }
+                    />
+                    {log.cache_hit && (
+                      <StatusBadge variant="completed" label={t("activity.status.cached")} />
+                    )}
+                  </div>
+                </div>
+                <h3 className="ds-activity-card__q">{log.user_message}</h3>
+                <p className="ds-activity-card__a">{truncate(log.assistant_answer || "")}</p>
+                <details className="ds-activity-card__details">
+                  <summary>{t("activity.details")}</summary>
+                  <p className="ds-activity-card__full">{log.assistant_answer}</p>
+                  {sourceList.length > 0 && (
+                    <ul className="ds-activity-card__sources">
+                      {sourceList.map((s, i) => (
+                        <li key={`${log.id}-src-${i}`}>
+                          <a href={s.url} target="_blank" rel="noreferrer">
+                            {s.title || s.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {!errorKey && totalPages > 1 && total > 0 && (
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={onPageChange}
+          infoLabel={
+            hasQuery
+              ? t("activity.page_of_filtered", { page, total: totalPages })
+              : t("common.page_of", { page, total: totalPages })
+          }
+        />
+      )}
     </PageLayout>
   );
 }

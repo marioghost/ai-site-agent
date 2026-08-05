@@ -27,6 +27,13 @@ backups/
 node_modules/
 dashboard/dist/
 
+# Local browser / audit tooling artifacts (never commit)
+.playwright-mcp/
+/UX-*.png
+/ux-*.png
+/verify-login.png
+/ux-login-fail.png
+
 # Editor / OS
 .DS_Store
 .idea/

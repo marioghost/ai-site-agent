@@ -167,7 +167,7 @@ export default function UpdateScreen() {
   const recentActivity = live.recentActivity.slice().reverse();
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <OverviewHeader
         title={t("knowledge.update.title")}
         subtitle={t("knowledge.update.subtitle")}

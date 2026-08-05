@@ -2,7 +2,6 @@ import { Button } from "../../ui";
 import { useTranslation } from "../../i18n";
 
 type Props = {
-  sessionId: string | null;
   sessionTitle: string;
   loading: boolean;
   lastUpdated?: string | null;
@@ -12,7 +11,6 @@ type Props = {
 };
 
 export default function ChatToolbar({
-  sessionId,
   sessionTitle,
   loading,
   lastUpdated,
@@ -21,6 +19,7 @@ export default function ChatToolbar({
   onOpenHistory,
 }: Props) {
   const { t } = useTranslation();
+  const title = sessionTitle?.trim() || t("chat.history.untitled");
 
   return (
     <div className="ds-chat-toolbar">
@@ -35,18 +34,16 @@ export default function ChatToolbar({
           {t("chat.history")}
         </Button>
       </div>
-      {sessionId && (
-        <div className="ds-chat-toolbar__meta">
-          <span className="ds-chat-toolbar__session" title={sessionTitle || sessionId}>
-            {sessionTitle || t("chat.history.untitled")} · {sessionId.slice(0, 8)}…
+      <div className="ds-chat-toolbar__meta">
+        <span className="ds-chat-toolbar__session" title={title}>
+          {title}
+        </span>
+        {lastUpdated && (
+          <span className="ds-chat-toolbar__updated">
+            {t("chat.last_updated")}: {lastUpdated}
           </span>
-          {lastUpdated && (
-            <span className="ds-chat-toolbar__updated">
-              {t("chat.last_updated")}: {lastUpdated}
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

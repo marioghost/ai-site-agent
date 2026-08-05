@@ -69,7 +69,7 @@ export default function SiteScreen() {
 
   if (!profile) {
     return (
-      <PageLayout>
+      <PageLayout className="ds-page--wide">
         <LoadingState label={t("common.loading_settings")} />
       </PageLayout>
     );
@@ -154,7 +154,7 @@ export default function SiteScreen() {
         : "error";
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader title={t("knowledge.site.title")} subtitle={t("knowledge.site.subtitle")} />
 
       <KnowledgeProfileLegacyBanner />

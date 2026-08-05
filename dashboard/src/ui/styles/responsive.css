@@ -322,8 +322,12 @@
 
 @media (min-width: 1800px) {
   .ds-page {
-    max-width: 1680px;
+    max-width: var(--ds-content-max-w-wide);
     margin-inline: auto;
+  }
+
+  .ds-page:not(.ds-page--wide):not(.ds-page--flush):not(.ds-chat-page) {
+    max-width: var(--ds-content-max-w);
   }
 }
 

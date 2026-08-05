@@ -226,7 +226,7 @@ export default function AccessScreen() {
   return (
     <PageLayout>
       <PageHeader
-        title={t("users.title")}
+        title={t("nav.access")}
         subtitle={t("users.subtitle")}
         actions={
           <Button variant="primary" onClick={openCreate}>

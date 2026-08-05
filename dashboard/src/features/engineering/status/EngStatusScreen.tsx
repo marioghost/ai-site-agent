@@ -107,7 +107,7 @@ export default function EngStatusScreen() {
   }, [health, job, t, healthStatusLabel, jobStatusLabel]);
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader
         title={t("nav.eng_status")}
         subtitle={t("eng.status.subtitle")}

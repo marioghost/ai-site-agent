@@ -187,7 +187,7 @@ export default function EngKnowledgeScreen() {
   if (!settings) return <LoadingState label={t("common.loading_settings")} />;
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader title={t("nav.eng_knowledge")} subtitle={t("eng.knowledge.subtitle")} />
 
       {message && <p className="ds-help">{message}</p>}

@@ -4,6 +4,7 @@ import { canAccessRoute } from "./lib/permissions";
 import appSource from "./App.tsx?raw";
 import chatTestPageSource from "./pages/ChatTestPage.tsx?raw";
 import homeScreenSource from "./features/home/HomeScreen.tsx?raw";
+import homeReadinessSource from "./lib/homeReadiness.ts?raw";
 import askScreenSource from "./features/ask/AskScreen.tsx?raw";
 import overviewPageSource from "./pages/OverviewPage.tsx?raw";
 import performanceWidgetSource from "./features/insights/performance/widgets/ProblematicQueriesSection.tsx?raw";
@@ -19,12 +20,13 @@ describe("S005 Home shell + Ask coexistence", () => {
     expect(homeScreenSource).toMatch(/PageHeader/);
     expect(homeScreenSource).toMatch(/LoadingState/);
     expect(homeScreenSource).toMatch(/ErrorState/);
-    // Readiness model per RFC-101 §7
-    expect(homeScreenSource).toMatch(/needs_setup/);
-    expect(homeScreenSource).toMatch(/needs_update/);
-    expect(homeScreenSource).toMatch(/updating/);
-    expect(homeScreenSource).toMatch(/ready/);
-    expect(homeScreenSource).toMatch(/needs_attention/);
+    // Readiness model per RFC-101 §7 — single source of truth in homeReadiness
+    expect(homeScreenSource).toMatch(/deriveHomeModel/);
+    expect(homeReadinessSource).toMatch(/needs_setup/);
+    expect(homeReadinessSource).toMatch(/needs_update/);
+    expect(homeReadinessSource).toMatch(/updating/);
+    expect(homeReadinessSource).toMatch(/"ready"/);
+    expect(homeReadinessSource).toMatch(/needs_attention/);
     // Uses existing lightweight APIs, not the full Overview widget set
     expect(homeScreenSource).toMatch(/getHealth/);
     expect(homeScreenSource).toMatch(/getOverview/);
@@ -33,8 +35,8 @@ describe("S005 Home shell + Ask coexistence", () => {
     expect(homeScreenSource).toMatch(/getSettings/);
     expect(homeScreenSource).not.toMatch(/getAnalyticsSummary|getAnalyticsTimeseries|getIntentDistribution|AnalyticsPreviewRow/);
     // Primary CTA destinations appropriate to readiness state
-    expect(homeScreenSource).toMatch(/\/ask/);
-    expect(homeScreenSource).toMatch(/\/knowledge\/update/);
+    expect(homeReadinessSource).toMatch(/\/ask/);
+    expect(homeReadinessSource).toMatch(/\/knowledge\/update/);
     expect(homeScreenSource).toMatch(/\/insights\/performance/);
     expect(homeScreenSource).toMatch(/\/settings\/general/);
   });

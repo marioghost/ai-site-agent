@@ -78,7 +78,7 @@ export default function AnswersScreen() {
     <PageLayout>
       <PageHeader
         title={t("nav.answers")}
-        subtitle={t("settings.simple.agent_subtitle")}
+        subtitle={t("settings.simple.answers_page_subtitle")}
         actions={
           <Button variant="primary" onClick={() => void onSave()} disabled={saving}>
             {saving ? t("common.saving") : t("common.save")}

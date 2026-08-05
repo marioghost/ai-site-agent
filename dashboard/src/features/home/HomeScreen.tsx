@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getHealth, getIndexStatus, getOverview, getSettings, listSources } from "../../api/client";
+import {
+  getChatLogs,
+  getHealth,
+  getIndexStatus,
+  getOverview,
+  getSettings,
+  listSources,
+} from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "../../i18n";
+import {
+  deriveHomeModel,
+  healthChecklistCopyKey,
+  type HomeChecklistTone,
+} from "../../lib/homeReadiness";
 import { canAccessRoute } from "../../lib/permissions";
-import type { HealthResponse, IndexJobStatus, KnowledgeBaseStatus, Settings } from "../../types";
+import type { ChatLog, HealthResponse, IndexJobStatus, KnowledgeBaseStatus, Settings } from "../../types";
 import {
   Button,
   ErrorState,
@@ -16,66 +28,19 @@ import {
   type StatusVariant,
 } from "../../ui";
 
-/** RFC-101 §7 readiness model — Home computes a single product state. */
-type ReadinessState = "needs_setup" | "needs_update" | "updating" | "ready" | "needs_attention";
-
-type Cta = { to: string; labelKey: string };
-
-function isHealthOk(health: HealthResponse | null): boolean | null {
-  if (!health) return null;
-  return [health.app.status, health.database.status, health.ollama.status, health.qdrant.status].every(
-    (status) => status.toLowerCase() === "ok"
-  );
+function toneVariant(tone: HomeChecklistTone): StatusVariant {
+  if (tone === "ready") return "ready";
+  if (tone === "processing") return "processing";
+  if (tone === "attention") return "warning";
+  return "pending";
 }
 
-function computeReadinessState(params: {
-  settings: Settings | null;
-  health: HealthResponse | null;
-  job: IndexJobStatus | null;
-  knowledgeBase: KnowledgeBaseStatus | null;
-  sourceCount: number;
-}): ReadinessState {
-  const { settings, health, job, knowledgeBase, sourceCount } = params;
-
-  if (!settings?.site_url) return "needs_setup";
-  if (job?.status === "running") return "updating";
-
-  const totalSources = knowledgeBase?.total_sources ?? sourceCount;
-  const readyToUse = knowledgeBase?.ready_to_use ?? 0;
-  if (totalSources === 0 || readyToUse === 0) return "needs_update";
-
-  const healthOk = isHealthOk(health);
-  const hasFailures = (knowledgeBase?.failed ?? 0) > 0;
-  if (healthOk === false || hasFailures) return "needs_attention";
-
-  return "ready";
-}
-
-/** RFC-101 §7 — at most one primary CTA and one secondary CTA derived from state. */
-function ctasForState(state: ReadinessState): { primary: Cta; secondary: Cta | null } {
-  switch (state) {
-    case "needs_setup":
-      return { primary: { to: "/knowledge/site", labelKey: "home.action.go_site" }, secondary: null };
-    case "needs_update":
-      return {
-        primary: { to: "/knowledge/update", labelKey: "home.action.update_knowledge" },
-        secondary: null,
-      };
-    case "updating":
-      return { primary: { to: "/knowledge/update", labelKey: "home.action.view_progress" }, secondary: null };
-    case "needs_attention":
-      return {
-        primary: { to: "/knowledge/library", labelKey: "home.action.review_library" },
-        secondary: { to: "/knowledge/update", labelKey: "home.action.update_knowledge" },
-      };
-    case "ready":
-    default:
-      return {
-        primary: { to: "/ask", labelKey: "home.action.ask" },
-        secondary: { to: "/insights/performance", labelKey: "home.action.view_performance" },
-      };
-  }
-}
+const MORE_LINKS = [
+  { to: "/ask", labelKey: "home.action.ask" },
+  { to: "/knowledge/library", labelKey: "home.action.review_library" },
+  { to: "/insights/performance", labelKey: "home.action.view_performance" },
+  { to: "/settings/general", labelKey: "home.action.open_settings" },
+] as const;
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -87,24 +52,27 @@ export default function HomeScreen() {
   const [job, setJob] = useState<IndexJobStatus | null>(null);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus | null>(null);
   const [sourceCount, setSourceCount] = useState(0);
+  const [recent, setRecent] = useState<ChatLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorKey, setErrorKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, h, j, srcs, overview] = await Promise.all([
+      const [s, h, j, srcs, overview, logs] = await Promise.all([
         getSettings(),
         getHealth(),
         getIndexStatus(),
         listSources({ page: 1, page_size: 1 }),
         getOverview().catch(() => null),
+        getChatLogs(1, 5).catch(() => null),
       ]);
       setSettings(s);
       setHealth(h);
       setJob(j);
       setSourceCount(srcs.total);
       setKnowledgeBase(overview?.knowledge_base ?? null);
+      setRecent(logs?.items ?? []);
       setErrorKey(null);
     } catch {
       setErrorKey("home.error_description");
@@ -117,32 +85,60 @@ export default function HomeScreen() {
     void load();
   }, [load]);
 
-  const state = useMemo(
-    () => computeReadinessState({ settings, health, job, knowledgeBase, sourceCount }),
+  const model = useMemo(
+    () => deriveHomeModel({ settings, health, job, knowledgeBase, sourceCount }),
     [settings, health, job, knowledgeBase, sourceCount]
   );
-  const { primary, secondary } = useMemo(() => ctasForState(state), [state]);
-
-  const healthOk = isHealthOk(health);
-  const totalSources = knowledgeBase?.total_sources ?? sourceCount;
-  const readyToUse = knowledgeBase?.ready_to_use ?? 0;
-  const askReady = state === "ready" || state === "needs_attention";
+  const { state, buckets, primary, secondary, healthOk, askReady, verdictTone } = model;
 
   const canSeeRoute = (to: string) => !role || canAccessRoute(role, to);
 
-  const badgeVariant = (ok: boolean | null, hasProgress = false): StatusVariant => {
-    if (ok === null) return "pending";
-    if (ok) return "ready";
-    return hasProgress ? "processing" : "failed";
-  };
-  const badgeLabel = (ok: boolean | null, hasProgress = false): string => {
-    if (ok === null) return t("home.badge.unknown");
-    if (ok) return t("home.badge.ready");
-    return hasProgress ? t("home.badge.processing") : t("home.badge.attention");
+  const badgeLabel = (tone: HomeChecklistTone): string => {
+    if (tone === "ready") return t("home.badge.ready");
+    if (tone === "processing") return t("home.badge.processing");
+    if (tone === "attention") return t("home.badge.attention");
+    return t("home.badge.unknown");
   };
 
+  const knowledgeText = (() => {
+    const base = { ready: buckets.readyToUse, total: buckets.relevantTotal };
+    if (buckets.failed > 0) {
+      return t("home.checklist.knowledge_failures", { ...base, failed: buckets.failed });
+    }
+    if (buckets.waiting > 0) {
+      return t("home.checklist.knowledge_waiting", { ...base, waiting: buckets.waiting });
+    }
+    if (buckets.needsRefresh > 0) {
+      return t("home.checklist.knowledge_refresh", { ...base, refresh: buckets.needsRefresh });
+    }
+    if (buckets.skipped > 0) {
+      return t("home.checklist.knowledge_summary_skipped", { ...base, skipped: buckets.skipped });
+    }
+    return t("home.checklist.knowledge_summary", base);
+  })();
+
+  const attentionItems = [
+    {
+      tone: model.siteTone,
+      text: settings?.site_url ? t("home.checklist.site") : t("home.checklist.site_missing"),
+    },
+    { tone: model.knowledgeTone, text: knowledgeText },
+    { tone: model.healthTone, text: t(healthChecklistCopyKey(healthOk)) },
+    {
+      tone: model.askTone,
+      text: askReady ? t("home.checklist.ask_ready") : t("home.checklist.ask_not_ready"),
+    },
+  ];
+
+  const checklistVisible =
+    state === "ready" ? attentionItems.filter((item) => item.tone !== "ready") : attentionItems;
+
+  const secondaryLinks = MORE_LINKS.filter(
+    (link) => link.to !== primary.to && link.to !== secondary?.to && canSeeRoute(link.to)
+  );
+
   return (
-    <PageLayout>
+    <PageLayout className="ds-home">
       <PageHeader title={t("home.title")} subtitle={t("home.subtitle")} />
 
       {loading && <LoadingState label={t("common.loading")} />}
@@ -161,94 +157,127 @@ export default function HomeScreen() {
 
       {!loading && !errorKey && (
         <>
-          <SectionCard
-            title={t(`home.state.${state}.title`)}
-            subtitle={t(`home.state.${state}.description`)}
-          >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
-              {canSeeRoute(primary.to) && (
-                <Link to={primary.to}>
-                  <Button variant="primary">{t(primary.labelKey)}</Button>
-                </Link>
-              )}
-              {secondary && canSeeRoute(secondary.to) && (
-                <Link to={secondary.to}>
-                  <Button variant="secondary">{t(secondary.labelKey)}</Button>
-                </Link>
-              )}
+          <section className={`ds-home__verdict ds-home__verdict--${state}`} aria-live="polite">
+            <div className="ds-home__verdict-copy">
+              <StatusBadge variant={toneVariant(verdictTone)} label={badgeLabel(verdictTone)} size="md" />
+              <h2 className="ds-home__verdict-title">{t(`home.state.${state}.title`)}</h2>
+              <p className="ds-home__verdict-desc">{t(`home.state.${state}.description`)}</p>
+              <div className="ds-home__verdict-actions">
+                {canSeeRoute(primary.to) && (
+                  <Link to={primary.to}>
+                    <Button variant="primary">{t(primary.labelKey)}</Button>
+                  </Link>
+                )}
+                {secondary && canSeeRoute(secondary.to) && (
+                  <Link to={secondary.to}>
+                    <Button variant="secondary">{t(secondary.labelKey)}</Button>
+                  </Link>
+                )}
+              </div>
             </div>
-          </SectionCard>
+          </section>
 
-          <SectionCard title={t("home.checklist.title")}>
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.75rem",
-              }}
+          <div className="ds-home__metrics" role="group" aria-label={t("home.metrics.title")}>
+            <div className="ds-home__metric">
+              <span className="ds-home__metric-label">{t("home.metrics.sources")}</span>
+              <span className="ds-home__metric-value">
+                {buckets.readyToUse}
+                <span className="ds-home__metric-hint"> / {buckets.relevantTotal}</span>
+              </span>
+              <span className="ds-home__metric-hint">
+                {buckets.skipped > 0
+                  ? t("home.metrics.sources_hint_skipped", { skipped: buckets.skipped })
+                  : t("home.metrics.sources_hint")}
+              </span>
+            </div>
+            <div className="ds-home__metric">
+              <span className="ds-home__metric-label">{t("home.metrics.health")}</span>
+              <span className="ds-home__metric-value">{badgeLabel(model.healthTone)}</span>
+              <span className="ds-home__metric-hint">{t("home.metrics.health_hint")}</span>
+            </div>
+            <div className="ds-home__metric">
+              <span className="ds-home__metric-label">{t("home.metrics.index")}</span>
+              <span className="ds-home__metric-value">
+                {job?.status === "running" ? t("home.badge.processing") : t("home.metrics.index_idle")}
+              </span>
+              <span className="ds-home__metric-hint">{t("home.metrics.index_hint")}</span>
+            </div>
+          </div>
+
+          <div className="ds-home__grid">
+            <SectionCard
+              title={
+                checklistVisible.length === 0
+                  ? t("home.checklist.clear_title")
+                  : t("home.checklist.attention_title")
+              }
+              subtitle={
+                checklistVisible.length === 0
+                  ? t("home.checklist.clear_subtitle")
+                  : t("home.checklist.attention_subtitle")
+              }
             >
-              <li style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <StatusBadge
-                  variant={badgeVariant(Boolean(settings?.site_url))}
-                  label={badgeLabel(Boolean(settings?.site_url))}
-                />
-                <span>{settings?.site_url ? t("home.checklist.site") : t("home.checklist.site_missing")}</span>
-              </li>
-              <li style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <StatusBadge
-                  variant={badgeVariant(readyToUse > 0, totalSources > 0)}
-                  label={badgeLabel(readyToUse > 0, totalSources > 0)}
-                />
-                <span>
-                  {t("home.checklist.knowledge_summary", { ready: readyToUse, total: totalSources })}
-                </span>
-              </li>
-              <li style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <StatusBadge variant={badgeVariant(healthOk)} label={badgeLabel(healthOk)} />
-                <span>{healthOk ? t("home.checklist.health") : t("home.checklist.health_degraded")}</span>
-              </li>
-              <li style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <StatusBadge variant={badgeVariant(askReady)} label={badgeLabel(askReady)} />
-                <span>{askReady ? t("home.checklist.ask_ready") : t("home.checklist.ask_not_ready")}</span>
-              </li>
-            </ul>
-          </SectionCard>
+              {checklistVisible.length === 0 ? (
+                <p className="ds-help">{t("home.checklist.all_clear")}</p>
+              ) : (
+                <ul className="ds-home__checklist">
+                  {checklistVisible.map((item) => (
+                    <li key={item.text} className="ds-home__checklist-item">
+                      <StatusBadge variant={toneVariant(item.tone)} label={badgeLabel(item.tone)} />
+                      <span>{item.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
 
-          <SectionCard title={t("home.quick_links.title")}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
-              {canSeeRoute("/ask") && (
-                <Link to="/ask">
-                  <Button variant="outline" size="sm">
-                    {t("home.action.ask")}
-                  </Button>
-                </Link>
+            <SectionCard
+              title={t("home.recent.title")}
+              subtitle={t("home.recent.subtitle")}
+              actions={
+                canSeeRoute("/insights/activity") ? (
+                  <Link to="/insights/activity">
+                    <Button variant="ghost" size="sm">
+                      {t("home.recent.view_all")}
+                    </Button>
+                  </Link>
+                ) : undefined
+              }
+            >
+              {recent.length === 0 ? (
+                <p className="ds-help">{t("home.recent.empty")}</p>
+              ) : (
+                <ul className="ds-home__activity-list">
+                  {recent.map((log) => (
+                    <li key={log.id} className="ds-home__activity-item">
+                      <span className="ds-home__activity-q">{log.user_message}</span>
+                      <span className="ds-home__activity-meta">
+                        {log.created_at ? new Date(log.created_at).toLocaleString() : t("common.dash")}
+                        {" · "}
+                        {log.used_context
+                          ? t("home.recent.with_sources", { count: log.sources?.length ?? 0 })
+                          : t("home.recent.no_sources")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
-              {canSeeRoute("/knowledge/update") && (
-                <Link to="/knowledge/update">
-                  <Button variant="outline" size="sm">
-                    {t("home.action.update_knowledge")}
-                  </Button>
-                </Link>
-              )}
-              {canSeeRoute("/insights/performance") && (
-                <Link to="/insights/performance">
-                  <Button variant="outline" size="sm">
-                    {t("home.action.view_performance")}
-                  </Button>
-                </Link>
-              )}
-              {canSeeRoute("/settings/general") && (
-                <Link to="/settings/general">
-                  <Button variant="outline" size="sm">
-                    {t("home.action.open_settings")}
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          </div>
+
+          {secondaryLinks.length > 0 && (
+            <SectionCard title={t("home.quick_links.title")} subtitle={t("home.quick_links.subtitle")}>
+              <div className="ds-home__links">
+                {secondaryLinks.map((link) => (
+                  <Link key={link.to} to={link.to}>
+                    <Button variant="outline" size="sm">
+                      {t(link.labelKey)}
+                    </Button>
+                  </Link>
+                ))}
+              </div>
+            </SectionCard>
+          )}
         </>
       )}
     </PageLayout>

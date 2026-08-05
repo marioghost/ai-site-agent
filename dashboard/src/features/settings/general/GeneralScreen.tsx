@@ -4,7 +4,7 @@ import LanguageSwitcher from "../../../components/LanguageSwitcher";
 import { useEngineeringMode } from "../../../context/EngineeringModeContext";
 import { useTranslation } from "../../../i18n";
 import type { UiLanguage } from "../../../i18n";
-import { Alert, PageHeader, PageLayout, SectionCard } from "../../../ui";
+import { Alert, CheckboxField, PageHeader, PageLayout, SectionCard } from "../../../ui";
 
 export default function GeneralScreen() {
   const { t } = useTranslation();
@@ -22,21 +22,17 @@ export default function GeneralScreen() {
 
   return (
     <PageLayout>
-      <PageHeader title={t("nav.general")} />
-      <p className="ds-help">{t("settings.general.subtitle")}</p>
+      <PageHeader title={t("nav.general")} subtitle={t("settings.general.subtitle")} />
       {error && <Alert variant="error">{error}</Alert>}
       <SectionCard title={t("lang.label")}>
         <LanguageSwitcher onChange={(next) => void onLangChange(next)} />
       </SectionCard>
       <SectionCard title={t("settings.general.engineering_mode")}>
-        <label className="ds-checkbox">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
-          <span>{t("settings.general.engineering_mode_help")}</span>
-        </label>
+        <CheckboxField
+          label={t("settings.general.engineering_mode_help")}
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
       </SectionCard>
     </PageLayout>
   );

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   getAnalyticsInsights,
   getAnalyticsTimeseries,
@@ -12,7 +13,8 @@ import {
 } from "../../../api/client";
 import { useTranslation } from "../../../i18n";
 import { intentLabel } from "../../../lib/intentLabel";
-import { Alert, PageLayout } from "../../../ui";
+import { evaluatePerformancePresence } from "../../../lib/performanceAnalytics";
+import { Alert, Button, LoadingState, PageLayout } from "../../../ui";
 import type {
   AnalyticsInsightsPayload,
   IntentDistributionRow,
@@ -48,6 +50,7 @@ export default function PerformanceScreen() {
   const [topics, setTopics] = useState<TopicDistributionRow[]>([]);
   const [insightsPayload, setInsightsPayload] = useState<AnalyticsInsightsPayload | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -99,6 +102,8 @@ export default function PerformanceScreen() {
         setErrorKey(null);
       } catch {
         setErrorKey("analytics.error_load");
+      } finally {
+        setLoading(false);
       }
     },
     [querySearch]
@@ -126,12 +131,27 @@ export default function PerformanceScreen() {
     }
   };
 
+  const presence = useMemo(
+    () =>
+      evaluatePerformancePresence({
+        timeseries,
+        popularCount: popular.length,
+        problematicCount: problematic.length,
+        retrieval,
+        sources,
+        intents,
+        topics,
+        insights: insightsPayload,
+      }),
+    [timeseries, popular.length, problematic.length, retrieval, sources, intents, topics, insightsPayload]
+  );
+
   const intentLabelFn = (intent: string) => intentLabel(intent, t);
 
   return (
-    <PageLayout className="ds-analytics-page">
+    <PageLayout className="ds-analytics-page ds-page--wide">
       <AnalyticsHeader
-        title={t("analytics.title")}
+        title={t("nav.performance")}
         subtitle={t("analytics.subtitle_product")}
         updatedAt={updatedAt}
         updatedLabel={t("analytics.updated")}
@@ -143,55 +163,72 @@ export default function PerformanceScreen() {
 
       {errorKey && <Alert variant="error">{t(errorKey)}</Alert>}
 
-      {summary && <AnalyticsKpiSection summary={summary} pct={pct} msLabel={msLabel} />}
-
-      <AnalyticsTrendsSection timeseries={timeseries} msLabel={msLabel} pct={pct} />
-
-      <PopularQueriesSection
-        rows={popular}
-        pct={pct}
-        msLabel={msLabel}
-        onSearch={onSearchQueries}
-        searching={searching}
-      />
-
-      <ProblematicQueriesSection rows={problematic} />
-
-      {retrieval && (
-        <RetrievalQualitySection metrics={retrieval} pct={pct} msLabel={msLabel} />
-      )}
-
-      {sources && <SourceAnalyticsSection data={sources} />}
-
-      <div className="an-tables-row">
-        <DistributionBarChart
-          title={t("analytics.intent_distribution")}
-          subtitle={t("analytics.intent_distribution_hint")}
-          rows={intents.map((row) => ({
-            label: intentLabelFn(row.intent),
-            count: row.count,
-            share: row.share,
-          }))}
-          emptyLabel={t("common.no_data")}
-          labelKey={(row) => row.label}
-        />
-        <DistributionBarChart
-          title={t("analytics.topic_distribution")}
-          subtitle={t("analytics.topic_distribution_hint")}
-          rows={topics.map((row) => ({
-            label: row.topic_label,
-            count: row.count,
-            share: row.share,
-          }))}
-          emptyLabel={t("common.no_data")}
-        />
-      </div>
-
-      {insightsPayload && (
-        <div className="an-tables-row">
-          <AiInsightsSection insights={insightsPayload.insights} />
-          <RecommendationsSection recommendations={insightsPayload.recommendations} />
-        </div>
+      {loading && !updatedAt ? (
+        <LoadingState label={t("common.loading")} />
+      ) : presence.isEmpty ? (
+        !errorKey ? (
+          <div className="ds-insights-empty">
+            <h2 className="ds-insights-empty__title">{t("analytics.empty_title")}</h2>
+            <p className="ds-insights-empty__desc">{t("analytics.empty_body")}</p>
+            <Link to="/ask">
+              <Button variant="primary">{t("activity.ask_cta")}</Button>
+            </Link>
+          </div>
+        ) : null
+      ) : (
+        <>
+          {summary && (presence.hasTrend || presence.hasQuery) && (
+            <AnalyticsKpiSection summary={summary} pct={pct} msLabel={msLabel} />
+          )}
+          {presence.hasTrend && (
+            <AnalyticsTrendsSection timeseries={timeseries} msLabel={msLabel} pct={pct} />
+          )}
+          {(popular.length > 0 || searching) && (
+            <PopularQueriesSection
+              rows={popular}
+              pct={pct}
+              msLabel={msLabel}
+              onSearch={onSearchQueries}
+              searching={searching}
+            />
+          )}
+          {problematic.length > 0 && <ProblematicQueriesSection rows={problematic} />}
+          {presence.hasRetrieval && retrieval && (
+            <RetrievalQualitySection metrics={retrieval} pct={pct} msLabel={msLabel} />
+          )}
+          {presence.hasSources && sources && <SourceAnalyticsSection data={sources} />}
+          {presence.hasDistribution && (
+            <div className="an-tables-row">
+              <DistributionBarChart
+                title={t("analytics.intent_distribution")}
+                subtitle={t("analytics.intent_distribution_hint")}
+                rows={intents.map((row) => ({
+                  label: intentLabelFn(row.intent),
+                  count: row.count,
+                  share: row.share,
+                }))}
+                emptyLabel={t("common.no_data")}
+                labelKey={(row) => row.label}
+              />
+              <DistributionBarChart
+                title={t("analytics.topic_distribution")}
+                subtitle={t("analytics.topic_distribution_hint")}
+                rows={topics.map((row) => ({
+                  label: row.topic_label,
+                  count: row.count,
+                  share: row.share,
+                }))}
+                emptyLabel={t("common.no_data")}
+              />
+            </div>
+          )}
+          {presence.hasInsights && insightsPayload && (
+            <div className="an-tables-row">
+              <AiInsightsSection insights={insightsPayload.insights} />
+              <RecommendationsSection recommendations={insightsPayload.recommendations} />
+            </div>
+          )}
+        </>
       )}
     </PageLayout>
   );

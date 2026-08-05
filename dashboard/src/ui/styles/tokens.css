@@ -125,7 +125,9 @@
   --ds-sidebar-w: 240px;
   --ds-sidebar-collapsed-w: 72px;
   --ds-topbar-h: 56px;
-  --ds-content-max-w: none;
+  --ds-content-max-w: 1200px;
+  --ds-content-max-w-wide: 1440px;
+  --ds-ask-column-max-w: 820px;
   --ds-page-gutter: var(--ds-space-5);
   --ds-page-gap: var(--ds-space-6);
   --ds-content-padding-y: var(--ds-space-6);

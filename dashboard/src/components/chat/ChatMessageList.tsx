@@ -12,6 +12,7 @@ type Props = {
   activeAssistantId?: string | null;
   onSelectAssistant?: (index: number) => void;
   onProcessingChange?: (processing: boolean) => void;
+  density?: "product" | "engineering";
 };
 
 function isNearBottom(el: HTMLElement, threshold = 140): boolean {
@@ -26,6 +27,7 @@ export default function ChatMessageList({
   activeAssistantId = null,
   onSelectAssistant,
   onProcessingChange,
+  density = "engineering",
 }: Props) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,6 +98,7 @@ export default function ChatMessageList({
               selected={selectedTurnIndex === i}
               selectable={Boolean(onSelectAssistant)}
               onSelect={() => onSelectAssistant?.(i)}
+              density={density}
             />
           );
         })}

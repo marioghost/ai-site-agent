@@ -10,7 +10,7 @@ export default function EngBuildScreen() {
   const { t } = useTranslation();
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader title={t("nav.eng_build")} subtitle={t("eng.build.subtitle")} />
       <MigrationFlagsPanel />
     </PageLayout>

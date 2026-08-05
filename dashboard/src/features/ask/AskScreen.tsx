@@ -8,25 +8,18 @@ import ChatMessageList from "../../components/chat/ChatMessageList";
 import ChatComposer from "../../components/chat/ChatComposer";
 
 /**
- * S006 (G3-P2..P4) — Ask is the simple, product-only chat surface.
- * The engineering diagnostics panel moved to the Engineering Mode "Ask
- * details" screen; chat history browsing moved to Insights Activity. Ask
- * mounts only the core conversation chrome — progressive disclosure keeps
- * the product surface free of engineering/history chrome.
+ * Ask is the product-only chat surface.
+ * Engineering diagnostics live under Engineering → Ask details.
+ * History browsing lives under Insights → Activity.
  */
 export default function AskScreen() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const {
-    sessionId,
     sessionTitle,
     turns,
     loading,
     initializing,
-    activeTrace,
-    selectedTurnIndex,
-    activeAssistantId,
-    selectAssistantTurn,
     sendMessage,
     startNewChat,
     clearChat,
@@ -61,17 +54,9 @@ export default function AskScreen() {
     await clearChat();
   };
 
-  const meta = activeTrace?.metadata;
-  const llmModel =
-    activeTrace?.prompt_diagnostics && typeof activeTrace.prompt_diagnostics === "object"
-      ? String((activeTrace.prompt_diagnostics as Record<string, unknown>).model ?? "")
-      : undefined;
-
-  const lastUpdated = meta?.created_at ? new Date(meta.created_at).toLocaleString() : null;
-
   if (initializing) {
     return (
-      <PageLayout>
+      <PageLayout className="ds-chat-page ds-chat-page--product">
         <PageHeader title={t("nav.ask")} subtitle={t("ask.subtitle")} />
         <LoadingState label={t("common.loading")} />
       </PageLayout>
@@ -79,29 +64,20 @@ export default function AskScreen() {
   }
 
   return (
-    <PageLayout className="ds-chat-page">
+    <PageLayout className="ds-chat-page ds-chat-page--product">
       <PageHeader title={t("nav.ask")} subtitle={t("ask.subtitle")} />
 
       <ChatToolbar
-        sessionId={sessionId}
         sessionTitle={sessionTitle}
         loading={loading}
-        lastUpdated={lastUpdated}
         onNewChat={onNewChat}
         onClearChat={onClearChat}
         onOpenHistory={() => navigate("/insights/activity")}
       />
 
       <div className="ds-chat-console ds-chat-console--single">
-        <section className="ds-chat-main">
-          <ChatMessageList
-            turns={turns}
-            loading={loading}
-            model={llmModel || undefined}
-            selectedTurnIndex={selectedTurnIndex}
-            activeAssistantId={activeAssistantId}
-            onSelectAssistant={selectAssistantTurn}
-          />
+        <section className="ds-chat-main" aria-label={t("ask.conversation_label")}>
+          <ChatMessageList turns={turns} loading={loading} density="product" />
           <ChatComposer value={input} onChange={setInput} onSend={onSend} loading={loading} />
         </section>
       </div>

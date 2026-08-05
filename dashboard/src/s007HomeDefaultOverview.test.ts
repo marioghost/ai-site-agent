@@ -6,6 +6,7 @@ import overviewPageSource from "./pages/OverviewPage.tsx?raw";
 import loginPageSource from "./pages/LoginPage.tsx?raw";
 import requireAuthSource from "./components/auth/RequireAuth.tsx?raw";
 import homeScreenSource from "./features/home/HomeScreen.tsx?raw";
+import homeReadinessSource from "./lib/homeReadiness.ts?raw";
 import engStatusScreenSource from "./features/engineering/status/EngStatusScreen.tsx?raw";
 import engTensionsScreenSource from "./features/engineering/tensions/EngTensionsScreen.tsx?raw";
 import performanceScreenSource from "./features/insights/performance/PerformanceScreen.tsx?raw";
@@ -95,7 +96,8 @@ describe("S007 Home default + Overview retirement", () => {
   });
 
   it("G6-P2: Home shows readiness/quick links to Knowledge, Ask, Performance, Settings", () => {
-    expect(homeScreenSource).toMatch(/\/knowledge\/update/);
+    expect(homeReadinessSource).toMatch(/\/knowledge\/update/);
+    expect(homeReadinessSource).toMatch(/\/knowledge\/library/);
     expect(homeScreenSource).toMatch(/\/ask/);
     expect(homeScreenSource).toMatch(/\/insights\/performance/);
     expect(homeScreenSource).toMatch(/\/settings\/general/);

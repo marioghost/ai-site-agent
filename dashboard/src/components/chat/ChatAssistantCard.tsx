@@ -21,6 +21,8 @@ type Props = {
   selected?: boolean;
   selectable?: boolean;
   onSelect?: () => void;
+  /** Product Ask hides engineering diagnostics; Engineering surfaces keep them. */
+  density?: "product" | "engineering";
 };
 
 function useFormatMs() {
@@ -46,10 +48,12 @@ export default function ChatAssistantCard({
   selected = false,
   selectable = false,
   onSelect,
+  density = "engineering",
 }: Props) {
   const { t, cacheTypeLabel } = useTranslation();
   const formatMs = useFormatMs();
   const [copied, setCopied] = useState(false);
+  const product = density === "product";
 
   const onCopy = async () => {
     try {
@@ -62,7 +66,7 @@ export default function ChatAssistantCard({
   };
 
   const metrics =
-    timing || usedContext !== undefined || cacheHit !== undefined
+    !product && (timing || usedContext !== undefined || cacheHit !== undefined)
       ? [
           {
             label: t("chat.used_context"),
@@ -95,6 +99,12 @@ export default function ChatAssistantCard({
         ]
       : [];
 
+  const showSources =
+    sourcesStatus === "loading" ||
+    sourcesStatus === "ready" ||
+    sourcesStatus === "empty" ||
+    (sources && sources.length > 0);
+
   return (
     <article className="ds-chat-assistant">
       <div
@@ -121,7 +131,7 @@ export default function ChatAssistantCard({
       >
         <header className="ds-chat-assistant__header">
           <span className="ds-chat-assistant__brand">
-            <Sparkles size={16} />
+            <Sparkles size={16} aria-hidden />
             {t("chat.answer")}
           </span>
           {(streaming || status === "streaming") && (
@@ -137,7 +147,7 @@ export default function ChatAssistantCard({
               }}
               aria-label={t("chat.copy")}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
             </button>
           </div>
         </header>
@@ -161,54 +171,53 @@ export default function ChatAssistantCard({
           <p className="ds-chat-assistant__streaming-label">{t("chat.streaming")}</p>
         )}
 
-        {(sourcesStatus === "loading" ||
-          sourcesStatus === "ready" ||
-          sourcesStatus === "empty" ||
-          (sources && sources.length > 0)) && (
-        <section className="ds-chat-assistant__section">
-          <div className="ds-chat-assistant__section-title">{t("chat.sources")}</div>
-          {sourcesStatus === "loading" || (streaming && !sources?.length) ? (
-            <p className="ds-chat-assistant__source-loading">{t("chat.sources_loading")}</p>
-          ) : sources && sources.length > 0 ? (
-            <div className="ds-chat-assistant__sources">
-              {sources.map((s, i) => (
-                <div key={`${s.url}-${i}`} className="ds-chat-assistant__source">
-                  <a href={s.url} target="_blank" rel="noreferrer">
-                    {s.title || s.url}
-                  </a>
-                  <span className="ds-chat-assistant__source-meta">
-                    {s.source_type} · {s.score.toFixed(3)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="ds-chat-assistant__source-loading">{t("chat.sources_none")}</p>
-          )}
-        </section>
+        {showSources && (
+          <section className="ds-chat-assistant__section" aria-label={t("chat.sources")}>
+            <div className="ds-chat-assistant__section-title">{t("chat.sources")}</div>
+            {sourcesStatus === "loading" || (streaming && !sources?.length) ? (
+              <p className="ds-chat-assistant__source-loading">{t("chat.sources_loading")}</p>
+            ) : sources && sources.length > 0 ? (
+              <div className="ds-chat-assistant__sources">
+                {sources.map((s, i) => (
+                  <div key={`${s.url}-${i}`} className="ds-chat-assistant__source">
+                    <a href={s.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                      {s.title || s.url}
+                    </a>
+                    {!product && (
+                      <span className="ds-chat-assistant__source-meta">
+                        {s.source_type} · {s.score.toFixed(3)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="ds-chat-assistant__source-loading">{t("chat.sources_none")}</p>
+            )}
+            {product && !streaming && sourcesStatus === "empty" && (
+              <p className="ds-chat-assistant__trust">{t("chat.sources_none_hint")}</p>
+            )}
+          </section>
         )}
 
         {metrics.length > 0 && (
-          <section className="ds-chat-assistant__section">
+          <section className="ds-chat-assistant__section" aria-label={t("chat.metrics")}>
             <div className="ds-chat-assistant__section-title">{t("chat.metrics")}</div>
             <MetricPills items={metrics} />
           </section>
         )}
 
-        {metadata && (metadata.query_intent || metadata.retrieval_mode) && (
-          <section className="ds-chat-assistant__section">
+        {!product && metadata && (metadata.query_intent || metadata.retrieval_mode) && (
+          <section className="ds-chat-assistant__section" aria-label={t("chat.intent_mode")}>
             <div className="ds-chat-assistant__section-title">{t("chat.intent_mode")}</div>
             <div className="ds-chat-assistant__badges">
               {metadata.query_intent && (
                 <StatusBadge variant="info" label={t(`intent.${metadata.query_intent}`)} size="sm" />
               )}
-              {metadata.retrieval_mode && (
-                <Tag>{metadata.retrieval_mode}</Tag>
-              )}
+              {metadata.retrieval_mode && <Tag>{metadata.retrieval_mode}</Tag>}
             </div>
           </section>
         )}
-
       </div>
     </article>
   );

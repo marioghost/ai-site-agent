@@ -14,7 +14,7 @@ Execution Strategy: docs/releases/1.0-rfc-101-execution-strategy.md
 
 This matrix maps **every** package ID in the Master Program's Appendix A to the Step that closed it and its current status, per the status enums defined in Master Program §8.1 (`Not started` · `In progress` · `Blocked` · `In review` · `Accepted` · `Rejected` · `Reopened` · `Completed`).
 
-**Scope note:** "Completed" below means **implementation-complete with local verification** (`npm test`/`npx tsc --noEmit` passing) for the owning Step. **S001** and **S002** are already committed, pushed, deployed, and **ACCEPTED · CLOSED** on tip `9a7134c`. For the remaining **S003–S008** wave, commit/push/deploy/runtime-validation/Final-Acceptance remain `pending` per each Step's own `*-acceptance-evidence.md`. See `docs/releases/1.0-rfc-101-program-status.md` for the overall program-level rollup and outstanding review chain.
+**Scope note:** "Completed" below means **implementation-complete with local verification** for the owning Step. **S001–S008** Product Completion was **committed, pushed, and deployed** on tip `afa28daac8c6fbebf675c5d4a4d0495ea49f6ac9`. The **Release 1.0 final bugfix/UX wave** ships on `main` as the subsequent tip. **G9-P2/G9-P3 execution** and **Final Accepted Product** remain open. Engineering `accepted=1.0` ≠ Product Accepted Product. See `docs/releases/1.0-rfc-101-program-status.md` and `docs/releases/RELEASE-1.0-FINAL-BUGFIX-WAVE-EVIDENCE.md`.
 
 ---
 
@@ -93,7 +93,7 @@ This matrix maps **every** package ID in the Master Program's Appendix A to the 
 | Package | Status | Closed by | Notes |
 |---------|--------|-----------|-------|
 | G9-P1 | Completed | S001 | Gate record template + debt register seeded |
-| G9-P2 | Completed (protocol) / Execution **open** | S008 | `docs/releases/S008-cold-demo-protocol.md` authored; running the checklist against a live instance is a separate, later task |
+| G9-P2 | Completed (protocol) / Execution **open** (blocking) | S008 | Protocol authored; live cold-demo execution required before Accepted Product (`DEBT-S008-05`) |
 | G9-P3 | Completed (protocol) / Execution **open** | S008 | `docs/releases/S008-accessibility-protocol.md` authored; running the checklist is a separate, later task |
 
 ## G10 — Release tooling hygiene (optional, independent)
@@ -140,4 +140,4 @@ G10 is independent of, and never blocks, Dashboard Product Completion per Master
 
 **Implementation-complete:** 35/37 in-scope packages (all except the two optional/deferred G10 packages). Two additional items (`G9-P2`/`G9-P3` **execution**, as distinct from the protocol packages themselves) remain explicitly open per Master Program §4.2's own dependency notation ("Surfaces claiming complete" as the hard dependency for execution).
 
-**Not yet closed for S003–S008:** commit, push, deploy, runtime validation, and Final Acceptance for the remaining Product Completion wave (S001/S002 already accepted on tip `9a7134c`). Cold-demo and accessibility **execution** remain open — see `docs/releases/1.0-rfc-101-program-status.md`.
+**Not yet closed:** Final Accepted Product. Product Completion tip `afa28da` is deployed. Final bugfix/UX wave (if present locally) must still pass independent review → commit → deploy → runtime validation. Cold-demo and accessibility **execution** remain open — see `docs/releases/1.0-rfc-101-program-status.md` and `DEBT-S008-05`.

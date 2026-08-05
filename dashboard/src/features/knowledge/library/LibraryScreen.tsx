@@ -295,7 +295,7 @@ export default function LibraryScreen() {
   const indexingRunning = indexStatus?.status === "running";
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <SourcesHeader
         title={t("knowledge.library.title")}
         subtitle={t("knowledge.library.subtitle")}

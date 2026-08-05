@@ -1,0 +1,468 @@
+/* Release 1.0 UX wave — shell polish, Home, Ask, Activity */
+
+/* ── Skip link & global focus ───────────────────────────────── */
+
+.ds-skip-link {
+  position: absolute;
+  left: var(--ds-space-4);
+  top: var(--ds-space-4);
+  z-index: calc(var(--ds-z-toast) + 10);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  box-shadow: var(--ds-shadow-md);
+  font: var(--ds-text-button);
+  transform: translateY(-200%);
+  transition: transform var(--ds-duration-fast) var(--ds-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-skip-link {
+    transition: none;
+  }
+}
+
+.ds-skip-link:focus {
+  outline: none;
+  box-shadow: var(--ds-focus-ring);
+  transform: translateY(0);
+}
+
+.ds-content:focus {
+  outline: none;
+}
+
+:where(
+  a,
+  button,
+  [role="button"],
+  [tabindex]:not([tabindex="-1"]),
+  .ds-nav-link,
+  .ds-sidebar a,
+  select,
+  summary,
+  input,
+  textarea
+):focus-visible {
+  outline: none;
+  box-shadow: var(--ds-focus-ring);
+}
+
+/* ── Minimum viewport gate ──────────────────────────────────── */
+
+.ds-viewport-gate {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .ds-skip-link {
+    display: none !important;
+  }
+
+  .ds-shell {
+    display: none !important;
+  }
+
+  .ds-viewport-gate {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--ds-z-toast) + 20);
+    align-items: center;
+    justify-content: center;
+    padding: var(--ds-space-6);
+    background: var(--ds-bg);
+  }
+
+  .ds-viewport-gate__card {
+    width: min(100%, 28rem);
+    padding: var(--ds-space-8);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-lg);
+    background: var(--ds-surface);
+    box-shadow: var(--ds-shadow-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-4);
+  }
+
+  .ds-viewport-gate__card .ds-body {
+    color: var(--ds-text-secondary);
+  }
+}
+
+/* ── Wide page variant (tables / engineering) ───────────────── */
+
+.ds-page--wide {
+  max-width: var(--ds-content-max-w-wide);
+}
+
+.ds-page--flush {
+  max-width: none;
+}
+
+/* ── Home ───────────────────────────────────────────────────── */
+
+.ds-home {
+  gap: var(--ds-space-6);
+}
+
+.ds-home__verdict {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--ds-space-6);
+  align-items: start;
+  padding: var(--ds-space-6);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface);
+  box-shadow: var(--ds-shadow-xs);
+}
+
+.ds-home__verdict--ready {
+  border-color: color-mix(in srgb, var(--ds-color-success) 35%, var(--ds-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ds-color-success-soft) 65%, var(--ds-surface)) 0%,
+    var(--ds-surface) 100%
+  );
+}
+
+.ds-home__verdict--attention,
+.ds-home__verdict--needs_update,
+.ds-home__verdict--needs_setup {
+  border-color: color-mix(in srgb, var(--ds-color-warning) 40%, var(--ds-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ds-color-warning-soft) 70%, var(--ds-surface)) 0%,
+    var(--ds-surface) 100%
+  );
+}
+
+.ds-home__verdict--updating {
+  border-color: color-mix(in srgb, var(--ds-color-info) 35%, var(--ds-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ds-color-info-soft) 70%, var(--ds-surface)) 0%,
+    var(--ds-surface) 100%
+  );
+}
+
+.ds-home__verdict-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  min-width: 0;
+}
+
+.ds-home__verdict-title {
+  margin: 0;
+  font: var(--ds-text-section-title);
+  letter-spacing: -0.02em;
+}
+
+.ds-home__verdict-desc {
+  margin: 0;
+  font: var(--ds-text-body-lg);
+  color: var(--ds-text-secondary);
+  max-width: 42rem;
+}
+
+.ds-home__verdict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  align-items: center;
+}
+
+.ds-home__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-4);
+}
+
+.ds-home__metric {
+  padding: var(--ds-space-5);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  min-width: 0;
+}
+
+.ds-home__metric-label {
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+}
+
+.ds-home__metric-value {
+  font: var(--ds-text-stat);
+  letter-spacing: -0.03em;
+  color: var(--ds-text);
+}
+
+.ds-home__metric-hint {
+  font: var(--ds-text-caption);
+  color: var(--ds-text-secondary);
+}
+
+.ds-home__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--ds-space-4);
+  align-items: start;
+}
+
+.ds-home__checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+}
+
+.ds-home__checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-muted);
+}
+
+.ds-home__checklist-item span:last-child {
+  font: var(--ds-text-body);
+  color: var(--ds-text);
+  min-width: 0;
+}
+
+.ds-home__activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+}
+
+.ds-home__activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-muted);
+  min-width: 0;
+}
+
+.ds-home__activity-q {
+  font: var(--ds-text-body);
+  color: var(--ds-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-home__activity-meta {
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+}
+
+.ds-home__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+@media (max-width: 1100px) {
+  .ds-home__verdict {
+    grid-template-columns: 1fr;
+  }
+
+  .ds-home__metrics,
+  .ds-home__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Ask premium column ─────────────────────────────────────── */
+
+.ds-chat-page.ds-chat-page--product .ds-chat-console--single {
+  max-width: var(--ds-ask-column-max-w);
+  width: 100%;
+  margin-inline: auto;
+}
+
+.ds-chat-page.ds-chat-page--product .ds-chat-toolbar {
+  max-width: var(--ds-ask-column-max-w);
+  width: 100%;
+  margin-inline: auto;
+}
+
+.ds-chat-page.ds-chat-page--product .ds-page-header {
+  max-width: var(--ds-ask-column-max-w);
+  width: 100%;
+  margin-inline: auto;
+}
+
+.ds-chat-assistant__card:not(.ds-chat-assistant__card--selectable) {
+  cursor: default;
+}
+
+.ds-chat-assistant__source-meta--product {
+  display: none;
+}
+
+.ds-chat-assistant__trust {
+  margin: 0;
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+}
+
+/* ── Activity (human history) ───────────────────────────────── */
+
+.ds-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+}
+
+.ds-activity-card {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  padding: var(--ds-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  box-shadow: var(--ds-shadow-xs);
+  min-width: 0;
+}
+
+.ds-activity-card__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ds-activity-card__time {
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+}
+
+.ds-activity-card__q {
+  margin: 0;
+  font: var(--ds-text-card-title);
+  color: var(--ds-text);
+  letter-spacing: -0.015em;
+}
+
+.ds-activity-card__a {
+  margin: 0;
+  font: var(--ds-text-body);
+  color: var(--ds-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ds-activity-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  align-items: center;
+}
+
+.ds-activity-card__details {
+  border-top: 1px solid var(--ds-border-soft);
+  padding-top: var(--ds-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+}
+
+.ds-activity-card__details summary {
+  cursor: pointer;
+  font: var(--ds-text-caption);
+  color: var(--ds-text-muted);
+  width: fit-content;
+}
+
+.ds-activity-card__details[open] summary {
+  color: var(--ds-text-secondary);
+}
+
+.ds-activity-card__full {
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--ds-text-body);
+  color: var(--ds-text);
+}
+
+.ds-activity-card__sources {
+  margin: 0;
+  padding-left: 1.1rem;
+  font: var(--ds-text-caption);
+}
+
+.ds-activity-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  align-items: end;
+}
+
+.ds-activity-toolbar .ds-field {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+/* ── Performance empty ──────────────────────────────────────── */
+
+.ds-insights-empty {
+  padding: var(--ds-space-10) var(--ds-space-6);
+  border: 1px dashed var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  align-items: center;
+}
+
+.ds-insights-empty__title {
+  margin: 0;
+  font: var(--ds-text-section-title);
+}
+
+.ds-insights-empty__desc {
+  margin: 0;
+  max-width: 36rem;
+  font: var(--ds-text-body);
+  color: var(--ds-text-secondary);
+}
+
+/* ── Engineering denser layouts ─────────────────────────────── */
+
+.ds-eng-page .ds-chat-diag {
+  max-width: none;
+}
+
+.ds-settings-advanced__block + .ds-settings-advanced__block {
+  margin-top: var(--ds-space-6);
+  padding-top: var(--ds-space-6);
+  border-top: 1px solid var(--ds-border-soft);
+}
+
+.ds-settings-advanced__heading {
+  margin: 0 0 var(--ds-space-3);
+  font: var(--ds-text-card-title);
+}

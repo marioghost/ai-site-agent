@@ -63,7 +63,7 @@ export default function EngAdvancedScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-page--wide">
       <PageHeader
         title={t("nav.eng_advanced")}
         subtitle={t("eng.advanced.subtitle")}

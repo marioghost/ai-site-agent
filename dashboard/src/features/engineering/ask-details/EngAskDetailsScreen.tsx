@@ -90,7 +90,7 @@ export default function EngAskDetailsScreen() {
   const hasInspectableSession = Boolean(sessionId) && turns.length > 0 && activeTrace != null;
 
   return (
-    <PageLayout>
+    <PageLayout className="ds-eng-page ds-page--wide">
       <PageHeader title={t("nav.eng_ask_details")} subtitle={t("eng.ask_details.subtitle")} />
 
       <Alert variant="info">{t("eng.ask_details.explainer")}</Alert>

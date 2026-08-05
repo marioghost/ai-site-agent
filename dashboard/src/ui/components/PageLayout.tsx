@@ -24,6 +24,15 @@ export function AppMain({ children }: { children: ReactNode }) {
   return <div className="ds-main">{children}</div>;
 }
 
-export function AppContent({ children, className }: Props) {
-  return <main className={cn("ds-content", className)}>{children}</main>;
+export function AppContent({
+  children,
+  className,
+  id,
+  tabIndex,
+}: Props & { id?: string; tabIndex?: number }) {
+  return (
+    <main id={id} tabIndex={tabIndex} className={cn("ds-content", className)}>
+      {children}
+    </main>
+  );
 }
