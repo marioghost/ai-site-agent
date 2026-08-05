@@ -72,7 +72,11 @@ export default function App() {
       />
       <Route element={<RequireAuth />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/" element={<Navigate to="/overview" replace />} />
+          {/* S007 (G6-P3) — Home is the product default; Overview retired. */}
+          <Route path="/" element={<Navigate to="/home" replace />} />
+          {/* S007 (G6-P3) — `/overview` kept only as a redirect-compatibility
+              shim for old bookmarks/links; OverviewPage itself redirects to
+              `/home`, preserving search/hash. */}
           <Route
             path="/overview"
             element={
@@ -130,6 +134,14 @@ export default function App() {
                 </LazyPage>
               }
             />
+            <Route
+              path="/ask"
+              element={
+                <LazyPage>
+                  <AskScreen />
+                </LazyPage>
+              }
+            />
           </Route>
 
           {/* Canonical product routes (S001 substrate / scaffolds) */}
@@ -138,14 +150,6 @@ export default function App() {
             element={
               <LazyPage>
                 <HomeScreen />
-              </LazyPage>
-            }
-          />
-          <Route
-            path="/ask"
-            element={
-              <LazyPage>
-                <AskScreen />
               </LazyPage>
             }
           />
@@ -235,7 +239,7 @@ export default function App() {
           </Route>
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/overview" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 }

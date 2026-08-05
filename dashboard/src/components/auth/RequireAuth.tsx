@@ -23,7 +23,8 @@ export default function RequireAuth({ roles }: RequireAuthProps) {
   }
 
   if (roles && !roles.includes(user.role)) {
-    return <Navigate to="/overview" replace />;
+    // S007 (G6-P3) — Home is the product default; Overview retired.
+    return <Navigate to="/home" replace />;
   }
 
   return <Outlet />;

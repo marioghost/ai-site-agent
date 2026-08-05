@@ -1,5 +1,5 @@
 import { Modal } from "../../../../ui";
-import SourceIntelligencePanel from "../../shared/SourceIntelligencePanel";
+import SourceIntelligenceProfileCard from "./SourceIntelligenceProfileCard";
 import { useTranslation } from "../../../../i18n";
 import type { SourceSemanticProfile } from "../../../../types";
 
@@ -45,7 +45,7 @@ export default function SourceIntelligencePreviewModal({
                 </a>
               )}
             </header>
-            <SourceIntelligencePanel
+            <SourceIntelligenceProfileCard
               profile={sample.semantic}
               summary={sample.llm_summary}
               profileVersion={sample.profile_version}

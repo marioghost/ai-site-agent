@@ -118,7 +118,10 @@ describe("S001 App routes contracts", () => {
     expect(appSource).toMatch(/\/engineering/);
     expect(appSource).toMatch(/settings\/general|path="general"/);
     expect(appSource).toMatch(/RequireEngineeringMode/);
-    expect(appSource).toMatch(/Navigate to="\/overview"/);
+    // S007 (G6-P3) retired `/overview` as the redirect target for `/` and
+    // `*` (both now go to `/home`); `/overview` itself remains registered
+    // as a redirect-compatibility route — see s007HomeDefaultOverview.test.ts.
+    expect(appSource).toMatch(/path="\/overview"/);
   });
 
   it("General hosts engineering mode toggle", () => {

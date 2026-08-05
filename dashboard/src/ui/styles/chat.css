@@ -52,6 +52,12 @@
   overflow: hidden;
 }
 
+/* S006 (G3-P2) — Ask no longer mounts a diagnostics sidebar; the console
+   collapses to a single full-width column. */
+.ds-chat-console--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ds-chat-page > .ds-toast {
   position: fixed;
   bottom: var(--ds-space-6);
@@ -65,6 +71,10 @@
   .ds-chat-console {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .ds-chat-console--single {
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 
@@ -86,6 +96,10 @@
   .ds-chat-console {
     grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
     gap: var(--ds-space-3);
+  }
+
+  .ds-chat-console--single {
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .ds-metric-pills {

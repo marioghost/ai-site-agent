@@ -5,7 +5,9 @@ import type { UserRole } from "../types";
  * Codebase roles: admin ≈ Owner, operator ≈ Operator, viewer ≈ Viewer.
  */
 const ROUTE_ROLES: Record<string, UserRole[]> = {
-  // Legacy (coexistence)
+  // Legacy (coexistence). S007 (G6-P3): `/overview` is retired as the
+  // product home but kept routable (redirect-compatibility shim to
+  // `/home`) — the role table entry stays so old bookmarks still resolve.
   "/overview": ["admin", "operator", "viewer"],
   "/indexing": ["admin", "operator"],
   "/sources": ["admin", "operator"],

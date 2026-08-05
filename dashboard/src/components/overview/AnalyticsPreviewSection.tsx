@@ -73,7 +73,7 @@ export default function AnalyticsPreviewSection({
     <section className="overview-section">
       <div className="overview-section__head">
         <h2 className="overview-section__title">{title}</h2>
-        <Link to="/analytics" className="overview-link-btn">
+        <Link to="/insights/performance" className="overview-link-btn">
           {viewAllLabel}
         </Link>
       </div>

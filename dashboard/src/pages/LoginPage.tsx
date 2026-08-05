@@ -9,7 +9,8 @@ export default function LoginPage() {
   const { login, user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? "/overview";
+  // S007 (G6-P3) — Home is the product default; Overview retired.
+  const from = (location.state as { from?: string } | null)?.from ?? "/home";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

@@ -53,7 +53,7 @@ export default function ProblematicQueriesSection({ rows }: Props) {
         id: "action",
         header: t("analytics.col.actions"),
         cell: (row) => (
-          <Link className="ds-btn ds-btn--secondary ds-btn--sm" to={`/chat?q=${encodeURIComponent(row.query)}`}>
+          <Link className="ds-btn ds-btn--secondary ds-btn--sm" to={`/ask?q=${encodeURIComponent(row.query)}`}>
             <ExternalLink size={14} />
             {t("analytics.open_in_chat")}
           </Link>

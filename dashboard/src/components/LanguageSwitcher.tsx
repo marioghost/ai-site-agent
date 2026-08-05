@@ -2,8 +2,18 @@ import { useTranslation } from "../i18n";
 import type { UiLanguage } from "../i18n";
 import { Select } from "../ui";
 
-export default function LanguageSwitcher() {
+type Props = {
+  /** Called in addition to the default context update, e.g. to persist server-side. */
+  onChange?: (lang: UiLanguage) => void;
+};
+
+export default function LanguageSwitcher({ onChange }: Props = {}) {
   const { lang, setLang, t } = useTranslation();
+
+  const handleChange = (next: UiLanguage) => {
+    setLang(next);
+    onChange?.(next);
+  };
 
   return (
     <div className="lang-switcher">
@@ -14,7 +24,7 @@ export default function LanguageSwitcher() {
         id="dashboard-lang"
         className="lang-switcher__select"
         value={lang}
-        onChange={(e) => setLang(e.target.value as UiLanguage)}
+        onChange={(e) => handleChange(e.target.value as UiLanguage)}
         aria-label={t("lang.label")}
       >
         <option value="uk">{t("lang.uk")}</option>

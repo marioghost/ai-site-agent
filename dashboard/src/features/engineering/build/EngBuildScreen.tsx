@@ -1,5 +1,18 @@
-import MigrationPlaceholder from "../../../shared/ui/MigrationPlaceholder";
+import { useTranslation } from "../../../i18n";
+import { PageHeader, PageLayout } from "../../../ui";
+import MigrationFlagsPanel from "./widgets/MigrationFlagsPanel";
 
+/**
+ * S006 (G7-P5) — Engineering owner for the build/migration flag catalog.
+ * Product Settings never mounts `MigrationFlagsPanel`; it lives only here.
+ */
 export default function EngBuildScreen() {
-  return <MigrationPlaceholder titleKey="nav.eng_build" />;
+  const { t } = useTranslation();
+
+  return (
+    <PageLayout>
+      <PageHeader title={t("nav.eng_build")} subtitle={t("eng.build.subtitle")} />
+      <MigrationFlagsPanel />
+    </PageLayout>
+  );
 }
