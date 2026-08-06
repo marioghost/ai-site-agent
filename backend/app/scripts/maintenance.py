@@ -22,23 +22,13 @@ from app.core.database import (
     engine,
 )
 from app.core.logging import configure_logging, get_logger
-from app.repositories.index_job_repository import IndexJobRepository
-from app.repositories.settings_repository import SettingsRepository
-from app.repositories.source_repository import SourceRepository
-from app.services.answer_cache_service import (
-    AnswerCacheService,
-    answer_cache_collection_name,
-)
-from app.services.knowledge_version_service import KnowledgeVersionService
-from app.services.lexical_index_service import LexicalIndexService
-from app.services.qdrant_service import QdrantService
-from app.services.cache_invalidation_service import CacheInvalidationService
-from app.services.retrieval_cache_service import RetrievalCacheService
 
 logger = get_logger(__name__)
 
 
 def cmd_clear_retrieval_cache() -> int:
+    from app.services.cache_invalidation_service import CacheInvalidationService
+
     with SessionLocal() as db:
         rows = CacheInvalidationService(db).invalidate_retrieval_cache("cli_clear")
     print(f"OK: cleared retrieval cache ({rows} rows)")
@@ -46,6 +36,9 @@ def cmd_clear_retrieval_cache() -> int:
 
 
 def cmd_clear_answer_cache() -> int:
+    from app.repositories.settings_repository import SettingsRepository
+    from app.services.cache_invalidation_service import CacheInvalidationService
+
     with SessionLocal() as db:
         settings = SettingsRepository(db).get_or_create()
         CacheInvalidationService(db, settings).invalidate_answer_cache("cli_clear")
@@ -54,6 +47,9 @@ def cmd_clear_answer_cache() -> int:
 
 
 def cmd_clear_caches() -> int:
+    from app.repositories.settings_repository import SettingsRepository
+    from app.services.cache_invalidation_service import CacheInvalidationService
+
     with SessionLocal() as db:
         settings = SettingsRepository(db).get_or_create()
         retrieval_rows = CacheInvalidationService(db, settings).invalidate_all_caches(
@@ -64,6 +60,10 @@ def cmd_clear_caches() -> int:
 
 
 def cmd_clear_qdrant(*, main: bool, answer_cache: bool) -> int:
+    from app.repositories.settings_repository import SettingsRepository
+    from app.services.answer_cache_service import answer_cache_collection_name
+    from app.services.qdrant_service import QdrantService
+
     with SessionLocal() as db:
         settings = SettingsRepository(db).get_or_create()
         if main:
@@ -119,7 +119,14 @@ def cmd_trigger_reindex(*, confirm: str | None = None, i_understand: bool = Fals
     from sqlalchemy.engine import make_url
 
     from app.core.config import get_config
+    from app.repositories.settings_repository import SettingsRepository
+    from app.repositories.source_repository import SourceRepository
+    from app.services.answer_cache_service import AnswerCacheService
     from app.services.indexing_worker_service import _Overrides, indexing_worker
+    from app.services.knowledge_version_service import KnowledgeVersionService
+    from app.services.lexical_index_service import LexicalIndexService
+    from app.services.qdrant_service import QdrantService
+    from app.services.retrieval_cache_service import RetrievalCacheService
 
     db_name = make_url(get_config().database_url).database or ""
     if not i_understand or confirm != db_name:
@@ -161,6 +168,11 @@ def cmd_migrate() -> int:
 
 
 def cmd_status() -> int:
+    from app.repositories.index_job_repository import IndexJobRepository
+    from app.repositories.settings_repository import SettingsRepository
+    from app.services.answer_cache_service import answer_cache_collection_name
+    from app.services.qdrant_service import QdrantService
+
     with SessionLocal() as db:
         settings = SettingsRepository(db).get_or_create()
         job = IndexJobRepository(db).latest()

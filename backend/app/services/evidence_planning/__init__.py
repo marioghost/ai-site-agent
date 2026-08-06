@@ -1,5 +1,6 @@
-"""Evidence planning — single owner for final context selection."""
-from app.services.evidence_planning.planner import EvidencePlanner
-from app.services.evidence_planning.types import EvidencePlan, EvidencePlanSufficiency
+"""Evidence planning — single owner for final context selection.
 
-__all__ = ("EvidencePlanner", "EvidencePlan", "EvidencePlanSufficiency")
+Import leaf modules directly (e.g. ``evidence_planning.planner``). Eager
+re-exports here previously participated in an import cycle during
+maintenance migrate.
+"""
