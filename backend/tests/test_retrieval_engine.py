@@ -79,7 +79,7 @@ def test_compact_prompt_is_shorter_than_legacy_style():
     )
     combined = len(system) + len(user)
     assert combined < 2500
-    assert "Sources:" in user
+    assert "Evidence:" in user
     assert "Task:" not in user
     assert "AI-помічник цього вебсайту" in system
     assert "Sources" in system

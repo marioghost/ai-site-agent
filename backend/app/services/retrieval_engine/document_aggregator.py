@@ -31,21 +31,46 @@ class DocumentAggregator:
             )
 
         documents.sort(
-            key=lambda d: max(
-                d.representative_chunk.dense_score,
-                d.representative_chunk.lexical_score,
-            ),
+            key=lambda d: DocumentAggregator._document_rank(d.all_chunks),
             reverse=True,
         )
         return documents, duplicates_removed
 
     @staticmethod
     def _best_chunk(chunks: list[SearchHit]) -> SearchHit:
+        if len(chunks) == 1:
+            return chunks[0]
         return max(
             chunks,
             key=lambda c: (
-                c.dense_score * 0.6 + c.lexical_score * 0.4,
+                DocumentAggregator._chunk_rank(c),
+                len((c.text or "").strip()),
+                bool((c.heading or "").strip()),
                 c.dense_score,
                 c.lexical_score,
             ),
+        )
+
+    @staticmethod
+    def _document_rank(chunks: list[SearchHit]) -> float:
+        ranked = sorted(
+            (DocumentAggregator._chunk_rank(chunk) for chunk in chunks),
+            reverse=True,
+        )
+        if not ranked:
+            return 0.0
+        best = ranked[0]
+        support = sum(ranked[:3]) / min(3, len(ranked))
+        coverage = min(0.08, 0.03 * max(0, len(ranked) - 1))
+        return best * 0.72 + support * 0.28 + coverage
+
+    @staticmethod
+    def _chunk_rank(chunk: SearchHit) -> float:
+        body_len = len((chunk.text or "").strip())
+        richness = min(0.08, body_len / 2500.0)
+        return (
+            chunk.dense_score * 0.58
+            + chunk.lexical_score * 0.34
+            + richness
+            + (0.03 if (chunk.heading or "").strip() else 0.0)
         )

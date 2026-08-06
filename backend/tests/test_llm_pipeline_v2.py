@@ -7,10 +7,13 @@ import pytest
 
 from app.models.settings import Settings
 from app.services.context_builder_service import ContextBuilderService
+from app.services.context_builder_service import BuiltContext, PageContextBlock
+from app.services.llm_generation_service import LlmGenerationService
 from app.services.llm_mode_service import effective_generation_settings, get_mode_profile
 from app.services.llm_options_service import resolve_llm_options
 from app.services.polish_policy_service import evaluate_polish, should_polish
-from app.services.prompt_builder_service import PromptBuilderService
+from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
+from app.services.rag_planning.plan_builders import build_answer_plan, build_knowledge_plan
 from app.services.qdrant_service import SearchHit
 from app.services.response_validator_service import ResponseValidatorService
 from app.services.source_intelligence_router import SourceIntelligenceRouter
@@ -30,15 +33,17 @@ def test_prompt_builder_excludes_debug_trace():
             text="Company overview text.",
         )
     ]
-    system, user = PromptBuilderService.build(
+    kp = build_knowledge_plan(information_need="entity_overview", understanding=None, profile=None)
+    ap = build_answer_plan(knowledge_plan=kp)
+    system, user = CompactPromptBuilder.build(
         message="про банк",
         hits=hits,
         built_context=None,
-        intent="entity_overview",
         settings=settings,
+        answer_plan=ap,
     )
     combined = system + user
-    assert not PromptBuilderService.contains_debug_trace(combined)
+    assert not CompactPromptBuilder.contains_debug_trace(combined)
     assert "trace_steps" not in combined.lower()
 
 
@@ -179,3 +184,22 @@ def test_dynamic_num_ctx_4096_for_small_prompt():
     settings = Settings(llm_num_ctx_mode="auto")
     opts = resolve_llm_options(settings, prompt_chars=2000)
     assert opts["num_ctx"] == 4096
+
+
+def test_retry_compact_prefers_pipeline_context_order_over_raw_hit_order():
+    hits = [
+        SearchHit(score=0.9, source_id=10, chunk_index=0, title="News", url="https://site/news", source_type="page", text="news"),
+        SearchHit(score=0.8, source_id=20, chunk_index=0, title="About", url="https://site/about", source_type="page", text="about"),
+        SearchHit(score=0.7, source_id=30, chunk_index=0, title="Services", url="https://site/services", source_type="page", text="services"),
+    ]
+    ctx = BuiltContext(
+        blocks=[
+            PageContextBlock(source_id=20, title="About", url="https://site/about", chunks_used=1, text="about", score=0.8),
+            PageContextBlock(source_id=30, title="Services", url="https://site/services", chunks_used=1, text="services", score=0.7),
+        ],
+        prompt_text="",
+        total_chunks=2,
+        page_count=2,
+    )
+    compact = LlmGenerationService._select_compact_hits(hits, ctx)
+    assert [hit.source_id for hit in compact] == [20, 30]

@@ -41,6 +41,7 @@ from app.services.reasoning.types import ReasoningRequest
 from app.services.retrieval_pipeline_service import PreparedRetrieval, RetrievalDiagnostics
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig, KnowledgeProfile
 from app.services.retrieval_intent_service import RetrievalIntentResult
+from tests._rag_planning_helpers import planner_decision_for_test
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 REASONING_PKG = APP_ROOT / "services" / "reasoning"
@@ -104,6 +105,11 @@ def _prepared(**kwargs) -> PreparedRetrieval:
         query_vector=None,
         candidate_count=30,
         t0=0.0,
+        planner_decision=planner_decision_for_test(
+            "What is the bank?",
+            intent="entity_overview",
+            query_language="uk",
+        ),
     )
     for k, v in kwargs.items():
         object.__setattr__(base, k, v) if hasattr(base, k) else setattr(base, k, v)
@@ -462,6 +468,7 @@ def test_reasoning_coordinator_invokes_memory_once(monkeypatch):
             query_vector=None,
             candidate_count=30,
             t0=0.0,
+            planner_decision=planner_decision_for_test("q", intent="unknown", query_language="uk"),
         )
 
     def _fake_assemble(self, prepared):

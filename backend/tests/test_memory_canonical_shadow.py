@@ -43,6 +43,7 @@ from app.services.retrieval_pipeline_service import (
     RetrievalDiagnostics,
 )
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig, KnowledgeProfile
+from tests._rag_planning_helpers import planner_decision_for_test
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 REASONING_PKG = APP_ROOT / "services" / "reasoning"
@@ -149,6 +150,11 @@ def _prepared(memory_assist: MemoryAssistResult | None = None) -> PreparedRetrie
         candidate_count=30,
         t0=0.0,
         memory_assist=memory_assist,
+        planner_decision=planner_decision_for_test(
+            "What is the bank?",
+            intent="entity_overview",
+            query_language="uk",
+        ),
     )
 
 

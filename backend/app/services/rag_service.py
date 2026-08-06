@@ -26,11 +26,12 @@ from app.services.embedding_service import EmbeddingService
 from app.services.reasoning.memory_assist_types import MemoryAssistResult
 from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
 from app.services.retrieval_pipeline_service import RetrievalPipelineService
+from app.services.rag_planning.coverage_validator import build_coverage_snapshot, coverage_decision_records
+from app.services.rag_planning.statistics import compute_quality_statistics
 from app.services.ollama_service import OllamaService
 from app.services.qdrant_service import QdrantService, SearchHit
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig
 from app.services.knowledge_profile_service import KnowledgeProfileService
-from app.services.query_intent_service import BROAD_INTENTS
 from app.services.query_normalization_service import QueryNormalizationService
 from app.services.llm_options_service import estimate_tokens, resolve_llm_options
 from app.services.llm_call_tracker import LlmCallTracker
@@ -40,7 +41,8 @@ from app.services.language_resolver_service import detect_query_language
 from app.services.model_warmup_service import ModelWarmupService
 from app.services.llm_generation_service import LlmGenerationService
 from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
-from app.services.polish_policy_service import evaluate_polish, is_overview_intent
+from app.services.polish_policy_service import evaluate_polish
+from app.services.rag_planning.intent_taxonomy import is_overview_intent
 from app.services.response_validator_service import ResponseValidatorService
 from app.services.cache_namespace_service import build_retrieval_namespace
 from app.services.retrieval_cache_service import (
@@ -188,6 +190,8 @@ class RagService:
         query_intent = "unknown"
         pipeline_context = None
         pipeline_diagnostics = None
+        planner_decision = None
+        evidence_plan_obj = None
         normalized = QueryNormalizationService.normalize(message)
         if trace:
             trace.begin("normalize_query")
@@ -379,6 +383,8 @@ class RagService:
             retrieval_ms = int((perf_counter() - t_retr) * 1000)
             pipeline_context = pipe_result.context
             pipeline_diagnostics = pipe_result.diagnostics
+            planner_decision = getattr(pipe_result, "planner_decision", None)
+            evidence_plan_obj = getattr(pipe_result, "evidence_plan", None)
             memory_assist = getattr(pipe_result, "memory_assist", None)
             canonical_shadow = getattr(pipe_result, "canonical_shadow", None)
             if memory_assist is not None and hasattr(memory_assist, "to_diagnostics"):
@@ -523,6 +529,7 @@ class RagService:
             speech_act_guidance=(
                 speech_plan.prompt_guidance if speech_plan else None
             ),
+            answer_plan=planner_decision.answer_plan if planner_decision else None,
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -687,12 +694,31 @@ class RagService:
             answer,
             query=message,
             context_text=context_text,
-            is_overview=query_intent in BROAD_INTENTS,
+            is_overview=is_overview_intent(query_intent),
         )
         if validation.applied_fixes:
             answer = validation.cleaned_answer
         if validation.warnings:
             prompt_diagnostics["validation_warnings"] = validation.warnings
+
+        if planner_decision and evidence_plan_obj and pipeline_diagnostics:
+            answer_coverage = build_coverage_snapshot(
+                evidence_plan=evidence_plan_obj,
+                knowledge_plan=planner_decision.knowledge_plan,
+                answer_text=answer,
+            )
+            pipeline_diagnostics.coverage_snapshot = answer_coverage.to_dict()
+            pipeline_diagnostics.quality_statistics = compute_quality_statistics(
+                planner_decision=planner_decision,
+                evidence_plan=evidence_plan_obj,
+                coverage=answer_coverage,
+            ).to_dict()
+            pre_chain = list(pipeline_diagnostics.decision_chain or [])
+            pre_stages = {r.get("stage") for r in pre_chain}
+            for record in coverage_decision_records(answer_coverage):
+                if record.stage not in pre_stages:
+                    pre_chain.append(record.to_dict())
+            pipeline_diagnostics.decision_chain = pre_chain
 
         if speech_plan and speech_plan.qualify_suffix:
             from app.services.language.speech_act_render import apply_qualify_suffix

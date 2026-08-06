@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.schemas.knowledge_profile import KnowledgeProfile
+from app.services.rag_planning.contracts import PlannerDecision
 from app.services.retrieval_intent_service import RetrievalIntentResult
 
 EVIDENCE_ASSEMBLY_PATH_LEGACY = "legacy"
@@ -26,6 +27,7 @@ class EvidenceAssemblyRequest:
     normalized: str
     intent_result: RetrievalIntentResult
     profile: KnowledgeProfile
+    planner_decision: PlannerDecision
     query_vector: list[float] | None = None
     expansion_terms: list[str] | None = None
     query_language: str = "unknown"

@@ -94,26 +94,11 @@ CANONICAL_DOCUMENT_TYPES = frozenset({
     "faq_page",
 })
 
-# Low-importance page roles for canonical/importance heuristics (structural, not industry-specific)
-LOW_OVERVIEW_PAGE_ROLES = frozenset({
-    "campaign",
-    "marketing",
-    "news",
-    "employee_story",
-    "hr",
-    "recruitment",
-})
-
-# Legacy alias — prefer page_role checks
-LOW_OVERVIEW_DOCUMENT_TYPES = frozenset({
-    "promotion_page",
-    "campaign_page",
-    "offer_page",
-    "action_page",
-    "news_page",
-    "blog_post",
-    "blog_page",
-})
+# Re-export from single taxonomy owner (rag_planning.intent_taxonomy).
+from app.services.rag_planning.intent_taxonomy import (
+    INCIDENTAL_DOCUMENT_TYPES as LOW_OVERVIEW_DOCUMENT_TYPES,
+    INCIDENTAL_PAGE_ROLES as LOW_OVERVIEW_PAGE_ROLES,
+)
 
 # Rule-based summary templates (no domain terms)
 SUMMARY_TEMPLATES: dict[str, str] = {

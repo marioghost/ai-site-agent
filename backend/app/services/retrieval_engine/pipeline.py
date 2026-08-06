@@ -13,12 +13,12 @@ from app.schemas.knowledge_profile import KnowledgeProfile
 from app.services.content_signals import token_set
 from app.services.embedding_service import EmbeddingService
 from app.services.qdrant_service import QdrantService, SearchHit
+from app.services.rag_planning.contracts import PlannerDecision
 from app.services.retrieval_engine.diagnostics_builder import DiagnosticsBuilder
 from app.services.retrieval_engine.document_aggregator import DocumentAggregator
 from app.services.retrieval_engine.document_reranker import DocumentReranker
 from app.services.retrieval_engine.document_scorer import DocumentScorer
 from app.services.retrieval_engine.pipeline_state import PipelineStateMachine
-from app.services.retrieval_engine.query_understanding import QueryUnderstandingService
 from app.services.retrieval_engine.retrieval_profiler import RetrievalProfiler
 from app.services.retrieval_engine.retrievers import HybridChunkRetriever
 from app.services.retrieval_engine.types import RankedDocument, RetrievalQualityMetrics
@@ -37,7 +37,6 @@ class DocumentRetrievalResult:
     pipeline_stages: list[dict] = field(default_factory=list)
     chunk_debug: dict | None = None
     retrieval_ms: int = 0
-    # Additive Step 040 marker; DFP leaves None, EvidenceAssemblyService stamps.
     evidence_assembly_path: str | None = None
 
 
@@ -69,6 +68,7 @@ class DocumentFirstRetrievalPipeline:
         normalized: str,
         intent_result: RetrievalIntentResult,
         profile: KnowledgeProfile,
+        planner_decision: PlannerDecision,
         query_vector: list[float] | None = None,
         expansion_terms: list[str] | None = None,
         query_language: str = "unknown",
@@ -76,16 +76,21 @@ class DocumentFirstRetrievalPipeline:
         t0 = perf_counter()
         state = PipelineStateMachine()
         s = self.settings
-        retrieval_profile = RetrievalProfiler.active(s)
+
+        strategy = planner_decision.retrieval_strategy
+        budget = planner_decision.retrieval_budget
+        top_k_dense = budget.chunk_pool_size
+        top_k_lexical = budget.chunk_pool_size
+        minimum_score = strategy.minimum_score
+        rerank_limit = budget.rerank_limit
+        profile_name = strategy.profile_name
+        understanding = planner_decision.understanding
+        if understanding is None:
+            raise ValueError("planner_decision.understanding is required for retrieval")
 
         state.start("intent_detection")
         legacy_intent = intent_result.legacy_intent
         retrieval_intent = intent_result.intent
-        understanding = QueryUnderstandingService.analyze(
-            query,
-            intent_result=intent_result,
-            query_language=query_language,
-        )
         state.complete(
             "intent_detection",
             detail=f"{retrieval_intent} → {understanding.expected_answer_type}",
@@ -100,15 +105,18 @@ class DocumentFirstRetrievalPipeline:
         state.start("chunk_retrieval")
         chunks, chunk_debug = self.chunk_retriever.retrieve(
             normalized_query=normalized,
-            top_k_dense=retrieval_profile.top_k_dense,
-            top_k_lexical=retrieval_profile.top_k_lexical,
+            top_k_dense=top_k_dense,
+            top_k_lexical=top_k_lexical,
             similarity_threshold=s.similarity_threshold,
             query_vector=query_vector,
             expansion_terms=expansion_terms,
             profile=profile,
             query_intent=legacy_intent,
         )
-        state.complete("chunk_retrieval", detail=f"{len(chunks)} chunks")
+        state.complete(
+            "chunk_retrieval",
+            detail=f"{len(chunks)} chunks (profile={profile_name}, pool={top_k_dense})",
+        )
 
         state.start("document_aggregation")
         documents, dup_removed = self.aggregator.aggregate(chunks)
@@ -148,14 +156,14 @@ class DocumentFirstRetrievalPipeline:
         if s.enable_reranking:
             selected, rejected = self.reranker.rerank(
                 documents,
-                limit=retrieval_profile.document_limit,
-                minimum_score=retrieval_profile.minimum_score,
+                limit=rerank_limit,
+                minimum_score=minimum_score,
                 understanding=understanding,
                 sources=sources,
             )
         else:
-            selected = documents[: retrieval_profile.document_limit]
-            rejected = documents[retrieval_profile.document_limit :]
+            selected = documents[:rerank_limit]
+            rejected = documents[rerank_limit:]
             for doc in selected:
                 doc.selected = True
                 doc.why_selected = doc.ranking_reason or "reranking disabled — top score"

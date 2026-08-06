@@ -1,4 +1,4 @@
-"""Context builder v3 — full article content, chunk fusion, token budget."""
+"""Context builder — serializes evidence selected by EvidencePlanner."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,12 +9,16 @@ from sqlalchemy.orm import Session
 from app.models.settings import Settings
 from app.models.source import Source
 from app.services.context_builder_service import BuiltContext, PageContextBlock
+from app.services.evidence_planning.types import EvidencePlan, SelectedEvidence
 from app.services.llm_mode_service import effective_generation_settings
+from app.services.llm_options_service import estimate_tokens
 from app.services.retrieval_engine.chunk_fusion import ChunkFusionService
 from app.services.retrieval_engine.context_budget import ContextBudgetService
 from app.services.retrieval_engine.content_sanitizer import (
     clean_context_text,
     extract_lead_paragraphs,
+    extract_overview_excerpt,
+    dedupe_near_duplicate_text,
     strip_ui_junk,
 )
 from app.services.qdrant_service import SearchHit
@@ -27,6 +31,7 @@ class ContextBuildReport:
   rejected_blocks: list[dict] = field(default_factory=list)
   fusion_ms: int = 0
   build_ms: int = 0
+  evidence_plan: dict | None = None
 
   def to_dict(self) -> dict:
     return {
@@ -35,132 +40,99 @@ class ContextBuildReport:
       "rejected_blocks": self.rejected_blocks,
       "fusion_ms": self.fusion_ms,
       "build_ms": self.build_ms,
+      "evidence_plan": self.evidence_plan,
     }
 
 
 class RetrievalContextBuilder:
-  """Build LLM context from fused chunks and source main content."""
+  """Serialize planner-selected evidence into LLM context."""
 
   def __init__(self, db: Session | None = None) -> None:
     self.db = db
     self._fusion = ChunkFusionService()
 
-  def build(
+  def build_from_plan(
     self,
-    hits: list[SearchHit],
+    evidence_plan: EvidencePlan,
     *,
     settings: Settings,
     user_message: str = "",
     system_prompt_estimate: str = "",
-    max_pages: int | None = None,
-    max_chunks_per_page: int | None = None,
   ) -> tuple[BuiltContext, ContextBuildReport]:
     from time import perf_counter
 
     t0 = perf_counter()
-    mode = (getattr(settings, "context_builder_mode", None) or "full_content").lower()
-    max_pages = max_pages or int(getattr(settings, "max_pages_in_context", 3) or 3)
-    max_chunks = max_chunks_per_page or int(getattr(settings, "max_chunks_per_page", 2) or 2)
-    merge_enabled = bool(getattr(settings, "chunk_merge_enabled", True))
-
     budget = ContextBudgetService.compute(
       settings,
       system_prompt=system_prompt_estimate,
       user_message=user_message,
     )
-    max_total_chars = ContextBudgetService.tokens_to_chars(budget.available_context_tokens)
     eff = effective_generation_settings(settings)
-    profile_chars = int(eff.get("max_chars_per_source") or 0)
-    settings_chars = int(getattr(settings, "max_chars_per_source", 800) or 800)
-    # Prefer mode profile cap when set; never exceed page share of total budget.
-    max_chars_per_source = profile_chars or settings_chars
-    max_chars_per_source = min(
-      max_chars_per_source,
-      max(400, max_total_chars // max(1, max_pages)),
-    )
-
-    if not hits:
-      return (
-        BuiltContext(blocks=[], prompt_text="", total_chunks=0, page_count=0),
-        ContextBuildReport(token_budget=budget.to_dict()),
-      )
-
-    source_meta = self._load_sources({h.source_id for h in hits})
-    grouped = self._fusion.group_by_source(hits)
-    page_scores = sorted(
-      ((sid, max(h.final_score or h.score for h in grp)) for sid, grp in grouped.items()),
-      key=lambda x: -x[1],
-    )
+    per_source_chars = int(eff.get("max_chars_per_source") or getattr(settings, "max_chars_per_source", 800) or 800)
+    source_meta = self._load_sources({s.candidate.source_id for s in evidence_plan.selected})
 
     blocks: list[PageContextBlock] = []
-    report = ContextBuildReport(token_budget=budget.to_dict())
-    total_chars = 0
+    report = ContextBuildReport(
+      token_budget=budget.to_dict(),
+      evidence_plan=evidence_plan.to_diagnostics(),
+    )
+    assembled: list[str] = []
     total_chunks = 0
 
-    for sid, page_score in page_scores:
-      if len(blocks) >= max_pages:
-        report.rejected_blocks.append(
-          {"source_id": sid, "reason": "page_limit", "score": page_score}
-        )
-        continue
-      group = grouped[sid]
-      fused = self._fusion.fuse_source_chunks(
-        group,
-        merge_neighbours=merge_enabled,
-        max_chunks=max(max_chunks, 4 if merge_enabled else max_chunks),
-      )
-      meta = source_meta.get(sid, {})
-      text = self._compose_content(
-        fused,
-        meta,
-        mode=mode,
-        max_chars=max_chars_per_source,
+    for item in evidence_plan.selected:
+      cand = item.candidate
+      meta = source_meta.get(cand.source_id, {})
+      text = self._compose_block_text(
+        cand.text,
+        section_text=cand.section_text,
+        summary=meta.get("summary", ""),
+        page_role=cand.page_role,
+        max_chars=per_source_chars,
       )
       if not text.strip():
-        report.rejected_blocks.append(
-          {"source_id": sid, "reason": "empty_content", "score": page_score}
-        )
+        report.rejected_blocks.append({"source_id": cand.source_id, "reason": "empty_content"})
         continue
-      rep = fused[0]
-      header_len = len(rep.title or "") + len(rep.url or "") + 80
-      piece_len = header_len + len(text)
-      if total_chars + piece_len > max_total_chars and blocks:
-        report.rejected_blocks.append(
-          {"source_id": sid, "reason": "token_budget", "score": page_score}
-        )
+      if any(dedupe_near_duplicate_text(prev, text) for prev in assembled):
+        report.rejected_blocks.append({"source_id": cand.source_id, "reason": "near_duplicate"})
         continue
+
       block = PageContextBlock(
-        source_id=sid,
-        title=rep.title or rep.url,
-        url=rep.url,
-        chunks_used=len(fused),
+        source_id=cand.source_id,
+        title=cand.title,
+        url=cand.url,
+        chunks_used=1,
         text=text,
-        score=page_score,
-        content_categories=sorted(
-          {getattr(h, "content_category", "generic") or "generic" for h in fused}
-        ),
-        document_type=getattr(rep, "document_type", "generic_page") or "generic_page",
-        page_role=getattr(rep, "page_role", "generic") or "generic",
-        source_summary=meta.get("summary", "") or getattr(rep, "source_profile_summary", "") or "",
+        score=cand.authority_fitness,
+        content_categories=["generic"],
+        document_type=cand.document_type,
+        page_role=cand.page_role,
+        source_summary=meta.get("summary", ""),
       )
       blocks.append(block)
-      total_chunks += len(fused)
-      total_chars += piece_len
+      assembled.append(text)
+      total_chunks += 1
       report.selected_blocks.append(
         {
-          "source_id": sid,
-          "url": block.url,
-          "chunks": len(fused),
+          "source_id": cand.source_id,
+          "url": cand.url,
           "chars": len(text),
-          "raw_chars": meta.get("raw_chars", 0),
-          "cleaned_chars": len(text),
-          "score": round(page_score, 4),
-          "mode": mode,
-          "selection_reason": getattr(rep, "selection_reason", "") or "",
+          "token_estimate": estimate_tokens(len(text)),
+          "authority_fitness": round(cand.authority_fitness, 4),
+          "fitness_band": cand.fitness_band,
+          "marginal_value": round(item.marginal_value, 4),
+          "selection_reason": item.selection_reason,
+          "aspects_new": list(item.aspects_new),
+          "final_order": item.final_order,
+          "broad_injected": cand.broad_injected,
         }
       )
 
+    for rej in evidence_plan.rejected[:20]:
+      report.rejected_blocks.append(rej.to_dict())
+
     prompt_text = self._format_prompt(blocks)
+    report.token_budget["estimated_context_chars"] = len(prompt_text)
+    report.token_budget["estimated_context_tokens"] = estimate_tokens(len(prompt_text))
     report.build_ms = int((perf_counter() - t0) * 1000)
     return (
       BuiltContext(
@@ -172,92 +144,140 @@ class RetrievalContextBuilder:
       report,
     )
 
+  def build(
+    self,
+    hits: list[SearchHit],
+    *,
+    settings: Settings,
+    user_message: str = "",
+    system_prompt_estimate: str = "",
+    evidence_plan: EvidencePlan | None = None,
+    **kwargs,
+  ) -> tuple[BuiltContext, ContextBuildReport]:
+    if evidence_plan is not None:
+      return self.build_from_plan(
+        evidence_plan,
+        settings=settings,
+        user_message=user_message,
+        system_prompt_estimate=system_prompt_estimate,
+      )
+    return self._build_from_hits(
+      hits,
+      settings=settings,
+      user_message=user_message,
+      system_prompt_estimate=system_prompt_estimate,
+      max_pages=int(kwargs.get("max_pages", 3) or 3),
+    )
+
+  def _build_from_hits(
+    self,
+    hits: list[SearchHit],
+    *,
+    settings: Settings,
+    user_message: str = "",
+    system_prompt_estimate: str = "",
+    max_pages: int = 3,
+  ) -> tuple[BuiltContext, ContextBuildReport]:
+    from time import perf_counter
+
+    t0 = perf_counter()
+    budget = ContextBudgetService.compute(
+      settings,
+      system_prompt=system_prompt_estimate,
+      user_message=user_message,
+    )
+    eff = effective_generation_settings(settings)
+    per_source_chars = int(eff.get("max_chars_per_source") or getattr(settings, "max_chars_per_source", 800) or 800)
+    blocks: list[PageContextBlock] = []
+    report = ContextBuildReport(token_budget=budget.to_dict())
+    seen_urls: set[str] = set()
+
+    for hit in hits[:max_pages]:
+      url = (hit.url or "").strip()
+      if url in seen_urls:
+        continue
+      seen_urls.add(url)
+      text = self._compose_block_text(
+        hit.text or "",
+        section_text="",
+        summary=getattr(hit, "source_profile_summary", "") or "",
+        page_role=getattr(hit, "page_role", "") or "",
+        max_chars=per_source_chars,
+      )
+      if not text.strip():
+        continue
+      blocks.append(
+        PageContextBlock(
+          source_id=hit.source_id,
+          title=hit.title or url,
+          url=url,
+          chunks_used=1,
+          text=text,
+          score=float(hit.final_score or hit.score or 0.0),
+          content_categories=["generic"],
+          document_type=hit.document_type or "generic_page",
+          page_role=getattr(hit, "page_role", "") or "",
+          source_summary="",
+        )
+      )
+      report.selected_blocks.append({"url": url, "chars": len(text)})
+
+    prompt_text = self._format_prompt(blocks)
+    report.build_ms = int((perf_counter() - t0) * 1000)
+    return (
+      BuiltContext(
+        blocks=blocks,
+        prompt_text=prompt_text,
+        total_chunks=len(blocks),
+        page_count=len(blocks),
+      ),
+      report,
+    )
+
   def _load_sources(self, source_ids: set[int]) -> dict[int, dict]:
     if not self.db or not source_ids:
       return {}
     rows = self.db.execute(select(Source).where(Source.id.in_(source_ids))).scalars().all()
     return {
       s.id: {
-        "main_content": (s.main_content_text or "").strip(),
         "summary": (s.llm_summary or "").strip(),
-        "boilerplate_ratio": float(s.boilerplate_ratio or 0.0),
-        "document_type": s.document_type or "generic_page",
       }
       for s in rows
     }
 
-  def _compose_content(
-    self,
-    fused: list[SearchHit],
-    meta: dict,
+  @staticmethod
+  def _compose_block_text(
+    raw_text: str,
     *,
-    mode: str,
+    section_text: str,
+    summary: str,
+    page_role: str,
     max_chars: int,
   ) -> str:
-    main_content = strip_ui_junk(meta.get("main_content", ""))
-    summary = strip_ui_junk(meta.get("summary", ""))
-    meta["raw_chars"] = len(main_content)
-    chunk_segments: list[str] = []
-    for hit in fused:
-      heading = strip_ui_junk((hit.heading or "").strip())
-      body = strip_ui_junk((hit.text or "").strip())
-      if heading and body and heading.lower() not in body.lower()[:80]:
-        chunk_segments.append(f"## {heading}\n{body}")
-      elif body:
-        chunk_segments.append(body)
-      elif heading:
-        chunk_segments.append(f"## {heading}")
-
-    chunk_text = clean_context_text(
-      ChunkFusionService.merge_text_segments(chunk_segments),
-      max_chars=max_chars,
-    )
-    parts: list[str] = []
-
-    if summary and summary.lower() not in (chunk_text or "").lower()[:120]:
-      parts.append(f"Summary: {summary[: min(500, len(summary))]}")
-
-    if mode == "full_content" and main_content:
-      excerpt = self._extract_relevant_excerpt(main_content, chunk_text, max_chars)
-      excerpt = clean_context_text(excerpt, max_chars=max_chars)
-      if excerpt and len(excerpt) >= 200:
-        parts.append(excerpt)
-      elif main_content:
-        lead = extract_lead_paragraphs(main_content, max_chars)
-        if lead:
-          parts.append(lead)
-      if chunk_text and len(chunk_text) >= 120:
-        if not parts or chunk_text[:80] not in parts[-1][:200]:
-          parts.append(chunk_text[: max(300, max_chars // 3)])
-    elif chunk_text:
-      parts.append(chunk_text[:max_chars])
-    elif main_content:
-      parts.append(extract_lead_paragraphs(main_content, max_chars))
+    base_text = section_text or raw_text
+    prefer_overview = page_role in {"organization_overview", "service_overview", "documentation", "faq"}
+    if prefer_overview:
+      body = extract_overview_excerpt(
+        base_text,
+        max_chars=max_chars,
+        chunk_hint=section_text[:180] if section_text else "",
+        prefer_identity=page_role != "faq",
+      )
     else:
-      return ""
+      body = extract_lead_paragraphs(base_text, max_chars)
+    body = clean_context_text(body or base_text, max_chars=max_chars)
 
-    combined = "\n\n".join(p for p in parts if p.strip())
-    return clean_context_text(combined, max_chars=max_chars)
-
-  @staticmethod
-  def _extract_relevant_excerpt(main_content: str, chunk_hint: str, max_chars: int) -> str:
-    if len(main_content) <= max_chars:
-      return main_content
-    if not chunk_hint:
-      return main_content[:max_chars]
-    hint_words = {w.lower() for w in chunk_hint.split() if len(w) > 3}
-    if not hint_words:
-      return main_content[:max_chars]
-    best_start = 0
-    best_score = -1
-    step = max(200, max_chars // 4)
-    for start in range(0, max(1, len(main_content) - max_chars), step):
-      window = main_content[start : start + max_chars]
-      score = sum(1 for w in hint_words if w in window.lower())
-      if score > best_score:
-        best_score = score
-        best_start = start
-    return main_content[best_start : best_start + max_chars]
+    summary_clean = strip_ui_junk(summary or "")
+    if (
+      summary_clean
+      and body
+      and not dedupe_near_duplicate_text(body, summary_clean)
+      and summary_clean.lower() not in body.lower()[:180]
+    ):
+      remaining = max_chars - len(body) - len("\n\nPage summary:\n")
+      if remaining > 120:
+        body = f"{body}\n\nPage summary:\n{summary_clean[:remaining].strip()}"
+    return body[:max_chars]
 
   @staticmethod
   def _format_prompt(blocks: list[PageContextBlock]) -> str:
@@ -266,6 +286,7 @@ class RetrievalContextBuilder:
       header = f"Source {i}:\nTitle: {block.title}\nURL: {block.url}"
       if block.document_type and block.document_type != "generic_page":
         header += f"\nType: {block.document_type}"
-      # Summary lives in Content via _compose_content — do not duplicate here.
-      parts.append(f"{header}\nContent:\n{block.text}")
+      if block.page_role and block.page_role != "generic":
+        header += f"\nRole: {block.page_role}"
+      parts.append(f"{header}\nEvidence excerpt:\n{block.text}")
     return "\n\n---\n\n".join(parts)

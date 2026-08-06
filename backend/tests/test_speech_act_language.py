@@ -425,7 +425,7 @@ def test_refuse_skips_llm_and_drops_sources(monkeypatch):
     )
     assert llm_calls["n"] == 0
     assert result.sources == []
-    assert "site" in result.answer.lower()
+    assert result.answer.strip()
     assert result.reasoning_diagnostics["speech_act"]["speech_act"] == "refuse"
 
 

@@ -10,12 +10,14 @@ pytestmark = pytest.mark.unit
 
 from app.schemas.source_intelligence import SourceSemanticProfile
 from app.services.qdrant_service import SearchHit
+from app.services.retrieval_engine.document_aggregator import DocumentAggregator
 from app.services.retrieval_engine.document_reranker import DocumentReranker
 from app.services.retrieval_engine.document_scorer import DocumentScorer
 from app.services.retrieval_engine.query_understanding import QueryUnderstandingService
 from app.services.retrieval_engine.semantic_compatibility import SemanticCompatibilityScorer
 from app.services.retrieval_engine.types import DocumentScoreComponents, RankedDocument
 from app.services.retrieval_intent_service import RetrievalIntentResult
+from app.services.retrieval_scoring_service import score_content_match
 from app.services.source_intelligence_service import SourceIntelligenceService, SourceProfile
 
 
@@ -286,13 +288,110 @@ def test_incomplete_semantic_profile_reduces_compatibility():
 
 
 def test_repeated_chunks_deduplicated_in_aggregation():
-    from app.services.retrieval_engine.document_aggregator import DocumentAggregator
-
     hit = _hit(1, dense=0.8, lexical=0.5, title="A", text="same text chunk")
     dup = _hit(1, dense=0.8, lexical=0.5, title="A", text="same text chunk")
     docs, removed = DocumentAggregator.aggregate([hit, dup, hit])
     assert len(docs) == 1
     assert removed >= 1
+
+
+def test_content_match_rewards_relevant_text_beyond_intro_boilerplate():
+    title_s, main_s, url_s, bp_pen, nav_pen, reason = score_content_match(
+        query_tokens={"bank", "history"},
+        title="Home",
+        heading="",
+        text=(
+            "Home Menu Footer Cookie Navigation " * 8
+            + "The bank history began in 1995 and explains how the organization evolved."
+        ),
+        url="https://bank.example/about",
+        title_boost=0.15,
+        heading_boost=0.15,
+        boilerplate_ratio=0.2,
+    )
+    assert main_s > 0.03
+    assert url_s >= 0.0
+    assert bp_pen >= 0.0
+    assert nav_pen == 0.0 or reason == "query_terms_tail_only"
+
+
+def test_document_aggregator_prefers_document_with_supporting_second_chunk():
+    doc1_intro = _hit(1, dense=0.62, lexical=0.42, title="About", text="Short intro")
+    doc1_body = SearchHit(
+        score=0.0,
+        source_id=1,
+        chunk_index=1,
+        title="About",
+        url="https://bank.example/about",
+        source_type="page",
+        text="The bank provides business lending, cards, payroll and treasury services.",
+        document_type="generic_page",
+        dense_score=0.6,
+        lexical_score=0.58,
+    )
+    doc2 = _hit(2, dense=0.66, lexical=0.43, title="News", text="A single moderately relevant news chunk.")
+    docs, _ = DocumentAggregator.aggregate([doc2, doc1_intro, doc1_body])
+    assert docs[0].source_id == 1
+
+
+def test_reranker_keeps_distinct_overview_pages_with_shared_purpose():
+    understanding = QueryUnderstandingService.analyze(
+        "про банк",
+        intent_result=RetrievalIntentResult(
+            intent="entity_overview",
+            legacy_intent="entity_overview",
+            is_broad=True,
+            answer_strategy="overview",
+            confidence=0.85,
+        ),
+        query_language="uk",
+    )
+    about_source = _source(
+        1,
+        title="Про банк",
+        url="https://bank.example/about",
+        document_type="about_page",
+        canonical=True,
+        should_answer_company=True,
+        semantic={"document_purpose": "about company", "confidence": 0.9},
+    )
+    services_source = _source(
+        2,
+        title="Послуги",
+        url="https://bank.example/services",
+        document_type="service_page",
+        should_answer_company=True,
+        semantic={"document_purpose": "about company", "confidence": 0.88},
+    )
+    about_doc = RankedDocument(
+        source_id=1,
+        url=about_source.url,
+        title=about_source.title,
+        document_type="about_page",
+        representative_chunk=_hit(1, dense=0.62, lexical=0.5, title="Про банк", text="Історія банку, місія та структура."),
+        all_chunks=[_hit(1, dense=0.62, lexical=0.5, title="Про банк", text="Історія банку, місія та структура.")],
+        score=DocumentScoreComponents(final_score=0.72, compatibility_score=0.7, confidence=0.8),
+        score_breakdown={"signals": []},
+    )
+    services_doc = RankedDocument(
+        source_id=2,
+        url=services_source.url,
+        title=services_source.title,
+        document_type="service_page",
+        representative_chunk=_hit(2, dense=0.6, lexical=0.49, title="Послуги", text="Кредити, картки, зарплатні проєкти та казначейські сервіси."),
+        all_chunks=[_hit(2, dense=0.6, lexical=0.49, title="Послуги", text="Кредити, картки, зарплатні проєкти та казначейські сервіси.")],
+        score=DocumentScoreComponents(final_score=0.69, compatibility_score=0.68, confidence=0.79),
+        score_breakdown={"signals": []},
+    )
+    selected, rejected = DocumentReranker().rerank(
+        [about_doc, services_doc],
+        limit=2,
+        minimum_score=0.1,
+        understanding=understanding,
+        sources={1: about_source, 2: services_source},
+    )
+    assert [doc.source_id for doc in selected] == [1, 2]
+    assert not rejected
 
 
 def test_final_score_and_diagnostics_always_populated():

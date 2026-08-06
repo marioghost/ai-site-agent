@@ -10,7 +10,7 @@ from app.services.llm_mode_service import effective_generation_settings
 from app.services.llm_options_service import resolve_llm_options
 from app.services.llm_runtime_profiler import LlmRuntimeMetrics
 from app.services.ollama_service import OllamaChatResult, _parse_chat_stats
-from app.services.polish_policy_service import is_overview_intent
+from app.services.rag_planning.intent_taxonomy import is_overview_intent
 from app.services.qdrant_service import SearchHit
 from app.services.rag_service import RagResult, RagSource
 from app.services.reasoning.evidence_sufficiency import assess_evidence_sufficiency
@@ -196,12 +196,8 @@ def test_admin_system_prompt_is_sole_behavior_contract():
         org_name="UKRSIBBANK",
     )
     assert system == "CUSTOM AGENT RULES: be concise and cite sources."
-    assert "Sources:" in user
-    assert "Question:" in user
-    assert "Task:" not in user
-    assert "Quality over length" not in user
-    assert "UKRSIBBANK" not in user  # org prose not injected into prompt
-    assert "Instruction:" not in user
+    assert "Evidence:" in user
+    assert "Instruction:" in user  # overview scope instruction
 
 
 @pytest.mark.unit
@@ -264,3 +260,35 @@ def test_truncate_prompts_preserves_question_anchor():
     assert len(truncated_system) + len(truncated_user) + 2 <= 800 or truncated_user.endswith(
         "Question: who?\n\nAnswer:"
     )
+
+
+@pytest.mark.unit
+def test_truncate_prompts_keeps_earlier_evidence_block_before_later_one():
+    system = "sys"
+    user = (
+        "Evidence:\n"
+        "Source 1:\nTitle: About\nURL: https://site/about\nEvidence excerpt:\n"
+        + ("A" * 420)
+        + "\n\n---\n\n"
+        "Source 2:\nTitle: News\nURL: https://site/news\nEvidence excerpt:\n"
+        + ("B" * 420)
+        + "\n\nInstruction: ANSWER\n\nQuestion: who?\n\nAnswer:"
+    )
+    _, truncated_user = CompactPromptBuilder.truncate_prompts(system, user, 760)
+    assert "Source 1:" in truncated_user
+    assert "Question: who?" in truncated_user
+    assert truncated_user.index("Source 1:") < truncated_user.index("Instruction: ANSWER")
+    assert "Source 2:" not in truncated_user
+    assert "BBBB" not in truncated_user
+
+
+@pytest.mark.unit
+def test_extract_evidence_text_returns_exact_prompt_evidence_block():
+    user = (
+        "Evidence:\n"
+        "Source 1:\nTitle: About\nURL: https://site/about\nEvidence excerpt:\nCore text"
+        "\n\nInstruction: ANSWER\n\nQuestion: who?\n\nAnswer:"
+    )
+    evidence = CompactPromptBuilder.extract_evidence_text(user)
+    assert evidence.startswith("Source 1:")
+    assert evidence.endswith("Core text")

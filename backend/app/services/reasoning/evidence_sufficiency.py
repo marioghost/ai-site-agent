@@ -29,17 +29,7 @@ _ENUMERATION_INTENTS = frozenset(
 )
 _ENUMERATION_STRATEGIES = frozenset({"list"})
 
-# Scoped organization/topic overviews — selected site evidence can support an answer
-# without claiming exhaustive world coverage (do not force completeness-risk qualify).
-_OVERVIEW_INTENTS = frozenset(
-    {
-        "entity_overview",
-        "topic_overview",
-        "organization_overview",
-        "site_overview",
-        "overview",
-    }
-)
+from app.services.rag_planning.intent_taxonomy import OVERVIEW_INTENTS
 _OVERVIEW_STRATEGIES = frozenset({"overview"})
 
 # Ambiguity / clarification — cannot claim sufficiency.
@@ -133,7 +123,7 @@ def _is_enumeration(intent: str, strategy: str) -> bool:
     if strategy_l in _ENUMERATION_STRATEGIES:
         return True
     # Factual entity/topic overviews are not list-completeness problems.
-    if intent_l in _OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES:
+    if intent_l in OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES:
         return False
     if intent_l in _ENUMERATION_INTENTS:
         return True
@@ -147,7 +137,7 @@ def _is_scoped_overview(intent: str, strategy: str) -> bool:
     strategy_l = (strategy or "").lower()
     if strategy_l in _ENUMERATION_STRATEGIES:
         return False
-    return intent_l in _OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES
+    return intent_l in OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES
 
 
 def _is_ambiguous(intent: str, used_context: bool, sources: list[RagSource]) -> bool:

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from app.models.settings import Settings
 from app.services.llm_mode_service import effective_generation_settings
-from app.services.query_intent_service import BROAD_INTENTS
 
 
 @dataclass(frozen=True)
@@ -88,7 +87,3 @@ def should_polish(
         error_type=error_type,
         is_fallback=is_fallback,
     ).enabled
-
-
-def is_overview_intent(intent: str) -> bool:
-    return intent in BROAD_INTENTS

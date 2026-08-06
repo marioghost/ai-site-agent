@@ -9,6 +9,7 @@ from app.services.knowledge_profile_service import (
     BROAD_ROUTING_INTENTS,
     KnowledgeProfileService,
 )
+from app.services.rag_planning.intent_taxonomy import OVERVIEW_INTENTS
 
 QueryIntent = Literal[
     "entity_overview",
@@ -22,9 +23,6 @@ QueryIntent = Literal[
 ]
 
 BROAD_INTENTS: frozenset[str] = BROAD_ROUTING_INTENTS | frozenset({"contacts_query"})
-OVERVIEW_INTENTS: frozenset[str] = frozenset(
-    {"entity_overview", "topic_overview", "category_overview"}
-)
 
 
 @dataclass

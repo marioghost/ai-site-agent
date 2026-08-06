@@ -1,6 +1,8 @@
 """Document-level reranking with semantic diversity and human explanations."""
 from __future__ import annotations
 
+from difflib import SequenceMatcher
+
 from app.models.source import Source
 from app.services.retrieval_engine.explanation_builder import ExplanationBuilder
 from app.services.retrieval_engine.query_understanding import QueryUnderstanding
@@ -67,10 +69,13 @@ class DocumentReranker:
                 rejected.append(doc)
                 continue
 
+            overlap = self._content_overlap(doc, selected)
+
             if (
                 is_broad
                 and purpose
                 and purpose in seen_purposes
+                and overlap >= 0.78
                 and not (profile and profile.canonical)
                 and len(selected) >= max(1, limit // 2)
             ):
@@ -90,6 +95,7 @@ class DocumentReranker:
                 is_broad
                 and topic_key
                 and topic_key in seen_topics
+                and overlap >= 0.84
                 and not (profile and profile.canonical)
             ):
                 reason = f"duplicate topic coverage ({topic_key[:48]})"
@@ -195,3 +201,29 @@ class DocumentReranker:
             hit.score_breakdown = doc.score_breakdown
             hits.append(hit)
         return hits
+
+    @staticmethod
+    def _content_overlap(doc: RankedDocument, selected: list[RankedDocument]) -> float:
+        if not selected:
+            return 0.0
+        sample = DocumentReranker._doc_sample(doc)
+        if not sample:
+            return 0.0
+        best = 0.0
+        for item in selected:
+            other = DocumentReranker._doc_sample(item)
+            if not other:
+                continue
+            best = max(best, SequenceMatcher(None, sample, other).ratio())
+        return best
+
+    @staticmethod
+    def _doc_sample(doc: RankedDocument) -> str:
+        parts: list[str] = []
+        for chunk in doc.all_chunks[:3]:
+            text = (chunk.text or "").strip()
+            if text:
+                parts.append(text[:500])
+        if not parts and doc.representative_chunk.text:
+            parts.append(doc.representative_chunk.text[:500])
+        return "\n".join(parts).lower()

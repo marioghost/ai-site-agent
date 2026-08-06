@@ -19,6 +19,7 @@ from app.services.retrieval_engine.pipeline import DocumentRetrievalResult
 from app.services.retrieval_engine.types import RankedDocument, RetrievalQualityMetrics
 from app.services.retrieval_intent_service import RetrievalIntentResult
 from app.services.retrieval_pipeline_service import RetrievalPipelineService
+from tests._rag_planning_helpers import planner_decision_for_test
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 EA_PKG = APP_ROOT / "services" / "evidence_assembly"
@@ -89,6 +90,11 @@ def _request() -> EvidenceAssemblyRequest:
         normalized="what is the org",
         intent_result=_intent(),
         profile=_profile(),
+        planner_decision=planner_decision_for_test(
+            "What is the org?",
+            intent="unknown",
+            query_language="en",
+        ),
         query_vector=[0.1, 0.2],
         expansion_terms=None,
         query_language="en",
@@ -156,6 +162,10 @@ def test_evidence_assembly_is_stateless(monkeypatch):
             normalized="other",
             intent_result=_intent(),
             profile=_profile(),
+            planner_decision=planner_decision_for_test(
+                "Other?",
+                intent="unknown",
+            ),
         )
     )
     assert r1.selected_hits is expected.selected_hits
@@ -369,6 +379,11 @@ def test_flag_on_off_structurally_equivalent_retrieval(monkeypatch):
     on_dict = on.diagnostics.to_dict()
     assert off_dict.pop("evidence_assembly_path") == EVIDENCE_ASSEMBLY_PATH_LEGACY
     assert on_dict.pop("evidence_assembly_path") == EVIDENCE_ASSEMBLY_PATH_SERVICE
+    for d in (off_dict, on_dict):
+        if ep := d.get("evidence_plan"):
+            ep.pop("plan_ms", None)
+        if pd := d.get("planner_decision"):
+            pd.pop("plan_ms", None)
     assert off_dict == on_dict
     assert expected.selected_hits[0].url == on.hits[0].url
 

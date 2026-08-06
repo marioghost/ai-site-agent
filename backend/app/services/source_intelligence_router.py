@@ -6,24 +6,20 @@ import re
 from app.models.settings import Settings
 from app.schemas.source_intelligence import SourceSemanticProfile
 from app.services.qdrant_service import SearchHit
-from app.services.retrieval_engine.query_understanding import QueryUnderstanding, QueryUnderstandingService
+from app.services.retrieval_engine.query_understanding import QueryUnderstandingService
 from app.services.retrieval_engine.semantic_compatibility import SemanticCompatibilityScorer
 from app.services.retrieval_intent_service import RetrievalIntentResult
 from app.services.settings_flags import setting_bool
 from app.services.source_intelligence_service import SourceIntelligenceService, SourceProfile
 
-OVERVIEW_INTENTS = frozenset({
-    "entity_overview",
-    "site_overview",
-    "organization_overview",
-    "topic_overview",
-    "category_overview",
-})
-
-PRODUCT_INTENTS = frozenset({"topic_overview", "category_overview", "product_query", "listing"})
-SUPPORT_INTENTS = frozenset({"faq_like", "support_query", "support", "faq", "troubleshooting"})
-CONTACT_INTENTS = frozenset({"contacts_query", "contacts"})
-LEGAL_INTENTS = frozenset({"legal", "documentation"})
+from app.services.rag_planning.purpose_catalog import purpose_expectations_for_answer_type
+from app.services.rag_planning.intent_taxonomy import (
+    CONTACT_INTENTS,
+    OVERVIEW_INTENTS,
+    PRODUCT_INTENTS,
+    SUPPORT_INTENTS,
+    POLICY_INTENTS as LEGAL_INTENTS,
+)
 
 _ROUTING_ANSWER_TYPE: dict[str, str] = {
     "overview": "overview",
@@ -79,9 +75,7 @@ class SourceIntelligenceRouter:
             intent_result=intent_result,
         )
         if understanding.expected_answer_type != answer_type:
-            preferred, unsuitable = QueryUnderstandingService._purpose_expectations(
-                answer_type, query_intent
-            )
+            preferred, unsuitable = purpose_expectations_for_answer_type(answer_type)
             preferred_evidence, unsuitable_evidence = QueryUnderstandingService._evidence_expectations(
                 query,
                 answer_type,

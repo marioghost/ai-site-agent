@@ -32,7 +32,6 @@ from app.models.chunk import Chunk
 from app.models.source import Source
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import AppliedKnowledgeConfig, KnowledgeProfile
-from app.services.canonical_source_service import CanonicalSourceService
 from app.services.reasoning.memory_assist_types import MemoryAssistResult
 from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
 from app.services.context_builder_service import BuiltContext, ContextBuilderService
@@ -45,8 +44,18 @@ from app.services.feature_flags import (
     evidence_assembly_enabled,
     legacy_doc_type_canonical_enabled,
 )
+from app.services.evidence_planning.planner import EvidencePlanner
+from app.services.evidence_planning.types import EvidencePlan
+from app.services.rag_planning.coverage_validator import (
+    build_coverage_snapshot,
+    coverage_decision_records,
+)
+from app.services.rag_planning.query_planner import QueryPlanner
+from app.services.rag_planning.statistics import compute_quality_statistics
+from app.services.rag_planning.contracts import CoverageSnapshot, PlannerDecision
 from app.services.retrieval_engine.context_builder import RetrievalContextBuilder
 from app.services.retrieval_engine.diagnostics_builder import DiagnosticsBuilder
+from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
 from app.services.retrieval_engine.pipeline import (
     DocumentFirstRetrievalPipeline,
     DocumentRetrievalResult,
@@ -56,7 +65,6 @@ from app.services.qdrant_service import QdrantService, SearchHit
 from app.services.embedding_service import EmbeddingService
 from app.services.retrieval_engine.semantic_expansion import SemanticExpansionService
 from app.services.retrieval_intent_service import (
-    BROAD_RETRIEVAL_INTENTS,
     RetrievalIntentResult,
     RetrievalIntentService,
 )
@@ -123,6 +131,12 @@ class RetrievalDiagnostics:
     retrieval_coordinator: str = RETRIEVAL_COORDINATOR_RAG
     # Step 055: legacy CanonicalSourceService doc-type path status.
     legacy_doc_type_canonical_path: str = ""
+    suppressed_incidental: list[dict] = field(default_factory=list)
+    evidence_plan: dict | None = None
+    planner_decision: dict | None = None
+    coverage_snapshot: dict | None = None
+    decision_chain: list[dict] = field(default_factory=list)
+    quality_statistics: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -168,6 +182,13 @@ class RetrievalDiagnostics:
             "evidence_assembly_path": self.evidence_assembly_path,
             "retrieval_coordinator": self.retrieval_coordinator,
             "legacy_doc_type_canonical_path": self.legacy_doc_type_canonical_path,
+            "suppressed_incidental": self.suppressed_incidental,
+            "evidence_plan": self.evidence_plan,
+            "planner_decision": self.planner_decision,
+            "coverage_snapshot": self.coverage_snapshot,
+            "decision_chain": self.decision_chain,
+            "quality_statistics": self.quality_statistics,
+            "polish_skip_reason": self.polish_skip_reason,
         }
 
 
@@ -181,6 +202,9 @@ class PipelineResult:
     retrieval_ms: int = 0
     memory_assist: MemoryAssistResult | None = None
     canonical_shadow: MemoryCanonicalShadowResult | None = None
+    planner_decision: PlannerDecision | None = None
+    evidence_plan: EvidencePlan | None = None
+    coverage_snapshot: CoverageSnapshot | None = None
 
     def with_canonical_shadow(
         self, canonical_shadow: MemoryCanonicalShadowResult | None
@@ -207,6 +231,7 @@ class PreparedRetrieval:
     query_vector: list[float] | None
     candidate_count: int
     t0: float
+    planner_decision: PlannerDecision
     memory_assist: MemoryAssistResult | None = None
 
     def with_memory_assist(
@@ -326,7 +351,16 @@ class RetrievalPipelineService:
         diag.deprioritize_document_types = rule_cfg.deprioritized_document_types
         diag.boost_content_hints = rule_cfg.boosted_content_hints
 
-        candidate_count = getattr(s, "retrieval_candidate_count", None) or 30
+        planner_decision = QueryPlanner.plan(
+            message,
+            intent_result=intent_result,
+            profile=profile,
+            settings=s,
+            query_language=query_language,
+        )
+        candidate_count = planner_decision.retrieval_budget.chunk_pool_size
+        diag.planner_decision = planner_decision.to_diagnostics()
+        diag.decision_chain = [d.to_dict() for d in planner_decision.decision_chain]
 
         return PreparedRetrieval(
             message=message,
@@ -339,6 +373,7 @@ class RetrievalPipelineService:
             query_vector=query_vector,
             candidate_count=candidate_count,
             t0=t0,
+            planner_decision=planner_decision,
         )
 
     def assemble_evidence(self, prepared: PreparedRetrieval) -> DocumentRetrievalResult:
@@ -355,6 +390,7 @@ class RetrievalPipelineService:
                 diag.expanded_terms if s.enable_query_expansion else None
             ),
             query_language=prepared.query_language,
+            planner_decision=prepared.planner_decision,
         )
         if evidence_assembly_enabled():
             assembly = EvidenceAssemblyService(
@@ -404,12 +440,15 @@ class RetrievalPipelineService:
 
         if (
             setting_bool(s, "enable_broad_question_mode", default=True)
-            and (intent_result.is_broad or intent_result.intent in BROAD_RETRIEVAL_INTENTS)
+            and prepared.planner_decision.retrieval_strategy.enable_broad_inject
         ):
-            injected = self._inject_broad_pages(hits, prepared.profile)
+            inject_limit = prepared.planner_decision.retrieval_budget.inject_limit
+            injected = self._inject_broad_pages(
+                hits, prepared.profile, limit=max(inject_limit, 1)
+            )
             if injected:
                 diag.broad_injected = [h.url for h in injected]
-                hits = self._merge_hits(injected, hits)
+                hits = hits + injected
 
         if not setting_bool(s, "enable_canonical_source_selection"):
             diag.legacy_doc_type_canonical_path = (
@@ -419,21 +458,55 @@ class RetrievalPipelineService:
             diag.legacy_doc_type_canonical_path = (
                 LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_FLAG_OFF
             )
-            # Soft KP reorder while the hard legacy select_context path stays off.
-            hits = CanonicalSourceService.prefer_profile_order(
-                hits, legacy_intent, profile=prepared.profile, settings=s
-            )
         else:
-            hits = CanonicalSourceService.select_context(
-                hits, legacy_intent, candidate_count, s, profile=prepared.profile
-            )
             diag.legacy_doc_type_canonical_path = LEGACY_DOC_TYPE_CANONICAL_PATH_ENABLED
 
-        hits, lang_excluded = ContextBuilderService.dedupe_bilingual_hits_with_report(
-            hits, query_language
+        document_scores = {
+            d.source_id: float(d.score.final_score)
+            for d in doc_result.selected_documents
+        }
+        system_prompt = CompactPromptBuilder.resolve_system_prompt(s)
+        planner = EvidencePlanner(self.db)
+        evidence_plan = planner.plan(
+            hits,
+            planner_decision=prepared.planner_decision,
+            profile=prepared.profile,
+            query=message,
+            query_language=query_language,
+            settings=s,
+            system_prompt=system_prompt,
+            user_message=message,
+            document_scores=document_scores,
         )
-        diag.excluded_language_duplicates = lang_excluded
+        diag.evidence_plan = evidence_plan.to_diagnostics()
 
+        coverage_snapshot = build_coverage_snapshot(
+            evidence_plan=evidence_plan,
+            knowledge_plan=prepared.planner_decision.knowledge_plan,
+            retrieval_quality=doc_result.quality_metrics,
+        )
+        diag.coverage_snapshot = coverage_snapshot.to_dict()
+        quality_stats = compute_quality_statistics(
+            planner_decision=prepared.planner_decision,
+            evidence_plan=evidence_plan,
+            coverage=coverage_snapshot,
+            retrieval_quality=doc_result.quality_metrics,
+        )
+        diag.quality_statistics = quality_stats.to_dict()
+        diag.decision_chain = [
+            d.to_dict()
+            for d in (
+                *prepared.planner_decision.decision_chain,
+                *coverage_decision_records(coverage_snapshot),
+            )
+        ]
+        diag.suppressed_incidental = [
+            r.to_dict()
+            for r in evidence_plan.rejected
+            if "forbidden" in r.rejection_reason or "redundant" in r.rejection_reason
+        ][:10]
+
+        hits = evidence_plan.ordered_hits
         all_doc_hits = [d.representative_chunk for d in doc_result.all_documents]
         diag.candidate_count = len(doc_result.all_documents)
         diag.candidate_pages = DiagnosticsBuilder.selected_candidates(
@@ -441,7 +514,7 @@ class RetrievalPipelineService:
         )
         eff = effective_generation_settings(s)
         final_k = min(s.top_k, eff["max_sources_in_prompt"])
-        reranked = hits[: max(final_k * 3, final_k)]
+        reranked = hits
         diag.rejected_source_alternatives = self._rejected_alternatives(
             all_doc_hits,
             hits[:final_k],
@@ -458,14 +531,12 @@ class RetrievalPipelineService:
 
         context: BuiltContext | None = None
         if getattr(s, "enable_context_builder", True):
-            max_chunks = getattr(s, "max_chunks_per_page", None) or 2
             ctx_builder = RetrievalContextBuilder(self.db)
-            context, ctx_report = ctx_builder.build(
-                reranked,
+            context, ctx_report = ctx_builder.build_from_plan(
+                evidence_plan,
                 settings=s,
                 user_message=message,
-                max_pages=eff["max_sources_in_prompt"],
-                max_chunks_per_page=max_chunks,
+                system_prompt_estimate=system_prompt,
             )
             diag.context_length = len(context.prompt_text)
             diag.context_preview = context.prompt_text[:1200]
@@ -495,12 +566,17 @@ class RetrievalPipelineService:
             applied_config=prepared.applied_config,
             retrieval_ms=int((perf_counter() - t0) * 1000),
             memory_assist=prepared.memory_assist,
+            planner_decision=prepared.planner_decision,
+            evidence_plan=evidence_plan,
+            coverage_snapshot=coverage_snapshot,
         )
 
     def _inject_broad_pages(
         self,
         existing: list[SearchHit],
         profile: KnowledgeProfile,
+        *,
+        limit: int = 12,
     ) -> list[SearchHit]:
         """Inject canonical / overview-capable sources for broad queries (SI-driven)."""
         if self.db is None:
@@ -524,12 +600,16 @@ class RetrievalPipelineService:
                 Chunk.is_homepage.desc(),
                 Chunk.chunk_index.asc(),
             )
-            .limit(48)
+            .limit(max(1, limit * 4))
         )
         rows = list(self.db.execute(stmt).all())
         injected: list[SearchHit] = []
         s = self.settings
-        homepage_extra = s.homepage_boost_value if s.homepage_boost_enabled else 0.1
+        homepage_extra = (
+            float(s.homepage_boost_value)
+            if s.homepage_boost_enabled and s.homepage_boost_value is not None
+            else 0.04
+        )
 
         for row, source in rows:
             if row.url in existing_urls and any(
@@ -540,13 +620,13 @@ class RetrievalPipelineService:
             if key in existing_keys:
                 continue
             importance = int(getattr(source, "importance", 0) or 0)
-            base = 0.48 + min(0.22, importance / 450.0)
+            base = 0.30 + min(0.15, importance / 600.0)
             if row.is_homepage:
                 base += homepage_extra
             if getattr(source, "canonical", False):
-                base += 0.08
+                base += 0.04
             if getattr(source, "should_answer_company", False):
-                base += 0.06
+                base += 0.03
             injected.append(
                 SearchHit(
                     score=base,
@@ -573,6 +653,8 @@ class RetrievalPipelineService:
                 )
             )
             existing_keys.add(key)
+            if len(injected) >= limit:
+                break
         return injected
 
     @staticmethod

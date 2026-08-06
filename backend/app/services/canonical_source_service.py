@@ -4,7 +4,8 @@ from __future__ import annotations
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import ImportantTopic, KnowledgeProfile
 from app.services.knowledge_profile_service import KnowledgeProfileService
-from app.services.query_intent_service import OVERVIEW_INTENTS, QueryIntent
+from app.services.query_intent_service import QueryIntent
+from app.services.rag_planning.intent_taxonomy import OVERVIEW_INTENTS
 from app.services.qdrant_service import SearchHit
 from app.services.settings_flags import setting_bool
 
@@ -60,7 +61,6 @@ class CanonicalSourceService:
             doc = (hit.document_type or "").lower()
             if preferred and doc in preferred:
                 tier = 0
-                # Preserve Knowledge Profile boost list order among preferred types.
                 try:
                     pref_rank = preferred_list.index(doc)
                 except ValueError:

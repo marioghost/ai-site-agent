@@ -24,8 +24,8 @@ from app.services.llm_options_service import estimate_tokens, resolve_llm_option
 from app.services.llm_runtime_profiler import LlmRuntimeMetrics, compute_tokens_per_second
 from app.services.model_warmup_service import ModelWarmupService
 from app.services.ollama_service import OllamaError, OllamaService
-from app.services.polish_policy_service import evaluate_polish, is_overview_intent
-from app.services.query_intent_service import BROAD_INTENTS
+from app.services.polish_policy_service import evaluate_polish
+from app.services.rag_planning.intent_taxonomy import is_overview_intent
 from app.services.query_normalization_service import QueryNormalizationService
 from app.services.response_validator_service import ResponseValidatorService
 from app.services.retrieval_cache_service import CachedRetrievalResult, RetrievalCacheService
@@ -90,6 +90,8 @@ class _PreparedStream:
     apply_speech_acts: bool = False
     memory_assist: MemoryAssistResult | None = None
     apply_memory_assist: bool = False
+    planner_decision: object | None = None
+    evidence_plan: object | None = None
 
 
 class RagStreamingService:
@@ -389,7 +391,7 @@ class RagStreamingService:
             answer,
             query=message,
             context_text=context_text,
-            is_overview=prepared.query_intent in BROAD_INTENTS,
+            is_overview=is_overview_intent(prepared.query_intent),
         )
         if validation.applied_fixes:
             answer = validation.cleaned_answer
@@ -447,6 +449,35 @@ class RagStreamingService:
             prepared.trace.end("source_formatting", details={"sources": len(sources)})
             prepared.trace.begin("response_returned")
             prepared.trace.end("response_returned")
+
+        if (
+            prepared.planner_decision
+            and prepared.evidence_plan
+            and prepared.pipeline_diagnostics
+        ):
+            from app.services.rag_planning.coverage_validator import (
+                build_coverage_snapshot,
+                coverage_decision_records,
+            )
+            from app.services.rag_planning.statistics import compute_quality_statistics
+
+            answer_coverage = build_coverage_snapshot(
+                evidence_plan=prepared.evidence_plan,
+                knowledge_plan=prepared.planner_decision.knowledge_plan,
+                answer_text=answer,
+            )
+            prepared.pipeline_diagnostics.coverage_snapshot = answer_coverage.to_dict()
+            prepared.pipeline_diagnostics.quality_statistics = compute_quality_statistics(
+                planner_decision=prepared.planner_decision,
+                evidence_plan=prepared.evidence_plan,
+                coverage=answer_coverage,
+            ).to_dict()
+            pre_chain = list(prepared.pipeline_diagnostics.decision_chain or [])
+            pre_stages = {r.get("stage") for r in pre_chain}
+            for record in coverage_decision_records(answer_coverage):
+                if record.stage not in pre_stages:
+                    pre_chain.append(record.to_dict())
+            prepared.pipeline_diagnostics.decision_chain = pre_chain
 
         total_ms = prepared.retrieval_ms + generation_ms + polish_ms
         result = RagResult(
@@ -672,6 +703,8 @@ class RagStreamingService:
         query_intent = "unknown"
         pipeline_context = None
         pipeline_diagnostics = None
+        planner_decision = None
+        evidence_plan_obj = None
         normalized = QueryNormalizationService.normalize(message)
         if trace:
             trace.begin("normalize_query")
@@ -869,6 +902,8 @@ class RagStreamingService:
             retrieval_ms = int((perf_counter() - t_retr) * 1000)
             pipeline_context = pipe_result.context
             pipeline_diagnostics = pipe_result.diagnostics
+            planner_decision = getattr(pipe_result, "planner_decision", None)
+            evidence_plan_obj = getattr(pipe_result, "evidence_plan", None)
             memory_assist = getattr(pipe_result, "memory_assist", None)
             if memory_assist is not None and hasattr(memory_assist, "to_diagnostics"):
                 if retrieval_debug is None:
@@ -1062,6 +1097,7 @@ class RagStreamingService:
             speech_act_guidance=(
                 speech_plan.prompt_guidance if speech_plan else None
             ),
+            answer_plan=planner_decision.answer_plan if planner_decision else None,
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -1149,5 +1185,7 @@ class RagStreamingService:
             apply_speech_acts=apply_speech_acts,
             memory_assist=memory_assist,
             apply_memory_assist=apply_memory_assist,
+            planner_decision=planner_decision,
+            evidence_plan=evidence_plan_obj,
         )
         return prep, None

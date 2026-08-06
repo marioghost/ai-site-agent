@@ -284,9 +284,21 @@ class SemanticCompatibilityScorer:
                 score += 0.12
             if profile.importance >= 70:
                 score += 0.08
-            if profile.should_answer_company or profile.should_answer_general:
+            if profile.should_answer_company:
                 score += 0.15
                 signals.append("structural_overview_fit")
+            elif profile.should_answer_general and purpose in {
+                "about company",
+                "landing page",
+                "service description",
+            }:
+                score += 0.08
+            if purpose in {"news", "promotion"}:
+                score -= 0.35
+                signals.append("incidental_purpose_for_overview")
+            if purpose == "general information" and not profile.canonical:
+                score -= 0.12
+                signals.append("broad_purpose_penalty")
 
         return max(0.0, min(1.0, score))
 

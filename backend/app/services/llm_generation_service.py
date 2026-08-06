@@ -5,9 +5,11 @@ from time import perf_counter
 
 from app.core.logging import get_logger
 from app.models.settings import Settings
+from app.services.answer_completion import preview_prompt
 from app.services.context_builder_service import BuiltContext
 from app.services.llm_call_tracker import LlmCallTracker
 from app.services.llm_mode_service import effective_generation_settings, profile_generation_timeout
+from app.services.llm_options_service import estimate_tokens
 from app.services.llm_runtime_environment import collect_runtime_environment
 from app.services.llm_runtime_profiler import LlmRuntimeMetrics, compute_tokens_per_second
 from app.services.ollama_service import OllamaError, OllamaService
@@ -78,7 +80,14 @@ class LlmGenerationService:
                 system_prompt, user_prompt, llm_opts, "rag_generation"
             )
             return self._success(
-                chat_result, metrics, tracker, t_gen, ollama_ms, retry=False
+                chat_result,
+                metrics,
+                tracker,
+                t_gen,
+                ollama_ms,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                retry=False,
             )
         except OllamaError as exc:
             logger.error("LLM generation failed: %s", exc)
@@ -88,7 +97,7 @@ class LlmGenerationService:
                 return {
                     "error_type": "llm_timeout" if is_timeout else "llm_error",
                     "generation_ms": int((perf_counter() - t_gen) * 1000),
-                    "diagnostics": metrics.to_dict(),
+                    "diagnostics": self._prompt_diagnostics(system_prompt, user_prompt, metrics),
                 }
             return self._retry_compact(
                 message=message,
@@ -125,13 +134,15 @@ class LlmGenerationService:
         db,
         tracker: LlmCallTracker,
     ) -> dict:
-        compact_hits = hits[:2]
+        compact_hits = self._select_compact_hits(hits, pipeline_context)
         if db is not None:
             builder = RetrievalContextBuilder(db)
             compact_ctx, _ = builder.build(
                 compact_hits,
                 settings=self.settings,
                 user_message=message,
+                system_prompt_estimate=system_prompt,
+                intent=query_intent,
                 max_pages=2,
                 max_chunks_per_page=1,
             )
@@ -145,6 +156,9 @@ class LlmGenerationService:
             intent=query_intent,
             settings=self.settings,
         )
+        _, compact_user = CompactPromptBuilder.truncate_prompts(
+            system_prompt, compact_user, max_prompt
+        )
         retry_opts = {
             **llm_opts,
             "num_predict": int(llm_opts["num_predict"]),
@@ -153,12 +167,19 @@ class LlmGenerationService:
         try:
             chat_result, ollama_ms = _call(
                 system_prompt,
-                compact_user[:max_prompt],
+                compact_user,
                 retry_opts,
                 "rag_generation_retry_compact",
             )
             out = self._success(
-                chat_result, metrics, tracker, t_gen, ollama_ms, retry=True
+                chat_result,
+                metrics,
+                tracker,
+                t_gen,
+                ollama_ms,
+                system_prompt=system_prompt,
+                user_prompt=compact_user,
+                retry=True,
             )
             out["retry"] = True
             metrics.retry_happened = True
@@ -168,9 +189,44 @@ class LlmGenerationService:
             return {
                 "error_type": "llm_timeout",
                 "generation_ms": int((perf_counter() - t_gen) * 1000),
-                "diagnostics": {**metrics.to_dict(), "timeout_reason": str(retry_exc)},
+                "diagnostics": {
+                    **self._prompt_diagnostics(system_prompt, compact_user, metrics),
+                    "timeout_reason": str(retry_exc),
+                },
                 "retry": True,
             }
+
+    @staticmethod
+    def _select_compact_hits(
+        hits: list[SearchHit],
+        pipeline_context: BuiltContext | None,
+    ) -> list[SearchHit]:
+        if not hits:
+            return []
+        if pipeline_context and pipeline_context.blocks:
+            preferred_ids = [block.source_id for block in pipeline_context.blocks[:3]]
+            compact: list[SearchHit] = []
+            seen: set[int] = set()
+            for source_id in preferred_ids:
+                for hit in hits:
+                    if hit.source_id == source_id and hit.source_id not in seen:
+                        compact.append(hit)
+                        seen.add(hit.source_id)
+                        break
+            if compact:
+                return compact
+        compact = []
+        seen_urls: set[str] = set()
+        for hit in hits:
+            url = (hit.url or "").strip()
+            if url and url in seen_urls:
+                continue
+            if url:
+                seen_urls.add(url)
+            compact.append(hit)
+            if len(compact) >= 3:
+                break
+        return compact
 
     def _success(
         self,
@@ -179,11 +235,11 @@ class LlmGenerationService:
         tracker: LlmCallTracker,
         t_gen: float,
         ollama_ms: int,
+        system_prompt: str,
+        user_prompt: str,
         *,
         retry: bool,
     ) -> dict:
-        from app.services.llm_options_service import estimate_tokens
-
         answer = chat_result.content
         ms = int((perf_counter() - t_gen) * 1000)
         env = collect_runtime_environment()
@@ -208,5 +264,17 @@ class LlmGenerationService:
         return {
             "answer": answer,
             "generation_ms": ms,
-            "diagnostics": metrics.to_dict(),
+            "diagnostics": self._prompt_diagnostics(system_prompt, user_prompt, metrics),
         }
+
+    @staticmethod
+    def _prompt_diagnostics(
+        system_prompt: str,
+        user_prompt: str,
+        metrics: LlmRuntimeMetrics,
+    ) -> dict:
+        diagnostics = metrics.to_dict()
+        diagnostics["system_prompt_preview"] = system_prompt[:800]
+        diagnostics["user_prompt_preview"] = preview_prompt(user_prompt, 2000)
+        diagnostics["context_text_sent"] = CompactPromptBuilder.extract_evidence_text(user_prompt)
+        return diagnostics

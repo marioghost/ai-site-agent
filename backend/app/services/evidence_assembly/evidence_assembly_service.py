@@ -51,6 +51,7 @@ class EvidenceAssemblyService:
             query_vector=request.query_vector,
             expansion_terms=request.expansion_terms,
             query_language=request.query_language,
+            planner_decision=request.planner_decision,
         )
         result.evidence_assembly_path = EVIDENCE_ASSEMBLY_PATH_SERVICE
         return result

@@ -51,8 +51,8 @@ class DocumentScorer:
         tokens = query_tokens or token_set(query)
         s = self.settings
 
-        dense = max(0.0, hit.dense_score)
-        lexical = max(0.0, hit.lexical_score)
+        dense = self._aggregate_signal(doc.all_chunks, "dense_score")
+        lexical = self._aggregate_signal(doc.all_chunks, "lexical_score")
 
         if profile is None and source is not None:
             profile = SourceIntelligenceService.profile_from_source(source)
@@ -104,10 +104,19 @@ class DocumentScorer:
             + _BLEND_COMPATIBILITY * compat.compatibility_score
             + _BLEND_QUALITY * quality_score
             + _BLEND_FRESHNESS * freshness_boost
-            + min(0.08, max(0.0, metadata_boost))
+            + min(0.10, max(0.0, metadata_boost))
         )
-        if dense > 0 or lexical > 0 or compat.compatibility_score > 0:
-            final = max(final, 0.08)
+        signal_present = dense > 0 or lexical > 0 or compat.compatibility_score > 0
+        if signal_present:
+            final = max(
+                final,
+                min(
+                    0.12,
+                    0.02
+                    + 0.05 * compat.confidence_score
+                    + 0.03 * max(0.0, metadata_boost),
+                ),
+            )
         final = min(1.0, max(0.0, final))
 
         confidence = max(
@@ -165,6 +174,20 @@ class DocumentScorer:
         hit.selection_reason = doc.ranking_reason
 
         return components, compat
+
+    @staticmethod
+    def _aggregate_signal(chunks: list[SearchHit], field: str) -> float:
+        if not chunks:
+            return 0.0
+        values = sorted(
+            (max(0.0, float(getattr(chunk, field, 0.0) or 0.0)) for chunk in chunks),
+            reverse=True,
+        )
+        if not values:
+            return 0.0
+        best = values[0]
+        support = sum(values[:3]) / min(3, len(values))
+        return min(1.0, best * 0.7 + support * 0.3)
 
     @staticmethod
     def _enrich_hit_from_profile(hit: SearchHit, profile: SourceProfile) -> None:
