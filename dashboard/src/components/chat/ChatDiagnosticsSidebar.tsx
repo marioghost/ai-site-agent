@@ -71,6 +71,13 @@ function ChatLlmGeneration({ debug }: { debug: Record<string, unknown> | null | 
           { label: "Ollama request ms", value: String(p.ollama_request_ms ?? "—") },
           { label: "Prompt build ms", value: String(p.prompt_build_ms ?? "—") },
           { label: "Tokens/sec", value: String(p.tokens_per_sec ?? p.tokens_per_second ?? "—") },
+          { label: "Eval count", value: String(p.eval_count ?? "—") },
+          { label: "Done reason", value: String(p.done_reason ?? "—") },
+          { label: "Stop reason", value: String(p.generation_stop_reason ?? "—") },
+          {
+            label: "Output truncated",
+            value: p.output_truncated ? t("common.yes") : t("common.no"),
+          },
           { label: "LLM calls", value: String(p.llm_call_count ?? "—") },
           { label: "Mode", value: String(p.llm_mode_profile ?? "—") },
           {

@@ -1,8 +1,8 @@
 """Source Intelligence Layer constants (domain-agnostic)."""
 
 SOURCE_INTELLIGENCE_VERSION = "source-intelligence-v2"
-PROMPT_TEMPLATE_VERSION = "prompt-v3"
-CONTEXT_BUILDER_VERSION = "context-v3"
+PROMPT_TEMPLATE_VERSION = "prompt-v4"
+CONTEXT_BUILDER_VERSION = "context-v4"
 
 # Generic document types (no domain-specific types in core code).
 GENERIC_DOCUMENT_TYPES = frozenset({

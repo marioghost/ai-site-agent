@@ -77,6 +77,20 @@ def test_narrow_factual_with_valid_evidence_sufficient():
 
 
 @pytest.mark.unit
+def test_evidence_sufficiency_entity_overview_strategy_is_sufficient():
+    a = assess_evidence_sufficiency(
+        _result(
+            query_intent="entity_overview",
+            applied_knowledge_config={"answer_strategy": "overview"},
+            sources=[_src(), _src("https://site/history", "History")],
+        )
+    )
+    assert a.sufficiency_status == "sufficient"
+    assert a.evidence_sufficient is True
+    assert a.completeness_risk is False
+
+
+@pytest.mark.unit
 def test_enumeration_without_completeness_has_risk():
     a = assess_evidence_sufficiency(
         _result(

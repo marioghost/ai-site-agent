@@ -23,9 +23,24 @@ _ENUMERATION_INTENTS = frozenset(
         "list",
         "products",
         "services",
+        "listing",
+        "product_query",
     }
 )
 _ENUMERATION_STRATEGIES = frozenset({"list"})
+
+# Scoped organization/topic overviews — selected site evidence can support an answer
+# without claiming exhaustive world coverage (do not force completeness-risk qualify).
+_OVERVIEW_INTENTS = frozenset(
+    {
+        "entity_overview",
+        "topic_overview",
+        "organization_overview",
+        "site_overview",
+        "overview",
+    }
+)
+_OVERVIEW_STRATEGIES = frozenset({"overview"})
 
 # Ambiguity / clarification — cannot claim sufficiency.
 _AMBIGUOUS_INTENTS = frozenset(
@@ -114,21 +129,25 @@ def _answer_strategy(result: RagResult) -> str:
 def _is_enumeration(intent: str, strategy: str) -> bool:
     intent_l = (intent or "").lower()
     strategy_l = (strategy or "").lower()
+    # Explicit list strategy still carries completeness risk.
     if strategy_l in _ENUMERATION_STRATEGIES:
         return True
+    # Factual entity/topic overviews are not list-completeness problems.
+    if intent_l in _OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES:
+        return False
     if intent_l in _ENUMERATION_INTENTS:
         return True
     if "list" in intent_l or "enumeration" in intent_l:
         return True
-    # Broad overview needs — completeness not proven by selected hits alone.
-    if intent_l in {
-        "entity_overview",
-        "topic_overview",
-        "category_overview",
-        "overview",
-    }:
-        return True
     return False
+
+
+def _is_scoped_overview(intent: str, strategy: str) -> bool:
+    intent_l = (intent or "").lower()
+    strategy_l = (strategy or "").lower()
+    if strategy_l in _ENUMERATION_STRATEGIES:
+        return False
+    return intent_l in _OVERVIEW_INTENTS or strategy_l in _OVERVIEW_STRATEGIES
 
 
 def _is_ambiguous(intent: str, used_context: bool, sources: list[RagSource]) -> bool:
@@ -205,6 +224,18 @@ def assess_evidence_sufficiency(result: RagResult) -> EvidenceSufficiencyAssessm
             missing_evidence_hint=(
                 "List/enumeration requests lack a completeness signal from the site."
             ),
+        )
+
+    # --- Scoped overview with valid evidence ---
+    if _is_scoped_overview(intent, strategy):
+        return EvidenceSufficiencyAssessment(
+            evidence_sufficient=True,
+            sufficiency_status="sufficient",
+            sufficiency_reasons=("selected_evidence_with_provenance",),
+            evidence_count=evidence_count,
+            independent_source_count=independent_count,
+            completeness_risk=False,
+            missing_evidence_hint=None,
         )
 
     # --- Narrow factual with valid evidence ---

@@ -863,6 +863,10 @@ export const uk: TranslationDict = {
   "chat.sources_none": "Джерел не знайдено",
   "chat.streaming": "Генерація відповіді…",
   "chat.thinking": "Думаю…",
+  "chat.truncated_badge": "Зупинено лімітом",
+  "chat.truncated_notice":
+    "Генерацію зупинено через ліміт токенів відповіді. Текст може бути незавершеним.",
+  "chat.error_badge": "Помилка генерації",
   "chat.processing": "Обробка запиту…",
   "chat.metric_waiting": "очікування…",
   "chat.used_context": "Контекст використано",
@@ -1306,7 +1310,7 @@ export const uk: TranslationDict = {
   "settings.docs.generation.max_tokens":
     "Максимальна довжина відповіді в токенах.",
   "settings.docs.generation.system_prompt":
-    "Інструкція для моделі: тон, обмеження, формат відповіді.",
+    "Не застосовується до генерації Ask. Відповіді використовують вбудований системний промт CompactPromptBuilder (prompt-v4).",
   "settings.docs.generation.fallback":
     "Текст, коли в базі знань нічого не знайдено вище порогу релевантності.",
   "settings.docs.retrieval.mode":

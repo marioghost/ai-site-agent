@@ -452,6 +452,16 @@
   background: var(--ds-color-primary-soft);
 }
 
+.ds-chat-assistant__truncated-badge {
+  margin-left: auto;
+  font-size: var(--ds-text-caption-size);
+  font-weight: 500;
+  color: var(--ds-color-warning, #9a6700);
+  padding: 2px 8px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-color-warning-soft, rgba(154, 103, 0, 0.12));
+}
+
 .ds-chat-assistant__thinking {
   display: flex;
   align-items: center;

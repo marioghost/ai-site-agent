@@ -137,6 +137,16 @@ export default function ChatAssistantCard({
           {(streaming || status === "streaming") && (
             <span className="ds-chat-assistant__thinking-badge">{t("chat.thinking")}</span>
           )}
+          {status === "truncated" && !streaming && (
+            <span className="ds-chat-assistant__truncated-badge" role="status">
+              {t("chat.truncated_badge")}
+            </span>
+          )}
+          {status === "error" && !streaming && (
+            <span className="ds-chat-assistant__truncated-badge" role="status">
+              {t("chat.error_badge")}
+            </span>
+          )}
           <div className="ds-chat-assistant__actions">
             <button
               type="button"
@@ -169,6 +179,12 @@ export default function ChatAssistantCard({
 
         {(streaming || status === "streaming") && text && (
           <p className="ds-chat-assistant__streaming-label">{t("chat.streaming")}</p>
+        )}
+
+        {status === "truncated" && !streaming && text && (
+          <p className="ds-chat-assistant__trust" role="status">
+            {t("chat.truncated_notice")}
+          </p>
         )}
 
         {showSources && (

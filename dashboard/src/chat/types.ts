@@ -8,7 +8,7 @@ import type {
   UnderstandingTrace,
 } from "../types";
 
-export type MessageStatus = "pending" | "streaming" | "completed" | "error" | "cancelled";
+export type MessageStatus = "pending" | "streaming" | "completed" | "truncated" | "error" | "cancelled";
 
 export type PipelineStageStatus = "pending" | "running" | "completed" | "error" | "skipped";
 

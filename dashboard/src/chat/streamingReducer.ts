@@ -2,10 +2,12 @@ import type { CacheType, ChatResponse, TimingMetrics } from "../types";
 import type { ChatTurn } from "../types";
 import type {
   AssistantDiagnostics,
+  MessageStatus,
   PipelineStage,
   PipelineStageStatus,
   StreamEvent,
 } from "./types";
+import { finalStatusFromPromptDiagnostics } from "./generationStatus";
 
 const PIPELINE_ORDER = [
   "receive_request",
@@ -156,10 +158,17 @@ export function reduceStreamEvent(turn: ChatTurn, event: StreamEvent): ChatTurn 
       };
     case "final": {
       const res = event.response;
+      const pd =
+        res.prompt_diagnostics && typeof res.prompt_diagnostics === "object"
+          ? (res.prompt_diagnostics as Record<string, unknown>)
+          : null;
+      const finalStatus: MessageStatus = finalStatusFromPromptDiagnostics(pd, {
+        errorType: res.error_type,
+      });
       return {
         ...turn,
         text: res.answer,
-        status: "completed",
+        status: finalStatus,
         sources: res.sources,
         usedContext: res.used_context,
         cacheHit: res.cache_hit,
@@ -170,12 +179,19 @@ export function reduceStreamEvent(turn: ChatTurn, event: StreamEvent): ChatTurn 
         response: res,
         diagnostics: {
           ...baseDiag,
-          status: "completed",
+          status: finalStatus,
           sessionId: res.session_id,
           requestId: res.request_id,
-          pipeline: baseDiag.pipeline.map((s) =>
-            s.status === "running" ? { ...s, status: "completed" as PipelineStageStatus } : s
-          ),
+          pipeline: baseDiag.pipeline.map((s) => {
+            if (s.status === "running") {
+              return { ...s, status: "completed" as PipelineStageStatus };
+            }
+            // Never-emitted stages are not pending work — they were skipped/uninstrumented.
+            if (s.status === "pending") {
+              return { ...s, status: "skipped" as PipelineStageStatus };
+            }
+            return s;
+          }),
           sources: {
             status: res.sources.length > 0 ? "ready" : "empty",
             items: res.sources,
@@ -187,10 +203,8 @@ export function reduceStreamEvent(turn: ChatTurn, event: StreamEvent): ChatTurn 
             timing: res.timing,
             firstTokenMs:
               baseDiag.metrics.firstTokenMs ??
-              (res.prompt_diagnostics &&
-              typeof res.prompt_diagnostics === "object" &&
-              "time_to_first_token_ms" in res.prompt_diagnostics
-                ? Number((res.prompt_diagnostics as Record<string, unknown>).time_to_first_token_ms)
+              (pd && "time_to_first_token_ms" in pd
+                ? Number(pd.time_to_first_token_ms)
                 : undefined),
           },
           retrievalDebug: (res.retrieval_debug as Record<string, unknown> | null) ?? baseDiag.retrievalDebug,

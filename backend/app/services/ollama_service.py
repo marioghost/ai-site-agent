@@ -29,6 +29,7 @@ class OllamaChatResult:
     load_duration_ns: int = 0
     model: str = ""
     connection_ms: int | None = None
+    done_reason: str | None = None
 
 
 @dataclass
@@ -72,6 +73,8 @@ def _build_options(
 def _parse_chat_stats(data: dict, *, model: str, content: str = "") -> OllamaChatResult:
     message = data.get("message") or {}
     text = content or (message.get("content") or "").strip()
+    raw_reason = data.get("done_reason") or data.get("finish_reason")
+    done_reason = str(raw_reason).strip() if raw_reason else None
     return OllamaChatResult(
         content=text,
         prompt_eval_count=int(data.get("prompt_eval_count") or 0),
@@ -81,6 +84,7 @@ def _parse_chat_stats(data: dict, *, model: str, content: str = "") -> OllamaCha
         prompt_eval_duration_ns=int(data.get("prompt_eval_duration") or 0),
         load_duration_ns=int(data.get("load_duration") or 0),
         model=str(data.get("model") or model),
+        done_reason=done_reason or None,
     )
 
 

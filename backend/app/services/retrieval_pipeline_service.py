@@ -419,6 +419,10 @@ class RetrievalPipelineService:
             diag.legacy_doc_type_canonical_path = (
                 LEGACY_DOC_TYPE_CANONICAL_PATH_SKIPPED_FLAG_OFF
             )
+            # Soft KP reorder while the hard legacy select_context path stays off.
+            hits = CanonicalSourceService.prefer_profile_order(
+                hits, legacy_intent, profile=prepared.profile, settings=s
+            )
         else:
             hits = CanonicalSourceService.select_context(
                 hits, legacy_intent, candidate_count, s, profile=prepared.profile

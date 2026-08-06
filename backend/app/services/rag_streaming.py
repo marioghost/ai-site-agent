@@ -362,6 +362,7 @@ class RagStreamingService:
                 prepared.metrics.generation_ms = generation_ms
                 prepared.metrics.total_tokens_out = out_tokens
                 prepared.metrics.tokens_per_second = compute_tokens_per_second(out_tokens, generation_ms)
+                prepared.metrics.annotate_generation_stop()
             prepared.metrics.apply_call_tracker(call_tracker)
             prepared.prompt_diagnostics.update(prepared.metrics.to_dict())
 
@@ -1058,8 +1059,6 @@ class RagStreamingService:
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
         llm_opts = resolve_llm_options(s, prompt_chars=prompt_chars)
-        if is_overview_intent(query_intent):
-            llm_opts["num_predict"] = min(int(llm_opts["num_predict"]), 180)
         mode_profile = get_mode_profile(s)
         metrics = LlmRuntimeMetrics(
             prompt_build_ms=prompt_build_ms,

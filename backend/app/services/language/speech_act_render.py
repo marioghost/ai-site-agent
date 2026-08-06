@@ -35,7 +35,7 @@ class SpeechActRenderPlan:
     qualify_suffix: str | None = None
     """Localized limitation sentence appended after LLM answer for qualify."""
     prompt_guidance: str | None = None
-    """Concise typed guidance injected into the system prompt for qualify."""
+    """Unused for qualify (postfix-only). Kept for SpeechActRenderPlan compatibility."""
 
 
 _HINT_TO_INSTRUCTION: dict[str, LanguageInstruction] = {
@@ -64,10 +64,6 @@ _QUALIFY = {
         "may not provide a complete list."
     ),
 }
-_QUALIFY_PROMPT = (
-    "Language instruction QUALIFY_INCOMPLETE_EVIDENCE: answer from sources, "
-    "then briefly note that site evidence may be incomplete (not that it is false)."
-)
 
 
 def resolve_response_language(query_language: str, default: str = "uk") -> ResponseLang:
@@ -130,7 +126,7 @@ def plan_speech_act_render(
             skip_llm=False,
             response_language=lang,
             qualify_suffix=_QUALIFY[lang],
-            prompt_guidance=_QUALIFY_PROMPT,
+            prompt_guidance=None,
         )
     return SpeechActRenderPlan(
         speech_act="answer",

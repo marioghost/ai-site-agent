@@ -1,7 +1,8 @@
 import type { CacheType, ChatMessage, ChatResponse, ChatTurn } from "../types";
 import { turnIdFromMessage } from "../chat/messageRepository";
+import { finalStatusFromPromptDiagnostics } from "../chat/generationStatus";
 import { createEmptyDiagnostics } from "../chat/streamingReducer";
-import type { AssistantDiagnostics } from "../chat/types";
+import type { AssistantDiagnostics, MessageStatus } from "../chat/types";
 import { normalizeUnderstandingTrace } from "./understandingTrace";
 
 export function chatResponseFromDiagnostics(
@@ -47,6 +48,32 @@ export function chatResponseFromDiagnostics(
   };
 }
 
+function resolvePromptDiagnostics(
+  response: ChatResponse | null,
+  raw: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  const fromResponse =
+    response?.prompt_diagnostics && typeof response.prompt_diagnostics === "object"
+      ? (response.prompt_diagnostics as Record<string, unknown>)
+      : null;
+  if (fromResponse) return fromResponse;
+  const fromRaw =
+    raw?.prompt_diagnostics && typeof raw.prompt_diagnostics === "object"
+      ? (raw.prompt_diagnostics as Record<string, unknown>)
+      : null;
+  if (fromRaw) return fromRaw;
+  const nested =
+    raw?.retrieval_debug &&
+    typeof raw.retrieval_debug === "object" &&
+    "prompt_diagnostics" in (raw.retrieval_debug as object)
+      ? ((raw.retrieval_debug as Record<string, unknown>).prompt_diagnostics as Record<
+          string,
+          unknown
+        >)
+      : null;
+  return nested && typeof nested === "object" ? nested : null;
+}
+
 function diagnosticsFromPersistence(
   message: ChatMessage,
   response: ChatResponse | null,
@@ -68,15 +95,22 @@ function diagnosticsFromPersistence(
               ? "running"
               : row.status === "error"
                 ? "error"
-                : "pending") as AssistantDiagnostics["pipeline"][0]["status"],
+                : row.status === "skipped"
+                  ? "skipped"
+                  : "pending") as AssistantDiagnostics["pipeline"][0]["status"],
           durationMs: row.duration_ms != null ? Number(row.duration_ms) : undefined,
         };
       })
     : base.pipeline;
 
+  const pd = resolvePromptDiagnostics(response, raw);
+  const finalStatus: MessageStatus = finalStatusFromPromptDiagnostics(pd, {
+    errorType: response?.error_type ?? (raw?.error_type as string | null | undefined),
+  });
+
   return {
     ...base,
-    status: "completed",
+    status: finalStatus,
     pipeline,
     sources: {
       status: message.sources.length > 0 ? "ready" : "empty",
@@ -88,14 +122,12 @@ function diagnosticsFromPersistence(
       cacheType: message.cache_type as CacheType,
       timing: response?.timing ?? message.timing,
       firstTokenMs:
-        response?.prompt_diagnostics &&
-        typeof response.prompt_diagnostics === "object" &&
-        "time_to_first_token_ms" in response.prompt_diagnostics
-          ? Number((response.prompt_diagnostics as Record<string, unknown>).time_to_first_token_ms)
+        pd && "time_to_first_token_ms" in pd
+          ? Number(pd.time_to_first_token_ms)
           : undefined,
     },
     retrievalDebug: (raw?.retrieval_debug as Record<string, unknown> | null) ?? null,
-    promptDiagnostics: (raw?.prompt_diagnostics as Record<string, unknown> | null) ?? null,
+    promptDiagnostics: pd,
     trace: (raw?.trace as AssistantDiagnostics["trace"]) ?? response?.trace ?? null,
     metadata: (raw?.metadata as AssistantDiagnostics["metadata"]) ?? response?.metadata ?? null,
     understandingTrace:
@@ -111,12 +143,16 @@ export function messageToTurn(message: ChatMessage): ChatTurn {
     return { id, role: "user", text: message.content, messageId: message.id };
   }
   const response = chatResponseFromDiagnostics(message, message.diagnostics);
+  const pd = resolvePromptDiagnostics(response, message.diagnostics);
+  const status = finalStatusFromPromptDiagnostics(pd, {
+    errorType: response?.error_type ?? null,
+  });
   return {
     id,
     role: "assistant",
     text: message.content,
     messageId: message.id,
-    status: "completed",
+    status,
     sources: message.sources,
     usedContext: message.used_context,
     cacheHit: message.cache_hit,

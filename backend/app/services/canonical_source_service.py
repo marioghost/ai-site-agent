@@ -29,6 +29,53 @@ def _deprioritized_types(profile: KnowledgeProfile, intent: str) -> frozenset[st
 
 class CanonicalSourceService:
     @staticmethod
+    def prefer_profile_order(
+        hits: list[SearchHit],
+        intent: QueryIntent,
+        *,
+        profile: KnowledgeProfile | None = None,
+        settings: Settings | None = None,
+    ) -> list[SearchHit]:
+        """Soft-order hits using Knowledge Profile preferred/deprioritized types.
+
+        Does not drop sources — only reorders so preferred document types lead
+        and deprioritized types trail. Safe when the legacy canonical path is off.
+        """
+        if not hits:
+            return []
+        if profile is None and settings is not None:
+            profile = KnowledgeProfileService.from_settings(settings)
+        if profile is None:
+            return list(hits)
+        rule = KnowledgeProfileService.priority_rule_for_intent(profile, intent)
+        preferred_list = list(rule.boost_document_types) if rule else []
+        preferred = frozenset(preferred_list)
+        deprioritized = (
+            frozenset(rule.deprioritize_document_types) if rule else frozenset()
+        )
+        if not preferred and not deprioritized:
+            return list(hits)
+
+        def rank_key(hit: SearchHit) -> tuple:
+            doc = (hit.document_type or "").lower()
+            if preferred and doc in preferred:
+                tier = 0
+                # Preserve Knowledge Profile boost list order among preferred types.
+                try:
+                    pref_rank = preferred_list.index(doc)
+                except ValueError:
+                    pref_rank = len(preferred_list)
+            elif deprioritized and doc in deprioritized:
+                tier = 2
+                pref_rank = 0
+            else:
+                tier = 1
+                pref_rank = 0
+            return (tier, pref_rank, -_score(hit))
+
+        return sorted(hits, key=rank_key)
+
+    @staticmethod
     def select_context(
         hits: list[SearchHit],
         intent: QueryIntent,

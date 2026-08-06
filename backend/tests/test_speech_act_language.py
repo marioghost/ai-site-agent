@@ -190,6 +190,14 @@ def test_refuse_uk_en_site_scoped():
 
 
 @pytest.mark.unit
+def test_qualify_plan_has_suffix_without_system_guidance():
+    plan = plan_speech_act_render(_decision("qualify"), query_language="uk")
+    assert plan.qualify_suffix
+    assert plan.prompt_guidance is None
+    assert "повного переліку" in plan.qualify_suffix
+
+
+@pytest.mark.unit
 def test_qualify_suffix_preserves_answer():
     plan = plan_speech_act_render(_decision("qualify"), query_language="en")
     out = apply_qualify_suffix("Useful facts about services.", plan.qualify_suffix)

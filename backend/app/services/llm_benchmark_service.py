@@ -33,7 +33,7 @@ class LlmBenchmarkService:
                 "rag_like",
                 "Що таке банк?",
                 "Використовуй контекст.\n" + ("X" * 1500),
-                min(180, opts["num_predict"]),
+                opts["num_predict"],
             ),
         ]
         results: list[dict] = []

@@ -80,4 +80,17 @@ def test_compact_prompt_is_shorter_than_legacy_style():
     combined = len(system) + len(user)
     assert combined < 2500
     assert "Sources:" in user
-    assert "Answer only from" in system
+    assert "Sources are the only factual authority" in system
+    assert "Synthesize across sources" in system
+    # Admin system_prompt must not be prepended (single prompt SOT).
+    settings_conflict = type("S", (), {"system_prompt": "CONFLICTING CUSTOM PROMPT ABOUT CONTEXT"})()
+    system2, _ = CompactPromptBuilder.build(
+        message="What is this?",
+        hits=hits,
+        built_context=None,
+        intent="entity_overview",
+        settings=settings_conflict,
+        org_name="Example",
+    )
+    assert "CONFLICTING CUSTOM PROMPT" not in system2
+    assert "never stop mid-thought" in system2.lower() or "never stop mid-thought" in system2

@@ -1,4 +1,4 @@
-"""Compact prompt builder — minimal instructions, maximum context budget."""
+"""Compact prompt builder — single source of truth for generation instructions."""
 from __future__ import annotations
 
 from app.services.context_builder_service import BuiltContext
@@ -18,8 +18,6 @@ OVERVIEW_INTENTS = frozenset({
 LISTING_INTENTS = frozenset({
     "product_query",
     "listing",
-    "category_overview",
-    "topic_overview",
 })
 
 SUPPORT_INTENTS = frozenset({
@@ -30,27 +28,31 @@ SUPPORT_INTENTS = frozenset({
     "troubleshooting",
 })
 
-COMPACT_SYSTEM_BASE = (
-    "Answer only from the provided sources. Do not invent facts. "
-    "Ignore navigation and boilerplate."
+# Production system prompt — English, positive, optimized for Qwen/Llama/Gemma.
+# Intent-specific lines append once; settings.system_prompt is not prepended (avoids conflicts).
+SYSTEM_CORE = (
+    "You are this website's AI assistant.\n"
+    "Sources are the only factual authority — treat them as evidence.\n"
+    "Synthesize across sources into one coherent answer; never summarize page-by-page.\n"
+    "Lead with the answer; add details next; keep qualifiers last.\n"
+    "Prefer synthesis over extraction; rewrite naturally; never repeat the same fact.\n"
+    "Ignore marketing, navigation, and boilerplate.\n"
+    "Complete every sentence; never stop mid-thought.\n"
+    "Answer the user, not the documents.\n"
+    "Write in {lang_instruction}"
 )
 
-OVERVIEW_ANSWER_TEMPLATE = (
-    "{base} Write {lang_instruction} Max {word_limit} words. "
-    "Give a factual overview using only supplied content."
+OVERVIEW_FOCUS = (
+    "For this overview of {org_name}: cover what it is and the most important "
+    "organization facts from the sources. Prefer substance over promotions and news. "
+    "Stay within about {word_limit} words."
 )
 
-LISTING_ANSWER_TEMPLATE = (
-    "{base} Write {lang_instruction} Use a concise list when helpful. "
-    "Cite source titles for each item."
-)
+LISTING_FOCUS = "Use a concise list when it helps clarity. Name source titles for distinct items."
 
-SUPPORT_ANSWER_TEMPLATE = (
-    "{base} Write {lang_instruction} Answer directly in support/FAQ style. "
-    "Keep steps short when applicable."
-)
+SUPPORT_FOCUS = "Answer directly in a clear support style. Keep steps short when applicable."
 
-GENERIC_ANSWER_TEMPLATE = "{base} Write {lang_instruction} Be concise and factual."
+GENERIC_FOCUS = "Stay focused and factual."
 
 
 class CompactPromptBuilder:
@@ -68,9 +70,12 @@ class CompactPromptBuilder:
         org_name: str = "the organization",
         speech_act_guidance: str | None = None,
     ) -> tuple[str, str]:
+        # speech_act_guidance intentionally unused: qualify/refuse wording is
+        # applied post-generation (suffix / deterministic replies) to avoid
+        # duplicated hedging instructions in the system prompt.
+        _ = speech_act_guidance
         query_lang = detect_query_language(message)
         profile = get_mode_profile(settings)
-        is_overview = intent in OVERVIEW_INTENTS
 
         if built_context and built_context.prompt_text:
             context_block = built_context.prompt_text
@@ -80,12 +85,8 @@ class CompactPromptBuilder:
         system = cls._system_prompt(
             query_lang=query_lang,
             intent=intent,
-            is_overview=is_overview,
             word_limit=profile.max_answer_words_overview,
             org_name=org_name,
-            custom=(settings.system_prompt or "").strip(),
-            settings=settings,
-            speech_act_guidance=speech_act_guidance,
         )
         user = f"Sources:\n{context_block}\n\nQuestion: {message.strip()}\n\nAnswer:"
         return system, user
@@ -96,47 +97,24 @@ class CompactPromptBuilder:
         *,
         query_lang: str,
         intent: str,
-        is_overview: bool,
         word_limit: int,
         org_name: str,
-        custom: str,
-        settings,
-        speech_act_guidance: str | None = None,
     ) -> str:
         lang_instruction = (
-            "natural Ukrainian." if query_lang == "uk" else "the same language as the question."
+            "natural Ukrainian."
+            if query_lang == "uk"
+            else "the same language as the user's question."
         )
-        base = COMPACT_SYSTEM_BASE
-        if is_overview or intent in OVERVIEW_INTENTS:
-            body = (
-                f"{base} Write {lang_instruction} Max {word_limit} words. "
-                f"Give a factual overview of {org_name} using only supplied content."
-            )
+        body = SYSTEM_CORE.format(lang_instruction=lang_instruction)
+        if intent in OVERVIEW_INTENTS:
+            focus = OVERVIEW_FOCUS.format(org_name=org_name, word_limit=word_limit)
         elif intent in SUPPORT_INTENTS:
-            body = SUPPORT_ANSWER_TEMPLATE.format(
-                base=base,
-                lang_instruction=lang_instruction,
-            )
+            focus = SUPPORT_FOCUS
         elif intent in LISTING_INTENTS:
-            body = LISTING_ANSWER_TEMPLATE.format(
-                base=base,
-                lang_instruction=lang_instruction,
-            )
+            focus = LISTING_FOCUS
         else:
-            body = GENERIC_ANSWER_TEMPLATE.format(
-                base=base,
-                lang_instruction=lang_instruction,
-            )
-
-        if speech_act_guidance:
-            body = f"{body} {speech_act_guidance.strip()}"
-
-        profile = get_mode_profile(settings)
-        if custom and profile.key != "fast":
-            trimmed = custom[:400].strip()
-            if trimmed:
-                return f"{trimmed}\n{body}"
-        return body
+            focus = GENERIC_FOCUS
+        return f"{body}\n{focus}"
 
     @staticmethod
     def _format_hits(hits: list[SearchHit]) -> str:
@@ -152,6 +130,22 @@ class CompactPromptBuilder:
             header = f"Source {i}: {title}\nURL: {url}"
             parts.append(f"{header}\n{snippet}")
         return "\n\n".join(parts)
+
+    @staticmethod
+    def truncate_prompts(system: str, user: str, max_prompt: int) -> tuple[str, str]:
+        """Trim source content under budget; never drop Question/Answer anchors."""
+        combined = len(system) + len(user) + 2
+        if combined <= max_prompt:
+            return system, user
+        overflow = combined - max_prompt
+        marker = "\n\nQuestion:"
+        idx = user.rfind(marker)
+        if idx >= 0:
+            sources = user[:idx]
+            tail = user[idx:]
+            keep = max(200, len(sources) - overflow)
+            return system, sources[:keep].rstrip() + tail
+        return system, user[: max(200, len(user) - overflow)]
 
     @staticmethod
     def contains_debug_trace(text: str) -> bool:

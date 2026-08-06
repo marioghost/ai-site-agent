@@ -846,6 +846,10 @@ export const en: TranslationDict = {
   "chat.sources_none": "No sources found",
   "chat.streaming": "Generating answer…",
   "chat.thinking": "Thinking…",
+  "chat.truncated_badge": "Stopped at limit",
+  "chat.truncated_notice":
+    "Generation stopped because the output token limit was reached. The answer may be incomplete.",
+  "chat.error_badge": "Generation failed",
   "chat.processing": "Processing your request…",
   "chat.metric_waiting": "waiting…",
   "chat.used_context": "Context used",
@@ -1284,7 +1288,7 @@ export const en: TranslationDict = {
   "settings.docs.generation.max_tokens":
     "Maximum answer length in tokens.",
   "settings.docs.generation.system_prompt":
-    "Instructions for the model: tone, constraints, format.",
+    "Not applied to Ask generation. Production answers use the built-in CompactPromptBuilder system prompt (prompt-v4).",
   "settings.docs.generation.fallback":
     "Message when nothing relevant is found above the similarity threshold.",
   "settings.docs.retrieval.mode":

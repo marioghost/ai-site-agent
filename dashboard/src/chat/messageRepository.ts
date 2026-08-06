@@ -1,5 +1,5 @@
 import type { ChatResponse, ChatTurn } from "../types";
-import type { MessageStatus } from "./types";
+import { finalStatusFromPromptDiagnostics } from "./generationStatus";
 import { createEmptyDiagnostics } from "./streamingReducer";
 
 export function newTurnId(): string {
@@ -46,10 +46,17 @@ export function updateTurnById(
 
 export function mergeAssistantFromResponse(turn: ChatTurn, response: ChatResponse): ChatTurn {
   const diag = turn.diagnostics;
+  const pd =
+    response.prompt_diagnostics && typeof response.prompt_diagnostics === "object"
+      ? (response.prompt_diagnostics as Record<string, unknown>)
+      : null;
+  const finalStatus = finalStatusFromPromptDiagnostics(pd, {
+    errorType: response.error_type,
+  });
   return {
     ...turn,
     text: response.answer,
-    status: "completed" as MessageStatus,
+    status: finalStatus,
     sources: response.sources,
     usedContext: response.used_context,
     cacheHit: response.cache_hit,
@@ -61,7 +68,7 @@ export function mergeAssistantFromResponse(turn: ChatTurn, response: ChatRespons
     diagnostics: diag
       ? {
           ...diag,
-          status: "completed",
+          status: finalStatus,
           sessionId: response.session_id,
           requestId: response.request_id,
           sources: {
@@ -76,13 +83,12 @@ export function mergeAssistantFromResponse(turn: ChatTurn, response: ChatRespons
             timing: response.timing,
             firstTokenMs:
               diag.metrics.firstTokenMs ??
-              (response.prompt_diagnostics &&
-              typeof response.prompt_diagnostics === "object" &&
-              "time_to_first_token_ms" in response.prompt_diagnostics
-                ? Number((response.prompt_diagnostics as Record<string, unknown>).time_to_first_token_ms)
+              (pd && "time_to_first_token_ms" in pd
+                ? Number(pd.time_to_first_token_ms)
                 : undefined),
           },
-          retrievalDebug: (response.retrieval_debug as Record<string, unknown> | null) ?? diag.retrievalDebug,
+          retrievalDebug:
+            (response.retrieval_debug as Record<string, unknown> | null) ?? diag.retrievalDebug,
           promptDiagnostics: response.prompt_diagnostics ?? diag.promptDiagnostics,
           trace: response.trace ?? diag.trace,
           metadata: response.metadata ?? diag.metadata,

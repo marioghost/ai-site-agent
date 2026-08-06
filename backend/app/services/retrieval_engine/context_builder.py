@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.settings import Settings
 from app.models.source import Source
 from app.services.context_builder_service import BuiltContext, PageContextBlock
+from app.services.llm_mode_service import effective_generation_settings
 from app.services.retrieval_engine.chunk_fusion import ChunkFusionService
 from app.services.retrieval_engine.context_budget import ContextBudgetService
 from app.services.retrieval_engine.content_sanitizer import (
@@ -68,9 +69,11 @@ class RetrievalContextBuilder:
       user_message=user_message,
     )
     max_total_chars = ContextBudgetService.tokens_to_chars(budget.available_context_tokens)
-    max_chars_per_source = int(
-      getattr(settings, "max_chars_per_source", 800) or 800
-    )
+    eff = effective_generation_settings(settings)
+    profile_chars = int(eff.get("max_chars_per_source") or 0)
+    settings_chars = int(getattr(settings, "max_chars_per_source", 800) or 800)
+    # Prefer mode profile cap when set; never exceed page share of total budget.
+    max_chars_per_source = profile_chars or settings_chars
     max_chars_per_source = min(
       max_chars_per_source,
       max(400, max_total_chars // max(1, max_pages)),
@@ -263,7 +266,6 @@ class RetrievalContextBuilder:
       header = f"Source {i}:\nTitle: {block.title}\nURL: {block.url}"
       if block.document_type and block.document_type != "generic_page":
         header += f"\nType: {block.document_type}"
-      if block.source_summary:
-        header += f"\nSummary: {block.source_summary[:300]}"
+      # Summary lives in Content via _compose_content — do not duplicate here.
       parts.append(f"{header}\nContent:\n{block.text}")
     return "\n\n---\n\n".join(parts)

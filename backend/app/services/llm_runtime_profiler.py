@@ -43,6 +43,9 @@ class LlmRuntimeMetrics:
     total_duration_ms: int | None = None
     prompt_eval_count: int | None = None
     eval_count: int | None = None
+    done_reason: str | None = None
+    generation_stop_reason: str | None = None
+    output_truncated: bool = False
     llm_call_count: int = 0
     llm_call_reasons: list[str] = field(default_factory=list)
     performance_bottleneck: str | None = None
@@ -82,6 +85,8 @@ class LlmRuntimeMetrics:
         if stats.eval_count:
             self.eval_count = stats.eval_count
             self.total_tokens_out = stats.eval_count
+        if stats.done_reason:
+            self.done_reason = stats.done_reason
         eval_ms = self.eval_duration_ms or self.generation_ms
         if self.total_tokens_out and eval_ms:
             self.tokens_per_second = compute_tokens_per_second(self.total_tokens_out, eval_ms)
@@ -93,6 +98,35 @@ class LlmRuntimeMetrics:
             tokens_per_second=self.tokens_per_second,
             gpu_visible=gpu_visible,
         )
+        self.annotate_generation_stop()
+
+    def annotate_generation_stop(self) -> None:
+        """Classify provider stop vs output-length truncation for diagnostics/UI."""
+        reason = (self.done_reason or "").strip().lower()
+        hit_cap = (
+            self.num_predict > 0
+            and self.eval_count is not None
+            and self.eval_count >= self.num_predict
+        )
+        # Trust explicit provider stop; only treat length/cap as truncation.
+        if reason in {"length", "max_tokens"}:
+            self.output_truncated = True
+            self.generation_stop_reason = "length"
+            return
+        if reason in {"stop", "eos", "end"}:
+            self.output_truncated = False
+            self.generation_stop_reason = "stop"
+            return
+        if reason:
+            self.output_truncated = False
+            self.generation_stop_reason = reason
+            return
+        if hit_cap:
+            self.output_truncated = True
+            self.generation_stop_reason = "length"
+            return
+        self.output_truncated = False
+        self.generation_stop_reason = "stop" if self.eval_count else "unknown"
 
     def apply_call_tracker(self, tracker) -> None:
         self.llm_call_count = tracker.count
@@ -108,6 +142,8 @@ class LlmRuntimeMetrics:
             f"gen={self.generation_ms}ms tps={self.tokens_per_second} "
             f"load={self.load_duration_ms}ms prompt_eval={self.prompt_eval_duration_ms}ms "
             f"eval={self.eval_duration_ms}ms tokens_out={self.total_tokens_out} "
+            f"done_reason={self.done_reason} stop={self.generation_stop_reason} "
+            f"truncated={self.output_truncated} "
             f"calls={self.llm_call_count} bottleneck={self.performance_bottleneck}"
         )
 

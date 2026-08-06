@@ -11,7 +11,6 @@ from app.services.llm_mode_service import effective_generation_settings, profile
 from app.services.llm_runtime_environment import collect_runtime_environment
 from app.services.llm_runtime_profiler import LlmRuntimeMetrics, compute_tokens_per_second
 from app.services.ollama_service import OllamaError, OllamaService
-from app.services.polish_policy_service import is_overview_intent
 from app.services.qdrant_service import SearchHit
 from app.services.retrieval_engine.context_builder import RetrievalContextBuilder
 from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
@@ -45,11 +44,6 @@ class LlmGenerationService:
         )
         keep_alive = llm_opts.get("keep_alive")
         max_prompt = int(eff.get("llm_max_prompt_chars") or 4500)
-        if is_overview_intent(query_intent):
-            llm_opts = {
-                **llm_opts,
-                "num_predict": min(int(llm_opts.get("num_predict", 160)), 180),
-            }
         retry_max = int(
             llm_opts.get("llm_retry_max_attempts", eff.get("llm_retry_max_attempts", 0)) or 0
         )
@@ -57,7 +51,9 @@ class LlmGenerationService:
         tracker = call_tracker or LlmCallTracker()
         t_gen = perf_counter()
 
-        system_prompt, user_prompt = self._truncate(system_prompt, user_prompt, max_prompt)
+        system_prompt, user_prompt = CompactPromptBuilder.truncate_prompts(
+            system_prompt, user_prompt, max_prompt
+        )
 
         def _call(system: str, user: str, opts: dict, reason: str) -> tuple:
             tracker.record(reason)
@@ -151,7 +147,7 @@ class LlmGenerationService:
         )
         retry_opts = {
             **llm_opts,
-            "num_predict": min(180, llm_opts["num_predict"]),
+            "num_predict": int(llm_opts["num_predict"]),
             "num_ctx": min(4096, llm_opts["num_ctx"]),
         }
         try:
@@ -214,11 +210,3 @@ class LlmGenerationService:
             "generation_ms": ms,
             "diagnostics": metrics.to_dict(),
         }
-
-    @staticmethod
-    def _truncate(system: str, user: str, max_prompt: int) -> tuple[str, str]:
-        combined = len(system) + len(user) + 2
-        if combined <= max_prompt:
-            return system, user
-        overflow = combined - max_prompt
-        return system, user[: max(200, len(user) - overflow)]
