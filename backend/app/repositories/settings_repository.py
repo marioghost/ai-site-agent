@@ -8,7 +8,7 @@ from app.core.config import get_config
 from app.models.settings import Settings
 from app.services.system_prompt_defaults import DEFAULT_SYSTEM_PROMPT
 
-DEFAULT_FALLBACK = "Я не знайшов цієї інформації на сайті."
+DEFAULT_FALLBACK = "Вибачте, у мене немає такої інформації."
 
 
 class SettingsRepository:

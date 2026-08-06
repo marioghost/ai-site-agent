@@ -13,6 +13,7 @@ from app.models.settings import Settings
 from app.services.answer_cache_service import AnswerCacheService
 from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.cache_namespace_service import build_retrieval_namespace
+from app.repositories.settings_repository import DEFAULT_FALLBACK
 from app.services.embedding_service import EmbeddingService
 from app.services.knowledge_profile_service import KnowledgeProfileService
 from app.services.language_resolver_service import detect_query_language
@@ -659,7 +660,7 @@ class RagStreamingService:
         apply_memory_assist: bool = False,
     ) -> tuple[_PreparedStream, RagResult | None]:
         s = self.settings
-        fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
+        fallback = s.fallback_answer or DEFAULT_FALLBACK
         cache_info = CacheStatusInfo(bypassed=bypass_cache)
         trace = TraceBuilder(request_id) if s.enable_tracing else None
         if trace:
@@ -911,6 +912,7 @@ class RagStreamingService:
                 decision,
                 query_language=language,
                 default_language=s.default_response_language or "uk",
+                fallback_answer=fallback,
             )
             speech_language_diag = speech_act_diagnostics(
                 speech_plan,

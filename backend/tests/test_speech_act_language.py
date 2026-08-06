@@ -169,45 +169,53 @@ def test_answer_act_passes_apply_flag_and_preserves_path(monkeypatch):
 
 
 @pytest.mark.unit
-def test_clarify_uk_en_templates():
+def test_clarify_uses_typed_instruction_not_phrase_table():
     uk = plan_speech_act_render(_decision("clarify"), query_language="uk")
     en = plan_speech_act_render(_decision("clarify"), query_language="en")
-    assert uk.skip_llm and uk.deterministic
-    assert uk.text == "Уточніть, будь ласка, який саме аспект вас цікавить."
-    assert en.text == "Please clarify which specific aspect you are interested in."
+    assert uk.skip_llm is False
+    assert uk.deterministic is False
+    assert uk.text is None
+    assert uk.prompt_guidance == "CLARIFY_AMBIGUOUS_REQUEST"
+    assert en.prompt_guidance == "CLARIFY_AMBIGUOUS_REQUEST"
     assert uk.language_instruction == "CLARIFY_AMBIGUOUS_REQUEST"
 
 
 @pytest.mark.unit
-def test_refuse_uk_en_site_scoped():
-    uk = plan_speech_act_render(_decision("refuse"), query_language="uk")
-    en = plan_speech_act_render(_decision("refuse"), query_language="en")
-    assert "сайті" in (uk.text or "")
-    assert "site" in (en.text or "").lower()
-    assert "false" not in (en.text or "").lower()
-    assert "не існує" not in (uk.text or "")
+def test_refuse_uses_settings_fallback_answer():
+    uk = plan_speech_act_render(
+        _decision("refuse"),
+        query_language="uk",
+        fallback_answer="Вибачте, у мене немає такої інформації.",
+    )
+    en = plan_speech_act_render(
+        _decision("refuse"),
+        query_language="en",
+        fallback_answer="Sorry, I don't have that information.",
+    )
+    assert uk.skip_llm and uk.deterministic
+    assert uk.text == "Вибачте, у мене немає такої інформації."
+    assert en.text == "Sorry, I don't have that information."
     assert uk.language_instruction == "REFUSE_INSUFFICIENT_SITE_EVIDENCE"
 
 
 @pytest.mark.unit
-def test_qualify_plan_has_suffix_without_system_guidance():
+def test_qualify_plan_uses_typed_instruction_no_hardcoded_suffix():
     plan = plan_speech_act_render(_decision("qualify"), query_language="uk")
-    assert plan.qualify_suffix
-    assert plan.prompt_guidance is None
-    assert "повного переліку" in plan.qualify_suffix
-
-
-@pytest.mark.unit
-def test_qualify_suffix_preserves_answer():
-    plan = plan_speech_act_render(_decision("qualify"), query_language="en")
-    out = apply_qualify_suffix("Useful facts about services.", plan.qualify_suffix)
-    assert out.startswith("Useful facts about services.")
-    assert "complete list" in out
+    assert plan.qualify_suffix is None
+    assert plan.prompt_guidance == "QUALIFY_INCOMPLETE_EVIDENCE"
     assert plan.skip_llm is False
 
 
 @pytest.mark.unit
-def test_deterministic_clarify_skips_llm(monkeypatch):
+def test_qualify_suffix_helper_is_noop_without_suffix():
+    plan = plan_speech_act_render(_decision("qualify"), query_language="en")
+    out = apply_qualify_suffix("Useful facts about services.", plan.qualify_suffix)
+    assert out == "Useful facts about services."
+    assert plan.skip_llm is False
+
+
+@pytest.mark.unit
+def test_deterministic_refuse_skips_llm(monkeypatch):
     llm_calls = {"n": 0}
 
     class _FakeGen:
@@ -221,18 +229,8 @@ def test_deterministic_clarify_skips_llm(monkeypatch):
     from app.services.retrieval_pipeline_service import PipelineResult, RetrievalDiagnostics
     from app.services.retrieval_intent_service import RetrievalIntentResult
 
-    hit = SearchHit(
-        score=0.9,
-        source_id=1,
-        chunk_index=0,
-        title="About",
-        url="https://site/about",
-        source_type="page",
-        text="Ambiguous content",
-    )
-
     settings = MagicMock()
-    settings.fallback_answer = "fallback"
+    settings.fallback_answer = "operator-owned fallback"
     settings.enable_tracing = False
     settings.enable_semantic_answer_cache = False
     settings.enable_retrieval_cache = False
@@ -298,10 +296,10 @@ def test_deterministic_clarify_skips_llm(monkeypatch):
 
     def _provider(*a, **k):
         return PipelineResult(
-            hits=[hit],
+            hits=[],
             intent_result=RetrievalIntentResult(
-                intent="clarification",
-                legacy_intent="clarification",
+                intent="factual",
+                legacy_intent="factual",
                 answer_strategy="generic",
             ),
             applied_config=AppliedKnowledgeConfig(answer_strategy="generic"),
@@ -319,11 +317,11 @@ def test_deterministic_clarify_skips_llm(monkeypatch):
         apply_speech_acts=True,
     )
     assert llm_calls["n"] == 0
-    assert result.answer == "Уточніть, будь ласка, який саме аспект вас цікавить."
+    assert result.answer == "operator-owned fallback"
     assert result.sources == []
     assert result.reasoning_diagnostics["llm_skipped"] is True
     assert result.reasoning_diagnostics["speech_act_applied"] is True
-    assert result.reasoning_diagnostics["language_instruction"] == "CLARIFY_AMBIGUOUS_REQUEST"
+    assert result.reasoning_diagnostics["language_instruction"] == "REFUSE_INSUFFICIENT_SITE_EVIDENCE"
 
 
 @pytest.mark.unit

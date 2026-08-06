@@ -61,9 +61,11 @@ class CacheInvalidationService:
             if remove:
                 db.delete(row)
 
-        fallback = (fallback_answer or "Я не знайшов цієї інформації на сайті.").strip()
+        fallback = (fallback_answer or "").strip()
         if not fallback:
-            fallback = "Я не знайшов цієї інформації на сайті."
+            from app.repositories.settings_repository import DEFAULT_FALLBACK
+
+            fallback = DEFAULT_FALLBACK
         answer_rows = list(db.scalars(select(AnswerCache)).all())
         for row in answer_rows:
             if not row.used_context or (

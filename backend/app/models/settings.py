@@ -50,7 +50,7 @@ class Settings(Base):
 
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     fallback_answer: Mapped[str] = mapped_column(
-        Text, default="Я не знайшов цієї інформації на сайті."
+        Text, default="Вибачте, у мене немає такої інформації."
     )
 
     enable_sources: Mapped[bool] = mapped_column(Boolean, default=True)

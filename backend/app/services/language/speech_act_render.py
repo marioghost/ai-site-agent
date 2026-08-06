@@ -1,7 +1,8 @@
 """Language-layer speech-act rendering (RFC-100 Step 045).
 
-Reasoning selects the act; this module maps typed instructions to
-user-facing wording. No sufficiency/retrieval/memory logic here.
+Reasoning selects the act; this module maps typed instructions.
+User-facing wording comes from Settings (fallback_answer) or the admin
+system prompt via LLM — not from hardcoded phrase tables.
 """
 from __future__ import annotations
 
@@ -31,11 +32,11 @@ class SpeechActRenderPlan:
     skip_llm: bool
     response_language: ResponseLang
     text: str | None = None
-    """Deterministic body when skip_llm; None when LLM path continues."""
+    """Deterministic body when skip_llm (refuse → Settings.fallback_answer)."""
     qualify_suffix: str | None = None
-    """Localized limitation sentence appended after LLM answer for qualify."""
+    """Deprecated: always None — qualification is owned by the system prompt."""
     prompt_guidance: str | None = None
-    """Unused for qualify (postfix-only). Kept for SpeechActRenderPlan compatibility."""
+    """Typed Instruction code passed into CompactPromptBuilder (not prose)."""
 
 
 _HINT_TO_INSTRUCTION: dict[str, LanguageInstruction] = {
@@ -44,25 +45,6 @@ _HINT_TO_INSTRUCTION: dict[str, LanguageInstruction] = {
     "qualify_due_to_uncertain_sufficiency": "QUALIFY_INCOMPLETE_EVIDENCE",
     "ask_for_clarification": "CLARIFY_AMBIGUOUS_REQUEST",
     "refuse_due_to_missing_site_evidence": "REFUSE_INSUFFICIENT_SITE_EVIDENCE",
-}
-
-_CLARIFY = {
-    "uk": "Уточніть, будь ласка, який саме аспект вас цікавить.",
-    "en": "Please clarify which specific aspect you are interested in.",
-}
-_REFUSE = {
-    "uk": "Я не знайшов достатньої інформації на сайті для надійної відповіді.",
-    "en": "I could not find enough information on the site to provide a reliable answer.",
-}
-_QUALIFY = {
-    "uk": (
-        "На сайті знайдено релевантну інформацію, але доступні джерела "
-        "можуть не містити повного переліку."
-    ),
-    "en": (
-        "Relevant information was found on the site, but the available sources "
-        "may not provide a complete list."
-    ),
 }
 
 
@@ -91,22 +73,17 @@ def plan_speech_act_render(
     *,
     query_language: str,
     default_language: str = "uk",
+    fallback_answer: str | None = None,
 ) -> SpeechActRenderPlan:
-    """Build a Language render plan from a Reasoning speech-act decision."""
+    """Build a Language render plan from a Reasoning speech-act decision.
+
+    ``fallback_answer`` is Settings.fallback_answer (operator-owned wording).
+    """
     lang = resolve_response_language(query_language, default_language)
     instruction = language_instruction_for(decision)
     act = decision.speech_act
+    fallback = (fallback_answer or "").strip() or None
 
-    if act == "clarify":
-        return SpeechActRenderPlan(
-            speech_act=act,
-            language_instruction=instruction,
-            speech_act_reason=decision.speech_act_reason,
-            deterministic=True,
-            skip_llm=True,
-            response_language=lang,
-            text=_CLARIFY[lang],
-        )
     if act == "refuse":
         return SpeechActRenderPlan(
             speech_act=act,
@@ -115,7 +92,18 @@ def plan_speech_act_render(
             deterministic=True,
             skip_llm=True,
             response_language=lang,
-            text=_REFUSE[lang],
+            text=fallback,
+        )
+    if act == "clarify":
+        # Wording owned by system prompt + LLM; typed Instruction only.
+        return SpeechActRenderPlan(
+            speech_act=act,
+            language_instruction=instruction,
+            speech_act_reason=decision.speech_act_reason,
+            deterministic=False,
+            skip_llm=False,
+            response_language=lang,
+            prompt_guidance=instruction,
         )
     if act == "qualify":
         return SpeechActRenderPlan(
@@ -125,8 +113,8 @@ def plan_speech_act_render(
             deterministic=False,
             skip_llm=False,
             response_language=lang,
-            qualify_suffix=_QUALIFY[lang],
-            prompt_guidance=None,
+            qualify_suffix=None,
+            prompt_guidance=instruction,
         )
     return SpeechActRenderPlan(
         speech_act="answer",
@@ -135,11 +123,12 @@ def plan_speech_act_render(
         deterministic=False,
         skip_llm=False,
         response_language=lang,
+        prompt_guidance=None,
     )
 
 
 def apply_qualify_suffix(answer: str, suffix: str | None) -> str:
-    """Append localized qualification when not already present."""
+    """No-op unless an explicit suffix is provided (legacy hook; unused)."""
     if not suffix:
         return answer
     body = (answer or "").rstrip()

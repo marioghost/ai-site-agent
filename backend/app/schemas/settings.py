@@ -40,7 +40,7 @@ class SettingsBase(BaseModel):
     max_tokens: int = Field(default=1024, ge=1, le=32000)
 
     system_prompt: str = ""
-    fallback_answer: str = "Я не знайшов цієї інформації на сайті."
+    fallback_answer: str = "Вибачте, у мене немає такої інформації."
 
     enable_sources: bool = True
     enable_chat_logs: bool = True

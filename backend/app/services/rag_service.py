@@ -21,6 +21,7 @@ from app.repositories.chat_log_repository import ChatLogRepository
 from app.services.answer_cache_service import AnswerCacheService
 from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.answer_polish_service import AnswerPolishService
+from app.repositories.settings_repository import DEFAULT_FALLBACK
 from app.services.embedding_service import EmbeddingService
 from app.services.reasoning.memory_assist_types import MemoryAssistResult
 from app.services.reasoning.memory_canonical_shadow_types import MemoryCanonicalShadowResult
@@ -175,7 +176,7 @@ class RagService:
         apply_memory_assist: bool = False,
     ) -> RagResult:
         s = self.settings
-        fallback = s.fallback_answer or "Я не знайшов цієї інформації на сайті."
+        fallback = s.fallback_answer or DEFAULT_FALLBACK
         cache_info = CacheStatusInfo(bypassed=bypass_cache)
         trace = TraceBuilder(request_id) if s.enable_tracing else None
         if trace:
@@ -427,6 +428,7 @@ class RagService:
                 decision,
                 query_language=language,
                 default_language=s.default_response_language or "uk",
+                fallback_answer=fallback,
             )
             speech_language_diag = speech_act_diagnostics(
                 speech_plan,

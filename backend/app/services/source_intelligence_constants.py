@@ -1,7 +1,7 @@
 """Source Intelligence Layer constants (domain-agnostic)."""
 
 SOURCE_INTELLIGENCE_VERSION = "source-intelligence-v2"
-PROMPT_TEMPLATE_VERSION = "prompt-v6"
+PROMPT_TEMPLATE_VERSION = "prompt-v7"
 CONTEXT_BUILDER_VERSION = "context-v4"
 
 # Generic document types (no domain-specific types in core code).

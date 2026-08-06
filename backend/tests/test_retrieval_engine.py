@@ -80,9 +80,9 @@ def test_compact_prompt_is_shorter_than_legacy_style():
     combined = len(system) + len(user)
     assert combined < 2500
     assert "Sources:" in user
-    assert "Task:" in user
-    assert "Sources are the only factual authority" in system
-    assert "Synthesize across sources" in system
+    assert "Task:" not in user
+    assert "AI-помічник цього вебсайту" in system
+    assert "Sources" in system
     # Admin system_prompt is primary when set.
     settings_custom = type("S", (), {"system_prompt": "CUSTOM ADMIN SYSTEM PROMPT"})()
     system2, user2 = CompactPromptBuilder.build(
@@ -94,5 +94,5 @@ def test_compact_prompt_is_shorter_than_legacy_style():
         org_name="Example",
     )
     assert system2 == "CUSTOM ADMIN SYSTEM PROMPT"
-    assert "Example" in user2
-    assert "Task:" in user2
+    assert "Task:" not in user2
+    assert "Question: What is this?" in user2

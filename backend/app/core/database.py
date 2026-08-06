@@ -201,13 +201,13 @@ def backfill_source_scheduling_metadata() -> None:
 
 def purge_poisoned_caches() -> None:
     """Remove empty retrieval cache and fallback answer cache on startup."""
-    from app.repositories.settings_repository import SettingsRepository
+    from app.repositories.settings_repository import DEFAULT_FALLBACK, SettingsRepository
     from app.services.cache_invalidation_service import CacheInvalidationService
 
     db = SessionLocal()
     try:
         settings = SettingsRepository(db).get_or_create()
-        fallback = settings.fallback_answer or "Я не знайшов цієї інформації на сайті."
+        fallback = settings.fallback_answer or DEFAULT_FALLBACK
         stats = CacheInvalidationService.purge_poisoned_entries(
             db, fallback_answer=fallback
         )

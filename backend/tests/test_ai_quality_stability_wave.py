@@ -182,7 +182,7 @@ def test_metrics_respect_explicit_stop_even_if_eval_equals_cap():
 
 
 @pytest.mark.unit
-def test_overview_prompt_uses_admin_system_and_task_focus():
+def test_admin_system_prompt_is_sole_behavior_contract():
     settings = Settings(
         llm_mode_profile="high_quality",
         system_prompt="CUSTOM AGENT RULES: be concise and cite sources.",
@@ -196,34 +196,30 @@ def test_overview_prompt_uses_admin_system_and_task_focus():
         org_name="UKRSIBBANK",
     )
     assert system == "CUSTOM AGENT RULES: be concise and cite sources."
-    assert "Task:" in user
-    assert "UKRSIBBANK" in user
-    assert "promotions" in user.lower()
-    assert "Stop when" in user or "do not pad" in user.lower()
-    assert "Quality over length" in user
-    assert "About 220 words" not in user
-    assert "About {word_limit}" not in user
-    assert "words." not in user
     assert "Sources:" in user
     assert "Question:" in user
-    assert "natural Ukrainian" in user
+    assert "Task:" not in user
+    assert "Quality over length" not in user
+    assert "UKRSIBBANK" not in user  # org prose not injected into prompt
+    assert "Instruction:" not in user
 
 
 @pytest.mark.unit
-def test_empty_system_prompt_falls_back_to_quality_default():
+def test_empty_system_prompt_falls_back_to_behavior_contract():
     settings = Settings(llm_mode_profile="high_quality", system_prompt="")
-    system, _ = CompactPromptBuilder.build(
+    system, user = CompactPromptBuilder.build(
         message="who are you",
         hits=[],
         built_context=None,
         intent="factual",
         settings=settings,
+        speech_act_guidance="QUALIFY_INCOMPLETE_EVIDENCE",
     )
-    assert "Sources are the only factual authority" in system
-    assert "Be concise and high-signal" in system
-    assert "Stop as soon as the question is answered" in system
-    assert "Lead with the answer" in system
-    assert "never stop mid-thought" in system
+    assert "AI-помічник цього вебсайту" in system
+    assert "Sources" in system
+    assert "Instruction" in system
+    assert "QUALIFY_INCOMPLETE_EVIDENCE" in user
+    assert "на основі інформації на сайті" not in system.lower()
 
 
 @pytest.mark.unit
@@ -241,12 +237,15 @@ def test_finish_if_truncated_keeps_last_complete_sentence():
 
 
 @pytest.mark.unit
-def test_preview_prompt_keeps_task_tail():
+def test_preview_prompt_keeps_question_tail():
     from app.services.answer_completion import preview_prompt
 
-    user = "Sources:\n" + ("x" * 3000) + "\n\nTask: Be brief.\n\nQuestion: who?\n\nAnswer:"
+    user = (
+        "Sources:\n" + ("x" * 3000)
+        + "\n\nInstruction: QUALIFY_INCOMPLETE_EVIDENCE\n\nQuestion: who?\n\nAnswer:"
+    )
     preview = preview_prompt(user, 2000)
-    assert "Task: Be brief." in preview
+    assert "Instruction: QUALIFY_INCOMPLETE_EVIDENCE" in preview
     assert "Question: who?" in preview
     assert "Sources:" in preview
 
@@ -254,11 +253,14 @@ def test_preview_prompt_keeps_task_tail():
 @pytest.mark.unit
 def test_truncate_prompts_preserves_question_anchor():
     system = "sys"
-    user = "Sources:\n" + ("x" * 5000) + "\n\nTask: Stay focused.\n\nQuestion: who?\n\nAnswer:"
+    user = (
+        "Sources:\n" + ("x" * 5000)
+        + "\n\nInstruction: ANSWER\n\nQuestion: who?\n\nAnswer:"
+    )
     truncated_system, truncated_user = CompactPromptBuilder.truncate_prompts(system, user, 800)
     assert truncated_system == system
     assert "\n\nQuestion: who?\n\nAnswer:" in truncated_user
-    assert "Task:" in truncated_user
+    assert "Instruction:" in truncated_user
     assert len(truncated_system) + len(truncated_user) + 2 <= 800 or truncated_user.endswith(
         "Question: who?\n\nAnswer:"
     )
