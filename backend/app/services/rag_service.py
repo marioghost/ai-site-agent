@@ -19,6 +19,7 @@ from app.models.settings import Settings
 from app.repositories.answer_trace_repository import AnswerTraceRepository
 from app.repositories.chat_log_repository import ChatLogRepository
 from app.services.answer_cache_service import AnswerCacheService
+from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.answer_polish_service import AnswerPolishService
 from app.services.embedding_service import EmbeddingService
 from app.services.reasoning.memory_assist_types import MemoryAssistResult
@@ -564,7 +565,7 @@ class RagService:
         prompt_diagnostics["retry_happened"] = False
         if debug:
             prompt_diagnostics["system_prompt_preview"] = gen_system[:800]
-            prompt_diagnostics["user_prompt_preview"] = gen_user[:2000]
+            prompt_diagnostics["user_prompt_preview"] = preview_prompt(gen_user, 2000)
             prompt_diagnostics["context_text_sent"] = (
                 pipeline_context.prompt_text if pipeline_context else ""
             )
@@ -670,7 +671,13 @@ class RagService:
                 expanded,
             )
 
-        answer = gen_result["answer"]
+        answer = finish_if_truncated(
+            gen_result["answer"],
+            truncated=bool(
+                getattr(metrics, "output_truncated", False)
+                or prompt_diagnostics.get("output_truncated")
+            ),
+        )
         context_text = pipeline_context.prompt_text if pipeline_context else ""
         validation = ResponseValidatorService(
             max_words=mode_profile.max_answer_words_overview + 40,

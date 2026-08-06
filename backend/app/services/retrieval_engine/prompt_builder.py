@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from app.services.context_builder_service import BuiltContext
 from app.services.language_resolver_service import detect_query_language
-from app.services.llm_mode_service import get_mode_profile
 from app.services.qdrant_service import SearchHit
 from app.services.source_intelligence_constants import PROMPT_TEMPLATE_VERSION
 from app.services.system_prompt_defaults import DEFAULT_SYSTEM_PROMPT
@@ -33,16 +32,29 @@ SUPPORT_INTENTS = frozenset({
 })
 
 OVERVIEW_FOCUS = (
-    "Overview of {org_name}: cover what it is and the most important organization "
-    "facts from the sources. Prefer substance over promotions and news. "
-    "About {word_limit} words."
+    "Overview of {org_name}: in a few short sentences, say what it is and the "
+    "most important organization facts from the sources. Prefer substance over "
+    "promotions and news. Stop when the overview is complete — do not pad."
 )
 
-LISTING_FOCUS = "Use a concise list when helpful. Name source titles for distinct items."
+LISTING_FOCUS = (
+    "Answer briefly with a concise list when helpful. Name source titles for "
+    "distinct items. Stop when the list covers the question."
+)
 
-SUPPORT_FOCUS = "Answer in a clear support style. Keep steps short when applicable."
+SUPPORT_FOCUS = (
+    "Answer directly in a clear support style. Keep steps short. "
+    "Stop when the user can act on the answer."
+)
 
-GENERIC_FOCUS = "Stay focused and factual."
+GENERIC_FOCUS = (
+    "Answer briefly and factually. Include only what the question needs. "
+    "Stop when done — do not pad."
+)
+
+QUALITY_STOP = (
+    "Quality over length: short, complete, useful. No filler, no marketing copy."
+)
 
 
 class CompactPromptBuilder:
@@ -62,7 +74,6 @@ class CompactPromptBuilder:
     ) -> tuple[str, str]:
         # Qualify/refuse wording is applied post-generation (suffix / deterministic).
         _ = speech_act_guidance
-        profile = get_mode_profile(settings)
 
         if built_context and built_context.prompt_text:
             context_block = built_context.prompt_text
@@ -72,7 +83,6 @@ class CompactPromptBuilder:
         system = cls.resolve_system_prompt(settings)
         task = cls._task_line(
             intent=intent,
-            word_limit=profile.max_answer_words_overview,
             org_name=org_name,
             message=message,
         )
@@ -95,7 +105,6 @@ class CompactPromptBuilder:
         cls,
         *,
         intent: str,
-        word_limit: int,
         org_name: str,
         message: str,
     ) -> str:
@@ -106,14 +115,14 @@ class CompactPromptBuilder:
             else "Reply in the same language as the question."
         )
         if intent in OVERVIEW_INTENTS:
-            focus = OVERVIEW_FOCUS.format(org_name=org_name, word_limit=word_limit)
+            focus = OVERVIEW_FOCUS.format(org_name=org_name)
         elif intent in SUPPORT_INTENTS:
             focus = SUPPORT_FOCUS
         elif intent in LISTING_INTENTS:
             focus = LISTING_FOCUS
         else:
             focus = GENERIC_FOCUS
-        return f"{focus} {lang}"
+        return f"{focus} {QUALITY_STOP} {lang}"
 
     @staticmethod
     def _format_hits(hits: list[SearchHit]) -> str:

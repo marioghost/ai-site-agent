@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.models.settings import Settings
 from app.services.answer_cache_service import AnswerCacheService
+from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.cache_namespace_service import build_retrieval_namespace
 from app.services.embedding_service import EmbeddingService
 from app.services.knowledge_profile_service import KnowledgeProfileService
@@ -365,6 +366,10 @@ class RagStreamingService:
                 prepared.metrics.annotate_generation_stop()
             prepared.metrics.apply_call_tracker(call_tracker)
             prepared.prompt_diagnostics.update(prepared.metrics.to_dict())
+
+            answer = finish_if_truncated(
+                answer, truncated=bool(prepared.metrics.output_truncated)
+            )
 
             if prepared.trace:
                 prepared.trace.end("llm_generation", details={"chars": len(answer)})
@@ -1096,7 +1101,7 @@ class RagStreamingService:
         prompt_diagnostics["polish_skip_reason"] = pre_polish.reason
         if debug:
             prompt_diagnostics["system_prompt_preview"] = gen_system[:800]
-            prompt_diagnostics["user_prompt_preview"] = gen_user[:2000]
+            prompt_diagnostics["user_prompt_preview"] = preview_prompt(gen_user, 2000)
             prompt_diagnostics["context_text_sent"] = (
                 pipeline_context.prompt_text if pipeline_context else ""
             )

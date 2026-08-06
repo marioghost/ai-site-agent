@@ -199,6 +199,11 @@ def test_overview_prompt_uses_admin_system_and_task_focus():
     assert "Task:" in user
     assert "UKRSIBBANK" in user
     assert "promotions" in user.lower()
+    assert "Stop when" in user or "do not pad" in user.lower()
+    assert "Quality over length" in user
+    assert "About 220 words" not in user
+    assert "About {word_limit}" not in user
+    assert "words." not in user
     assert "Sources:" in user
     assert "Question:" in user
     assert "natural Ukrainian" in user
@@ -215,8 +220,35 @@ def test_empty_system_prompt_falls_back_to_quality_default():
         settings=settings,
     )
     assert "Sources are the only factual authority" in system
+    assert "Be concise and high-signal" in system
+    assert "Stop as soon as the question is answered" in system
     assert "Lead with the answer" in system
     assert "never stop mid-thought" in system
+
+
+@pytest.mark.unit
+def test_finish_if_truncated_keeps_last_complete_sentence():
+    from app.services.answer_completion import finish_if_truncated
+
+    partial = (
+        "UKRSIBBANK — один з найбільших банків України. "
+        "Він входить до BNP Paribas Group. Банк також пропонує знижки на карт"
+    )
+    finished = finish_if_truncated(partial, truncated=True)
+    assert finished.endswith("Group.")
+    assert "знижки" not in finished
+    assert finish_if_truncated(partial, truncated=False) == partial.rstrip()
+
+
+@pytest.mark.unit
+def test_preview_prompt_keeps_task_tail():
+    from app.services.answer_completion import preview_prompt
+
+    user = "Sources:\n" + ("x" * 3000) + "\n\nTask: Be brief.\n\nQuestion: who?\n\nAnswer:"
+    preview = preview_prompt(user, 2000)
+    assert "Task: Be brief." in preview
+    assert "Question: who?" in preview
+    assert "Sources:" in preview
 
 
 @pytest.mark.unit
