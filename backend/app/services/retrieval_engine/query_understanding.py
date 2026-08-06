@@ -20,6 +20,7 @@ _LISTING_MARKERS = re.compile(
     re.I,
 )
 _COMPARISON_MARKERS = re.compile(r"\b(vs|versus|compare|порівня|difference|краще|better)\b", re.I)
+_DEFINITION_MARKERS = re.compile(r"\b(what is|what are|що таке|що це|define|визнач)\b", re.I)
 
 
 @dataclass
@@ -29,10 +30,12 @@ class QueryUnderstanding:
     legacy_intent: str
     topic: str | None = None
     expected_answer_type: str = "general"
+    scope_type: str = "general"
     preferred_purposes: list[str] = field(default_factory=list)
     unsuitable_purposes: list[str] = field(default_factory=list)
     preferred_evidence: list[str] = field(default_factory=list)
     unsuitable_evidence: list[str] = field(default_factory=list)
+    focus_terms: list[str] = field(default_factory=list)
     language: str = "unknown"
     specificity: float = 0.5
     ambiguity: float = 0.5
@@ -44,10 +47,12 @@ class QueryUnderstanding:
             "legacy_intent": self.legacy_intent,
             "topic": self.topic,
             "expected_answer_type": self.expected_answer_type,
+            "scope_type": self.scope_type,
             "preferred_purposes": self.preferred_purposes,
             "unsuitable_purposes": self.unsuitable_purposes,
             "preferred_evidence": self.preferred_evidence,
             "unsuitable_evidence": self.unsuitable_evidence,
+            "focus_terms": self.focus_terms,
             "specificity": round(self.specificity, 3),
             "ambiguity": round(self.ambiguity, 3),
             "confidence": round(self.confidence, 3),
@@ -75,10 +80,12 @@ class QueryUnderstandingService:
         topic_key = intent_result.matched_topic.key if intent_result.matched_topic else None
 
         answer_type = cls._infer_answer_type(q, legacy, intent_result)
+        scope_type = cls._scope_type(answer_type, intent_result)
         preferred_purposes, unsuitable_purposes = purpose_expectations_for_answer_type(answer_type)
         preferred_evidence, unsuitable_evidence = cls._evidence_expectations(
             q, answer_type, topic, topic_key, intent_result
         )
+        focus_terms = cls._focus_terms(q, topic, topic_key, intent_result)
 
         tokens = _tokens(q)
         specificity = min(1.0, len(tokens) / 8.0) if tokens else 0.3
@@ -92,10 +99,12 @@ class QueryUnderstandingService:
             legacy_intent=legacy,
             topic=topic or topic_key,
             expected_answer_type=answer_type,
+            scope_type=scope_type,
             preferred_purposes=preferred_purposes,
             unsuitable_purposes=unsuitable_purposes,
             preferred_evidence=preferred_evidence,
             unsuitable_evidence=unsuitable_evidence,
+            focus_terms=focus_terms,
             language=query_language,
             specificity=specificity,
             ambiguity=ambiguity,
@@ -108,6 +117,8 @@ class QueryUnderstandingService:
     ) -> str:
         if legacy_intent in CONTACT_INTENTS or intent_result.answer_strategy == "contacts":
             return "contact"
+        if _DEFINITION_MARKERS.search(query):
+            return "definition"
         if _COMPARISON_MARKERS.search(query):
             return "comparison"
         if _LISTING_MARKERS.search(query) or legacy_intent in LISTING_INTENTS:
@@ -120,6 +131,20 @@ class QueryUnderstandingService:
             return "documentation"
         if intent_result.answer_strategy in {"specific_fact", "fact"}:
             return "fact"
+        return "general"
+
+    @staticmethod
+    def _scope_type(answer_type: str, intent_result: RetrievalIntentResult) -> str:
+        if answer_type == "overview":
+            return "organization_overview" if intent_result.is_broad else "topic_overview"
+        if answer_type in {"listing", "comparison"} or intent_result.legacy_intent == "product_query":
+            return "product_family"
+        if answer_type in {"definition", "fact"}:
+            return "exact_subject"
+        if answer_type == "contact":
+            return "navigation"
+        if answer_type == "faq":
+            return "procedure"
         return "general"
 
     @staticmethod
@@ -169,3 +194,21 @@ class QueryUnderstandingService:
                 preferred.append(tok)
 
         return list(dict.fromkeys(preferred))[:16], list(dict.fromkeys(unsuitable))[:12]
+
+    @staticmethod
+    def _focus_terms(
+        query: str,
+        topic: str | None,
+        topic_key: str | None,
+        intent_result: RetrievalIntentResult,
+    ) -> list[str]:
+        stop = {"які", "what", "which", "how", "the", "and", "for", "про", "що", "як", "де", "does"}
+        focus: list[str] = []
+        for blob in [topic or "", (topic_key or "").replace("_", " "), *(intent_result.matched_aliases or [])]:
+            for tok in _tokens(blob):
+                if tok not in stop and len(tok) >= 3:
+                    focus.append(tok)
+        for tok in _tokens(query):
+            if tok not in stop and len(tok) >= 3:
+                focus.append(tok)
+        return list(dict.fromkeys(focus))[:12]

@@ -14,6 +14,7 @@ from app.services.llm_runtime_environment import collect_runtime_environment
 from app.services.llm_runtime_profiler import LlmRuntimeMetrics, compute_tokens_per_second
 from app.services.ollama_service import OllamaError, OllamaService
 from app.services.qdrant_service import SearchHit
+from app.services.rag_planning.contracts import AnswerPlan
 from app.services.retrieval_engine.context_builder import RetrievalContextBuilder
 from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
 
@@ -36,6 +37,8 @@ class LlmGenerationService:
         llm_opts: dict,
         metrics: LlmRuntimeMetrics,
         query_intent: str,
+        answer_plan: AnswerPlan | None = None,
+        additional_guidance: list[str] | None = None,
         db=None,
         call_tracker: LlmCallTracker | None = None,
     ) -> dict:
@@ -46,8 +49,11 @@ class LlmGenerationService:
         )
         keep_alive = llm_opts.get("keep_alive")
         max_prompt = int(eff.get("llm_max_prompt_chars") or 4500)
-        retry_max = int(
+        retry_max = min(
+            1,
+            int(
             llm_opts.get("llm_retry_max_attempts", eff.get("llm_retry_max_attempts", 0)) or 0
+            ),
         )
         retry_timeout_only = bool(getattr(s, "llm_retry_on_timeout_only", True))
         tracker = call_tracker or LlmCallTracker()
@@ -79,7 +85,7 @@ class LlmGenerationService:
             chat_result, ollama_ms = _call(
                 system_prompt, user_prompt, llm_opts, "rag_generation"
             )
-            return self._success(
+            out = self._success(
                 chat_result,
                 metrics,
                 tracker,
@@ -89,6 +95,29 @@ class LlmGenerationService:
                 user_prompt=user_prompt,
                 retry=False,
             )
+            if metrics.output_truncated and retry_max >= 1:
+                first_stop_reason = metrics.done_reason or metrics.generation_stop_reason
+                return self._retry_compact(
+                    message=message,
+                    system_prompt=system_prompt,
+                    hits=hits,
+                    pipeline_context=pipeline_context,
+                    llm_opts=llm_opts,
+                    metrics=metrics,
+                    query_intent=query_intent,
+                    answer_plan=answer_plan,
+                    additional_guidance=additional_guidance,
+                    t_gen=t_gen,
+                    max_prompt=max_prompt,
+                    gen_timeout=gen_timeout,
+                    keep_alive=keep_alive,
+                    _call=_call,
+                    db=db,
+                    tracker=tracker,
+                    retry_reason="length_stop",
+                    first_stop_reason=first_stop_reason,
+                )
+            return out
         except OllamaError as exc:
             logger.error("LLM generation failed: %s", exc)
             is_timeout = "timed out" in str(exc).lower() or "timeout" in str(exc).lower()
@@ -107,6 +136,8 @@ class LlmGenerationService:
                 llm_opts=llm_opts,
                 metrics=metrics,
                 query_intent=query_intent,
+                answer_plan=answer_plan,
+                additional_guidance=additional_guidance,
                 t_gen=t_gen,
                 max_prompt=max_prompt,
                 gen_timeout=gen_timeout,
@@ -126,6 +157,8 @@ class LlmGenerationService:
         llm_opts: dict,
         metrics: LlmRuntimeMetrics,
         query_intent: str,
+        answer_plan: AnswerPlan | None,
+        additional_guidance: list[str] | None,
         t_gen: float,
         max_prompt: int,
         gen_timeout: float,
@@ -133,6 +166,8 @@ class LlmGenerationService:
         _call,
         db,
         tracker: LlmCallTracker,
+        retry_reason: str,
+        first_stop_reason: str | None = None,
     ) -> dict:
         compact_hits = self._select_compact_hits(hits, pipeline_context)
         if db is not None:
@@ -147,14 +182,22 @@ class LlmGenerationService:
                 max_chunks_per_page=1,
             )
         else:
-            # Step 066: generation may run with DB parked — compact without ORM.
-            compact_ctx = pipeline_context
+            compact_ctx, _ = RetrievalContextBuilder().build(
+                compact_hits,
+                settings=self.settings,
+                user_message=message,
+                system_prompt_estimate=system_prompt,
+                max_pages=2,
+            )
+        compact_plan = answer_plan.for_compact_retry() if answer_plan else None
         _, compact_user = CompactPromptBuilder.build(
             message=message,
             hits=compact_hits,
             built_context=compact_ctx,
             intent=query_intent,
             settings=self.settings,
+            answer_plan=compact_plan,
+            additional_guidance=additional_guidance,
         )
         _, compact_user = CompactPromptBuilder.truncate_prompts(
             system_prompt, compact_user, max_prompt
@@ -183,6 +226,9 @@ class LlmGenerationService:
             )
             out["retry"] = True
             metrics.retry_happened = True
+            out["diagnostics"]["retry_reason"] = retry_reason
+            out["diagnostics"]["first_stop_reason"] = first_stop_reason
+            out["diagnostics"]["retry_stop_reason"] = out["diagnostics"].get("done_reason")
             return out
         except OllamaError as retry_exc:
             metrics.apply_call_tracker(tracker)
@@ -192,6 +238,9 @@ class LlmGenerationService:
                 "diagnostics": {
                     **self._prompt_diagnostics(system_prompt, compact_user, metrics),
                     "timeout_reason": str(retry_exc),
+                    "retry_reason": retry_reason,
+                    "first_stop_reason": first_stop_reason,
+                    "retry_stop_reason": "error",
                 },
                 "retry": True,
             }

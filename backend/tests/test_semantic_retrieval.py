@@ -246,6 +246,110 @@ def test_overview_query_prefers_canonical_about_page():
     assert about_doc.score.final_score > news_doc.score.final_score
 
 
+def test_definition_query_prefers_authoritative_service_page_over_news():
+    understanding = QueryUnderstandingService.analyze(
+        "що таке страхування життя?",
+        intent_result=RetrievalIntentResult(
+            intent="product_query",
+            legacy_intent="product_query",
+            answer_strategy="fact",
+            confidence=0.82,
+        ),
+        query_language="uk",
+    )
+    service_source = _source(
+        21,
+        title="Страхування життя",
+        url="https://ins.example/services/life-insurance",
+        should_answer_product=True,
+        semantic={
+            "main_topic": "страхування життя",
+            "document_purpose": "service description",
+            "document_purpose_confidence": 0.92,
+            "supported_intents": ["product_query", "specific_fact"],
+            "confidence": 0.9,
+        },
+    )
+    news_source = _source(
+        22,
+        title="Новина про страхову кампанію",
+        url="https://ins.example/news/campaign",
+        semantic={
+            "main_topic": "страхування",
+            "document_purpose": "news",
+            "document_purpose_confidence": 0.88,
+            "supported_intents": ["news_query"],
+            "confidence": 0.82,
+        },
+    )
+    service_doc = RankedDocument(
+        source_id=21,
+        url=service_source.url,
+        title=service_source.title,
+        document_type="service_page",
+        representative_chunk=_hit(21, dense=0.64, lexical=0.54, title=service_source.title, text="Страхування життя забезпечує страховий захист та може включати виплату вигодонабувачу."),
+    )
+    news_doc = RankedDocument(
+        source_id=22,
+        url=news_source.url,
+        title=news_source.title,
+        document_type="news_page",
+        representative_chunk=_hit(22, dense=0.68, lexical=0.56, title=news_source.title, text="Цього місяця стартувала рекламна кампанія страхових продуктів."),
+    )
+    scorer = DocumentScorer(_Settings())
+    scorer.score_document(service_doc, query="що таке страхування життя?", understanding=understanding, source=service_source, query_language="uk")
+    scorer.score_document(news_doc, query="що таке страхування життя?", understanding=understanding, source=news_source, query_language="uk")
+    assert understanding.expected_answer_type == "definition"
+    assert service_doc.score.final_score > news_doc.score.final_score
+    assert service_doc.score_breakdown["compatibility_label"] == "exact_match"
+
+
+def test_cross_tenant_variant_query_prefers_exact_variant_not_adjacent_category():
+    understanding = QueryUnderstandingService.analyze(
+        "What does the pro plan include?",
+        intent_result=RetrievalIntentResult(
+            intent="product_query",
+            legacy_intent="product_query",
+            answer_strategy="fact",
+            confidence=0.8,
+        ),
+        query_language="en",
+    )
+    pro_source = _source(
+        31,
+        title="Pro plan",
+        url="https://saas.example/pricing/pro",
+        should_answer_product=True,
+        semantic={
+            "main_topic": "pro plan",
+            "document_purpose": "pricing",
+            "supported_intents": ["product_query", "pricing"],
+            "confidence": 0.88,
+        },
+    )
+    enterprise_source = _source(
+        32,
+        title="Enterprise plan",
+        url="https://saas.example/pricing/enterprise",
+        should_answer_product=True,
+        semantic={
+            "main_topic": "enterprise plan",
+            "document_purpose": "pricing",
+            "supported_intents": ["product_query", "pricing"],
+            "confidence": 0.88,
+        },
+    )
+    pro_hit = _hit(31, dense=0.66, lexical=0.6, title="Pro plan", text="The pro plan includes advanced analytics and API access.")
+    ent_hit = _hit(32, dense=0.7, lexical=0.62, title="Enterprise plan", text="The enterprise plan includes SSO and dedicated support.")
+    scorer = DocumentScorer(_Settings())
+    pro_doc = RankedDocument(source_id=31, url=pro_source.url, title=pro_source.title, document_type="pricing_page", representative_chunk=pro_hit)
+    ent_doc = RankedDocument(source_id=32, url=enterprise_source.url, title=enterprise_source.title, document_type="pricing_page", representative_chunk=ent_hit)
+    scorer.score_document(pro_doc, query="What does the pro plan include?", understanding=understanding, source=pro_source, query_language="en")
+    scorer.score_document(ent_doc, query="What does the pro plan include?", understanding=understanding, source=enterprise_source, query_language="en")
+    assert pro_doc.score.final_score > ent_doc.score.final_score
+    assert pro_doc.score_breakdown["compatibility_label"] == "exact_match"
+
+
 def test_missing_source_intelligence_lowers_confidence():
     understanding = QueryUnderstandingService.analyze(
         "products",

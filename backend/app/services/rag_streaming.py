@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.models.settings import Settings
 from app.services.answer_cache_service import AnswerCacheService
+from app.services.answer_guidance_service import build_answer_guidance
 from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.cache_namespace_service import build_retrieval_namespace
 from app.repositories.settings_repository import DEFAULT_FALLBACK
@@ -369,6 +370,11 @@ class RagStreamingService:
                 prepared.metrics.annotate_generation_stop()
             prepared.metrics.apply_call_tracker(call_tracker)
             prepared.prompt_diagnostics.update(prepared.metrics.to_dict())
+            prepared.prompt_diagnostics["final_truncation_status"] = (
+                "truncated"
+                if prepared.prompt_diagnostics.get("output_truncated")
+                else "complete"
+            )
 
             answer = finish_if_truncated(
                 answer, truncated=bool(prepared.metrics.output_truncated)
@@ -1087,6 +1093,14 @@ class RagStreamingService:
 
         t_prompt = perf_counter()
         org_name = profile.organization_name or profile.site_display_name or "the organization"
+        answer_guidance = (
+            build_answer_guidance(
+                planner_decision=planner_decision,
+                evidence_plan=evidence_plan_obj,
+            )
+            if planner_decision
+            else None
+        )
         gen_system, gen_user = CompactPromptBuilder.build(
             message=message,
             hits=hits,
@@ -1098,6 +1112,7 @@ class RagStreamingService:
                 speech_plan.prompt_guidance if speech_plan else None
             ),
             answer_plan=planner_decision.answer_plan if planner_decision else None,
+            additional_guidance=(answer_guidance or {}).get("guidance_lines"),
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -1127,6 +1142,8 @@ class RagStreamingService:
             llm_opts.get("generation_timeout_seconds") or s.ollama_generation_timeout_seconds or 45
         )
         prompt_diagnostics["max_sources"] = eff["max_sources_in_prompt"]
+        if answer_guidance:
+            prompt_diagnostics["answer_guidance"] = answer_guidance
         pre_polish = evaluate_polish(
             s,
             answer="",

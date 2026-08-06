@@ -29,6 +29,8 @@ _COMPARISON_OPTIONAL = ("alternatives",)
 _NEWS_REQUIRED = ("current_item",)
 _PROMOTION_REQUIRED = ("offer",)
 _FACT_REQUIRED = ("fact",)
+_DEFINITION_REQUIRED = ("product_identity",)
+_DEFINITION_OPTIONAL = ("capabilities", "conditions")
 _DOC_REQUIRED = ("documentation",)
 _FAQ_REQUIRED = ("answer",)
 _GENERAL_REQUIRED = ("general",)
@@ -70,6 +72,9 @@ def build_knowledge_plan(
     elif answer_type == "fact" or intent_l == "specific_fact":
         required, optional = _FACT_REQUIRED, ()
         forbidden = tuple(_FORBIDDEN_OVERVIEW)
+    elif answer_type == "definition":
+        required, optional = _DEFINITION_REQUIRED, _DEFINITION_OPTIONAL
+        forbidden = ("news_item", "offer", "vacancy")
     elif intent_l in NEWS_INTENTS:
         required, optional = _NEWS_REQUIRED, ("context",)
         forbidden = ("identity", "offer")
@@ -121,21 +126,96 @@ def build_knowledge_plan(
 def build_answer_plan(*, knowledge_plan: KnowledgePlan) -> AnswerPlan:
     scope = ""
     reasons: list[str] = ["derived_from_knowledge_plan"]
+    required_order = knowledge_plan.required_slots
+    optional_order = knowledge_plan.optional_slots
+    optional_limit = 1
+    target_words = 120
+    target_sentences = 4
+    compact_retry_instruction = ""
 
     if is_overview_intent(knowledge_plan.information_need) or knowledge_plan.answer_type == "overview":
         scope = OVERVIEW_SCOPE_INSTRUCTION
         reasons.append("overview_scope")
+        optional_limit = 2
+        target_words = 110
+        target_sentences = 4
+        compact_retry_instruction = (
+            "Give a complete answer in 3 to 4 short sentences. Cover identity, "
+            "what the organization does, and at most one or two key differentiators. "
+            "Drop optional details before repeating or expanding."
+        )
     elif knowledge_plan.answer_type == "contact":
-        scope = "Provide contact information clearly and concisely."
+        scope = "Provide practical navigation or contact guidance clearly and concisely."
+        optional_limit = 1
+        target_words = 90
+        target_sentences = 4
+        compact_retry_instruction = (
+            "Give only the practical next steps from the evidence. Mention the "
+            "page or locator and how to use it. Do not add background."
+        )
     elif knowledge_plan.answer_type == "faq":
         scope = "Answer the specific question directly using the evidence."
+        optional_limit = 1
+        target_words = 110
+        target_sentences = 4
+        compact_retry_instruction = (
+            "Answer directly in 3 to 4 short steps or sentences. Keep only the "
+            "required action, prerequisites, and next step."
+        )
     elif knowledge_plan.answer_type == "listing":
         scope = "List the relevant options found in the evidence; do not claim completeness unless stated."
+        optional_limit = 1
+        target_words = 130
+        target_sentences = 5
+        compact_retry_instruction = (
+            "Keep only the most relevant options. Do not claim completeness. Use "
+            "a short complete answer rather than an exhaustive list."
+        )
     elif knowledge_plan.answer_type == "comparison":
         scope = "Compare the relevant alternatives using aligned attributes from the evidence."
+        optional_limit = 1
+        target_words = 140
+        target_sentences = 5
+        compact_retry_instruction = (
+            "Compare only the key differences needed to answer the question. Drop "
+            "secondary attributes before repeating evidence."
+        )
+    elif knowledge_plan.answer_type == "definition":
+        scope = (
+            "Explain what the subject is using the strongest matching evidence. "
+            "Lead with the definition, then add only the most relevant scope or condition."
+        )
+        optional_limit = 1
+        target_words = 95
+        target_sentences = 3
+        compact_retry_instruction = (
+            "Give one direct definition sentence, then one short sentence with the "
+            "most important supporting scope or condition."
+        )
+    elif knowledge_plan.answer_type == "fact":
+        scope = "Answer the specific fact question directly and keep the scope exact."
+        optional_limit = 0
+        target_words = 90
+        target_sentences = 3
+        compact_retry_instruction = (
+            "State only the exact fact supported by the evidence and the minimum "
+            "necessary qualifier."
+        )
+    else:
+        optional_limit = min(1, len(optional_order))
+        compact_retry_instruction = (
+            "Answer only the core question. Prefer a short complete response over "
+            "extra detail."
+        )
 
     return AnswerPlan(
         answer_type=knowledge_plan.answer_type,
         scope_instruction=scope,
+        required_slot_order=required_order,
+        optional_slot_order=optional_order,
+        optional_slot_limit=optional_limit,
+        target_words=target_words,
+        target_sentences=target_sentences,
+        compact_retry_instruction=compact_retry_instruction or scope,
         plan_reasons=tuple(reasons),
     )

@@ -11,6 +11,8 @@ from app.services.context_builder_service import BuiltContext, PageContextBlock
 from app.services.llm_generation_service import LlmGenerationService
 from app.services.llm_mode_service import effective_generation_settings, get_mode_profile
 from app.services.llm_options_service import resolve_llm_options
+from app.services.llm_runtime_profiler import LlmRuntimeMetrics
+from app.services.ollama_service import OllamaChatResult
 from app.services.polish_policy_service import evaluate_polish, should_polish
 from app.services.retrieval_engine.prompt_builder import CompactPromptBuilder
 from app.services.rag_planning.plan_builders import build_answer_plan, build_knowledge_plan
@@ -203,3 +205,92 @@ def test_retry_compact_prefers_pipeline_context_order_over_raw_hit_order():
     )
     compact = LlmGenerationService._select_compact_hits(hits, ctx)
     assert [hit.source_id for hit in compact] == [20, 30]
+
+
+def test_prompt_builder_includes_budget_and_slot_priority():
+    settings = Settings(llm_mode_profile="high_quality")
+    kp = build_knowledge_plan(information_need="entity_overview", understanding=None, profile=None)
+    ap = build_answer_plan(knowledge_plan=kp)
+    _system, user = CompactPromptBuilder.build(
+        message="розкажи про організацію",
+        hits=[],
+        built_context=None,
+        settings=settings,
+        answer_plan=ap,
+        additional_guidance=["Ignore adjacent products."],
+    )
+    assert "Task:" in user
+    assert "Cover first:" in user
+    assert "Drop first under output pressure:" in user
+    assert "about 110 words" in user
+    assert "Ignore adjacent products." in user
+
+
+def test_length_stop_triggers_one_compact_retry_with_truthful_diagnostics():
+    class _FakeOllama:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def chat(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return OllamaChatResult(
+                    content="Partial answer that keeps going without a proper ending",
+                    eval_count=512,
+                    prompt_eval_count=700,
+                    eval_duration_ns=2_000_000_000,
+                    done_reason="length",
+                    model="fake",
+                )
+            return OllamaChatResult(
+                content="Complete compact answer.",
+                eval_count=120,
+                prompt_eval_count=320,
+                eval_duration_ns=1_000_000_000,
+                done_reason="stop",
+                model="fake",
+            )
+
+    hits = [
+        SearchHit(score=0.9, source_id=10, chunk_index=0, title="About", url="https://site/about", source_type="page", text="about text"),
+        SearchHit(score=0.8, source_id=20, chunk_index=0, title="Cards", url="https://site/cards", source_type="page", text="cards text"),
+        SearchHit(score=0.7, source_id=30, chunk_index=0, title="News", url="https://site/news", source_type="page", text="news text"),
+    ]
+    ctx = BuiltContext(
+        blocks=[
+            PageContextBlock(source_id=10, title="About", url="https://site/about", chunks_used=1, text="about text", score=0.9),
+            PageContextBlock(source_id=20, title="Cards", url="https://site/cards", chunks_used=1, text="cards text", score=0.8),
+            PageContextBlock(source_id=30, title="News", url="https://site/news", chunks_used=1, text="news text", score=0.7),
+        ],
+        prompt_text="full context",
+        total_chunks=3,
+        page_count=3,
+    )
+    kp = build_knowledge_plan(information_need="entity_overview", understanding=None, profile=None)
+    answer_plan = build_answer_plan(knowledge_plan=kp)
+    metrics = LlmRuntimeMetrics(num_predict=512)
+    settings = Settings(llm_mode_profile="high_quality")
+    opts = resolve_llm_options(settings, prompt_chars=2000)
+    svc = LlmGenerationService(_FakeOllama(), settings)
+
+    out = svc.generate(
+        message="розкажи про організацію",
+        system_prompt="system",
+        user_prompt="Evidence:\nfull\n\nQuestion: q\n\nAnswer:",
+        hits=hits,
+        pipeline_context=ctx,
+        llm_opts=opts,
+        metrics=metrics,
+        query_intent="entity_overview",
+        answer_plan=answer_plan,
+        additional_guidance=["Ignore adjacent products."],
+        db=None,
+    )
+
+    assert out["retry"] is True
+    assert out["answer"] == "Complete compact answer."
+    assert out["diagnostics"]["first_stop_reason"] == "length"
+    assert out["diagnostics"]["retry_stop_reason"] == "stop"
+    assert out["diagnostics"]["retry_reason"] == "length_stop"
+    assert out["diagnostics"]["output_truncated"] is False
+    assert "news text" not in out["diagnostics"]["context_text_sent"]

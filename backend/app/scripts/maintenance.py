@@ -29,7 +29,6 @@ from app.services.answer_cache_service import (
     AnswerCacheService,
     answer_cache_collection_name,
 )
-from app.services.indexing_worker_service import _Overrides, indexing_worker
 from app.services.knowledge_version_service import KnowledgeVersionService
 from app.services.lexical_index_service import LexicalIndexService
 from app.services.qdrant_service import QdrantService
@@ -120,6 +119,7 @@ def cmd_trigger_reindex(*, confirm: str | None = None, i_understand: bool = Fals
     from sqlalchemy.engine import make_url
 
     from app.core.config import get_config
+    from app.services.indexing_worker_service import _Overrides, indexing_worker
 
     db_name = make_url(get_config().database_url).database or ""
     if not i_understand or confirm != db_name:

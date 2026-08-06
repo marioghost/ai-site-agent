@@ -19,6 +19,7 @@ from app.models.settings import Settings
 from app.repositories.answer_trace_repository import AnswerTraceRepository
 from app.repositories.chat_log_repository import ChatLogRepository
 from app.services.answer_cache_service import AnswerCacheService
+from app.services.answer_guidance_service import build_answer_guidance
 from app.services.answer_completion import finish_if_truncated, preview_prompt
 from app.services.answer_polish_service import AnswerPolishService
 from app.repositories.settings_repository import DEFAULT_FALLBACK
@@ -519,6 +520,14 @@ class RagService:
         t_prompt = perf_counter()
         profile_obj = profile or KnowledgeProfileService.from_settings(s)
         org_name = profile_obj.organization_name or profile_obj.site_display_name or "the organization"
+        answer_guidance = (
+            build_answer_guidance(
+                planner_decision=planner_decision,
+                evidence_plan=evidence_plan_obj,
+            )
+            if planner_decision
+            else None
+        )
         gen_system, gen_user = CompactPromptBuilder.build(
             message=message,
             hits=hits,
@@ -530,6 +539,7 @@ class RagService:
                 speech_plan.prompt_guidance if speech_plan else None
             ),
             answer_plan=planner_decision.answer_plan if planner_decision else None,
+            additional_guidance=(answer_guidance or {}).get("guidance_lines"),
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2
@@ -561,6 +571,8 @@ class RagService:
             llm_opts.get("generation_timeout_seconds") or s.ollama_generation_timeout_seconds or 45
         )
         prompt_diagnostics["max_sources"] = eff["max_sources_in_prompt"]
+        if answer_guidance:
+            prompt_diagnostics["answer_guidance"] = answer_guidance
         pre_polish = evaluate_polish(
             s,
             answer="",
@@ -596,6 +608,8 @@ class RagService:
                 llm_opts=llm_opts,
                 metrics=metrics,
                 query_intent=query_intent,
+                answer_plan=planner_decision.answer_plan if planner_decision else None,
+                additional_guidance=(answer_guidance or {}).get("guidance_lines"),
                 db=None,
                 call_tracker=call_tracker,
             )
@@ -610,6 +624,9 @@ class RagService:
         if gen_result.get("retry"):
             prompt_diagnostics["retry_happened"] = True
             metrics.retry_happened = True
+        prompt_diagnostics["final_truncation_status"] = (
+            "truncated" if prompt_diagnostics.get("output_truncated") else "complete"
+        )
 
         if gen_result.get("error_type") == "llm_timeout":
             timeout_sources: list[RagSource] = []

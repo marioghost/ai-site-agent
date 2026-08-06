@@ -19,6 +19,22 @@ def _tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[\w\u0400-\u04FF]{3,}", _norm(text))}
 
 
+def _overlap_ratio(focus_terms: set[str], source_terms: set[str]) -> float:
+    matched = 0
+    for term in focus_terms:
+        if term in source_terms:
+            matched += 1
+            continue
+        needle = term[:5]
+        if len(needle) >= 4 and any(
+            candidate.startswith(needle) or term.startswith(candidate[:5])
+            for candidate in source_terms
+            if len(candidate) >= 4
+        ):
+            matched += 1
+    return matched / max(len(focus_terms), 1)
+
+
 def _phrase_overlap(query: str, phrases: list[str]) -> float:
     if not query or not phrases:
         return 0.0
@@ -58,9 +74,11 @@ class SemanticCompatibilityResult:
     evidence_score: float = 0.0
     intent_match_score: float = 0.0
     topic_match_score: float = 0.0
+    focus_match_score: float = 0.0
     source_quality_score: float = 0.0
     answerability_score: float = 0.0
     confidence_score: float = 0.0
+    compatibility_label: str = "ambiguous"
     si_incomplete: bool = False
     si_warning: str = ""
     signals: list[str] = field(default_factory=list)
@@ -71,9 +89,11 @@ class SemanticCompatibilityResult:
             "evidence_score": round(self.evidence_score, 4),
             "intent_match_score": round(self.intent_match_score, 4),
             "topic_match_score": round(self.topic_match_score, 4),
+            "focus_match_score": round(self.focus_match_score, 4),
             "source_quality_score": round(self.source_quality_score, 4),
             "answerability_score": round(self.answerability_score, 4),
             "confidence_score": round(self.confidence_score, 4),
+            "compatibility_label": self.compatibility_label,
             "si_incomplete": self.si_incomplete,
             "si_warning": self.si_warning,
             "signals": self.signals,
@@ -171,6 +191,19 @@ class SemanticCompatibilityScorer:
         if topic_score >= 0.4:
             signals.append("topic_overlap")
 
+        focus_score, focus_label = self._focus_match(
+            understanding=understanding,
+            semantic=semantic,
+            profile=profile,
+            hit=hit,
+        )
+        result.focus_match_score = focus_score
+        result.compatibility_label = focus_label
+        if focus_score >= 0.6:
+            signals.append(f"focus:{focus_label}")
+        elif focus_label == "adjacent_incompatible":
+            signals.append("adjacent_incompatible")
+
         # Evidence / purpose fit
         evidence_score = self._evidence_fit(understanding, semantic, profile, signals)
 
@@ -216,11 +249,14 @@ class SemanticCompatibilityScorer:
             min(
                 1.0,
                 0.30 * result.intent_match_score
-                + 0.30 * result.evidence_score
-                + 0.25 * result.topic_match_score
-                + 0.15 * result.answerability_score,
+                + 0.24 * result.evidence_score
+                + 0.20 * result.topic_match_score
+                + 0.16 * result.focus_match_score
+                + 0.10 * result.answerability_score,
             ),
         )
+        if focus_label == "adjacent_incompatible":
+            result.compatibility_score *= 0.72
         if result.si_incomplete:
             result.compatibility_score *= 0.72
         elif not has_semantic and has_structural:
@@ -322,3 +358,64 @@ class SemanticCompatibilityScorer:
         if profile.llm_summary:
             base += 0.05
         return min(1.0, base)
+
+    @staticmethod
+    def _focus_match(
+        *,
+        understanding: QueryUnderstanding,
+        semantic: SourceSemanticProfile | None,
+        profile: SourceProfile | None,
+        hit: SearchHit,
+    ) -> tuple[float, str]:
+        if understanding.scope_type == "organization_overview":
+            if profile and (
+                profile.page_role == "organization_overview"
+                or (semantic and semantic.document_purpose in {"about company", "landing page"})
+            ):
+                return 1.0, "organization_support"
+            if profile and profile.page_role in {"service_overview", "documentation", "faq"}:
+                return 0.66, "category_support"
+            if profile and profile.page_role in {"news", "campaign", "product_details", "pricing"}:
+                return 0.12, "adjacent_incompatible"
+            return 0.4, "ambiguous"
+
+        focus_terms = {t for t in understanding.focus_terms if len(t) >= 4}
+        if not focus_terms:
+            return 0.45, "ambiguous"
+        phrases: list[str] = []
+        if semantic:
+            phrases.extend(
+                [
+                    semantic.main_topic,
+                    *semantic.subtopics,
+                    *semantic.search_keywords,
+                    *semantic.synonyms,
+                ]
+            )
+        phrases.extend(
+            [
+                hit.title,
+                hit.heading,
+                hit.text[:240],
+                getattr(profile, "site_section", "") if profile else "",
+            ]
+        )
+        joined = " ".join(p for p in phrases if p).lower()
+        source_terms = _tokens(joined)
+        overlap = _overlap_ratio(focus_terms, source_terms)
+        short_focus = {t for t in focus_terms if len(t) <= 3}
+        missing_short_focus = bool(short_focus and not short_focus.issubset(source_terms))
+
+        if understanding.scope_type == "navigation":
+            if profile and profile.page_role in {"contact", "support", "faq"}:
+                return max(0.8, overlap), "navigation_support"
+            return (0.48, "category_support") if overlap >= 0.34 else (0.18, "adjacent_incompatible")
+        if overlap >= 0.66 and not missing_short_focus:
+            return 0.96, "exact_match"
+        if overlap >= 0.34:
+            return 0.62, "category_support"
+        if overlap > 0:
+            return 0.36, "ambiguous"
+        if profile and profile.page_role in {"product_details", "service_overview", "pricing", "news", "campaign"}:
+            return 0.12, "adjacent_incompatible"
+        return 0.26, "ambiguous"

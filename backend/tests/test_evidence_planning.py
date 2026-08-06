@@ -5,6 +5,7 @@ import pytest
 
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import KnowledgeProfile, SourcePriorityRule
+from app.services.answer_guidance_service import build_answer_guidance
 from app.services.rag_planning.plan_builders import build_knowledge_plan
 from app.services.evidence_planning.planner import EvidencePlanner
 from app.services.qdrant_service import SearchHit
@@ -345,6 +346,121 @@ def test_context_builder_preserves_evidence_plan_order():
     )
     assert context.blocks[0].url == plan.selected[0].candidate.url
     assert report.selected_blocks[0]["url"] == plan.selected[0].candidate.url
+
+
+@pytest.mark.unit
+def test_organization_benefits_rejects_unrelated_product_and_news():
+    about = _hit(
+        1,
+        document_type="about_page",
+        score=0.82,
+        page_role="organization_overview",
+        title="About Example Org",
+        text="Example Org serves customers across the country and provides reliable services.",
+    )
+    trade_finance = _hit(
+        2,
+        document_type="service_page",
+        score=0.84,
+        page_role="product_details",
+        title="Trade Finance",
+        text="Trade finance solutions for exporters and importers.",
+    )
+    news = _hit(
+        3,
+        document_type="news_page",
+        score=0.8,
+        page_role="news",
+        title="Press release",
+        text="The organization won an award this week.",
+    )
+    plan = _plan(
+        [trade_finance, news, about],
+        query="What are the benefits of Example Org?",
+        intent="entity_overview",
+        query_language="en",
+        settings=Settings(llm_mode_profile="high_quality"),
+    )
+    assert plan.selected[0].candidate.document_type == "about_page"
+    rejected = {item.candidate.title: item.candidate.compatibility_label for item in plan.rejected}
+    assert rejected["Trade Finance"] == "adjacent_incompatible"
+    assert rejected["Press release"] == "adjacent_incompatible"
+
+
+@pytest.mark.unit
+def test_cash_loan_query_rejects_card_and_checkout_cash_substitutions():
+    cash_loan = _hit(
+        1,
+        document_type="product_page",
+        score=0.78,
+        page_role="product_details",
+        title="Умови кредиту готівкою",
+        text="Кредит готівкою: сума, строк, вимоги до позичальника та документи.",
+    )
+    credit_card = _hit(
+        2,
+        document_type="product_page",
+        score=0.8,
+        page_role="product_details",
+        title="Кредитна картка",
+        text="Кредитна картка: пільговий період та переваги картки.",
+    )
+    cash_at_checkout = _hit(
+        3,
+        document_type="service_page",
+        score=0.77,
+        page_role="service_overview",
+        title="Готівка на касі",
+        text="Отримайте готівку під час оплати на касі.",
+    )
+    plan = _plan(
+        [credit_card, cash_at_checkout, cash_loan],
+        query="які умови кредиту готівкою?",
+        intent="product_query",
+        intent_result=RetrievalIntentResult(intent="product_query", legacy_intent="product_query"),
+        query_language="uk",
+        settings=Settings(llm_mode_profile="high_quality"),
+    )
+    assert plan.selected[0].candidate.title == "Умови кредиту готівкою"
+    selected_titles = {item.candidate.title for item in plan.selected}
+    assert "Кредитна картка" not in selected_titles
+    assert "Готівка на касі" not in selected_titles
+    rejected = {item.candidate.title: item.candidate.compatibility_label for item in plan.rejected}
+    if "Готівка на касі" in rejected:
+        assert rejected["Готівка на касі"] in {"adjacent_incompatible", "ambiguous"}
+
+
+@pytest.mark.unit
+def test_generic_rate_query_requires_scope_qualification_when_only_category_support():
+    business_savings = _hit(
+        1,
+        document_type="pricing_page",
+        score=0.74,
+        page_role="pricing",
+        title="Business deposit rates",
+        text="Business deposit rate depends on currency and term.",
+    )
+    plan = _plan(
+        [business_savings],
+        query="What is the deposit rate?",
+        intent="product_query",
+        intent_result=RetrievalIntentResult(intent="product_query", legacy_intent="product_query"),
+        query_language="en",
+        settings=Settings(llm_mode_profile="high_quality"),
+    )
+    guidance = build_answer_guidance(
+        planner_decision=planner_decision_for_test(
+            "What is the deposit rate?",
+            intent="product_query",
+            broad=False,
+            profile=KnowledgeProfile(),
+            settings=Settings(llm_mode_profile="high_quality"),
+            query_language="en",
+        ),
+        evidence_plan=plan,
+    )
+    assert guidance["answer_scope"] == "qualified"
+    assert guidance["guidance_lines"]
 
 
 @pytest.mark.unit

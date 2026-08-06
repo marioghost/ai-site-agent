@@ -35,7 +35,9 @@ class EvidenceCandidate:
     quality_score: float = 0.5
     answerability: float = 0.5
     intent_compatibility: float = 0.5
+    focus_match_score: float = 0.0
     authority_fitness: float = 0.0
+    compatibility_label: str = "ambiguous"
     fitness_factors: dict[str, float] = field(default_factory=dict)
     fitness_band: str = "general"
     duplicate_group: str = ""
@@ -62,7 +64,9 @@ class EvidenceCandidate:
             "naturally_retrieved": self.naturally_retrieved,
             "broad_injected": self.broad_injected,
             "inject_reason": self.inject_reason,
+            "focus_match_score": round(self.focus_match_score, 4),
             "authority_fitness": round(self.authority_fitness, 4),
+            "compatibility_label": self.compatibility_label,
             "fitness_band": self.fitness_band,
             "fitness_factors": self.fitness_factors,
             "duplicate_group": self.duplicate_group,

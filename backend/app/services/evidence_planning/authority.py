@@ -1,6 +1,8 @@
 """Intent-aware authority and fitness evaluation."""
 from __future__ import annotations
 
+import re
+
 from app.schemas.knowledge_profile import KnowledgeProfile
 from app.services.evidence_planning.types import EvidenceCandidate
 from app.services.knowledge_profile_service import KnowledgeProfileService
@@ -42,6 +44,22 @@ _ROLE_INTENT_FIT: dict[str, dict[str, float]] = {
 }
 
 
+def _overlap_ratio(focus_terms: set[str], candidate_terms: set[str]) -> float:
+    matched = 0
+    for term in focus_terms:
+        if term in candidate_terms:
+            matched += 1
+            continue
+        needle = term[:5]
+        if len(needle) >= 4 and any(
+            other.startswith(needle) or term.startswith(other[:5])
+            for other in candidate_terms
+            if len(other) >= 4
+        ):
+            matched += 1
+    return matched / max(len(focus_terms), 1)
+
+
 def evaluate_authority_fitness(
     candidate: EvidenceCandidate,
     *,
@@ -64,6 +82,18 @@ def evaluate_authority_fitness(
     purpose_fit = _purpose_fit(candidate.source_purpose, understanding, intent)
     factors["purpose_fit"] = round(purpose_fit, 4)
     score += 0.18 * purpose_fit
+
+    focus_fit, compatibility_label = _focus_consistency(candidate, understanding)
+    candidate.focus_match_score = focus_fit
+    candidate.compatibility_label = compatibility_label
+    factors["focus_consistency"] = round(focus_fit, 4)
+    score += 0.18 * focus_fit
+    if compatibility_label == "adjacent_incompatible":
+        score -= 0.18
+        factors["adjacent_incompatible"] = -0.18
+    elif compatibility_label in {"exact_match", "organization_support", "navigation_support"}:
+        score += 0.06
+        factors["compatibility_bonus"] = 0.06
 
     if candidate.canonical:
         score += 0.08
@@ -128,7 +158,7 @@ def evaluate_authority_fitness(
     candidate.fitness_factors = factors
     candidate.fitness_band = _fitness_band(fitness)
     candidate.forbidden_for_query = forbidden_overlap > 0 and fitness < 0.35
-    candidate.intent_compatibility = purpose_fit
+    candidate.intent_compatibility = max(purpose_fit, focus_fit)
     return candidate
 
 
@@ -161,6 +191,65 @@ def _purpose_fit(
     if p == "general information":
         return 0.40
     return 0.50
+
+
+def _focus_consistency(
+    candidate: EvidenceCandidate,
+    understanding: QueryUnderstanding | None,
+) -> tuple[float, str]:
+    if understanding is None:
+        return 0.45, "ambiguous"
+
+    if understanding.scope_type == "organization_overview":
+        if candidate.page_role == "organization_overview" or candidate.source_purpose in {
+            "about company",
+            "landing page",
+        }:
+            return 1.0, "organization_support"
+        if candidate.page_role in {"service_overview", "documentation", "faq"}:
+            return 0.68, "category_support"
+        if candidate.page_role in {"news", "campaign", "product_details", "pricing"}:
+            return 0.14, "adjacent_incompatible"
+        return 0.42, "ambiguous"
+
+    focus_terms = {
+        term for term in getattr(understanding, "focus_terms", []) if len(term) >= 3
+    }
+    if not focus_terms:
+        return 0.45, "ambiguous"
+
+    blob = " ".join(
+        part
+        for part in [
+            candidate.title,
+            candidate.heading,
+            candidate.section_heading,
+            candidate.source_purpose,
+            candidate.document_type,
+            candidate.page_role,
+            candidate.text[:240],
+        ]
+        if part
+    ).lower()
+    candidate_terms = set(re.findall(r"[\w\u0400-\u04FF]{3,}", blob))
+    overlap = _overlap_ratio(focus_terms, candidate_terms)
+    short_focus = {term for term in focus_terms if len(term) <= 3}
+    missing_short_focus = bool(short_focus and not short_focus.issubset(candidate_terms))
+
+    if understanding.scope_type == "navigation":
+        if candidate.page_role in {"contact", "support", "faq"} or "contact" in candidate.source_purpose:
+            return max(0.75, overlap), "navigation_support"
+        return (0.48, "category_support") if overlap >= 0.34 else (0.20, "adjacent_incompatible")
+
+    if overlap >= 0.66 and not missing_short_focus:
+        return 0.96, "exact_match"
+    if overlap >= 0.34:
+        return 0.64, "category_support"
+    if overlap > 0:
+        return 0.38, "ambiguous"
+    if candidate.page_role in {"product_details", "service_overview", "pricing", "news", "campaign"}:
+        return 0.14, "adjacent_incompatible"
+    return 0.28, "ambiguous"
 
 
 def _fitness_band(fitness: float) -> str:

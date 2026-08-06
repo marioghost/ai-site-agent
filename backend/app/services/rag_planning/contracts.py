@@ -44,14 +44,41 @@ class AnswerPlan:
 
     answer_type: str
     scope_instruction: str = ""
+    required_slot_order: tuple[str, ...] = ()
+    optional_slot_order: tuple[str, ...] = ()
+    optional_slot_limit: int = 0
+    target_words: int = 0
+    target_sentences: int = 0
+    compact_retry_instruction: str = ""
     plan_reasons: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "answer_type": self.answer_type,
             "scope_instruction": self.scope_instruction,
+            "required_slot_order": list(self.required_slot_order),
+            "optional_slot_order": list(self.optional_slot_order),
+            "optional_slot_limit": self.optional_slot_limit,
+            "target_words": self.target_words,
+            "target_sentences": self.target_sentences,
+            "compact_retry_instruction": self.compact_retry_instruction,
             "plan_reasons": list(self.plan_reasons),
         }
+
+    def for_compact_retry(self) -> "AnswerPlan":
+        retry_sentences = max(2, self.target_sentences - 1) if self.target_sentences else 3
+        retry_words = max(60, int(self.target_words * 0.7)) if self.target_words else 90
+        return AnswerPlan(
+            answer_type=self.answer_type,
+            scope_instruction=self.compact_retry_instruction or self.scope_instruction,
+            required_slot_order=self.required_slot_order,
+            optional_slot_order=self.optional_slot_order,
+            optional_slot_limit=0,
+            target_words=retry_words,
+            target_sentences=retry_sentences,
+            compact_retry_instruction=self.compact_retry_instruction or self.scope_instruction,
+            plan_reasons=(*self.plan_reasons, "compact_retry"),
+        )
 
 
 @dataclass(frozen=True)

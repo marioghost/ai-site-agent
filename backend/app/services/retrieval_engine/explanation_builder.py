@@ -26,6 +26,15 @@ class ExplanationBuilder:
             else:
                 parts.append("matches the query topic")
 
+        if compatibility.compatibility_label == "exact_match":
+            parts.append("matches the same subject or product family")
+        elif compatibility.compatibility_label == "organization_support":
+            parts.append("supports an organization-level answer")
+        elif compatibility.compatibility_label == "navigation_support":
+            parts.append("supports a practical navigation answer")
+        elif compatibility.compatibility_label == "category_support":
+            parts.append("supports the same category but may need scope qualification")
+
         if semantic and semantic.document_purpose:
             purpose = semantic.document_purpose
             if understanding.expected_answer_type == "listing" and purpose in {
@@ -85,6 +94,8 @@ class ExplanationBuilder:
             return "other documents matched the query intent and evidence type better"
         if "duplicate" in reason_code:
             return "similar page already selected for context diversity"
+        if compatibility.compatibility_label == "adjacent_incompatible":
+            return "adjacent product or page type does not answer the same question"
 
         semantic = SourceIntelligenceService.semantic_from_profile(profile) if profile else None
         parts: list[str] = []

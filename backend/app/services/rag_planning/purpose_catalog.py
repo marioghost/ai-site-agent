@@ -176,6 +176,15 @@ def purpose_expectations_for_answer_type(
     elif answer_type == "documentation":
         preferred = ["documentation", "legal information", "policy"]
         unsuitable = ["promotion", "news"]
+    elif answer_type in {"definition", "fact"}:
+        preferred = [
+            "product details",
+            "service description",
+            "documentation",
+            "faq",
+            "general information",
+        ]
+        unsuitable = ["news", "promotion", "landing page"]
     else:
         preferred = ["general information", "documentation", "faq"]
         unsuitable = []

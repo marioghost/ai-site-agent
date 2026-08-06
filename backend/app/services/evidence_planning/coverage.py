@@ -41,6 +41,14 @@ def select_by_coverage(
         for cand in pool:
             if any(s.candidate.candidate_id == cand.candidate_id for s in selected):
                 continue
+            if cand.compatibility_label == "adjacent_incompatible":
+                continue
+            selected_labels = {item.candidate.compatibility_label for item in selected}
+            if (
+                "exact_match" in selected_labels
+                and cand.compatibility_label in {"category_support", "ambiguous"}
+            ):
+                continue
             if cand.forbidden_for_query and cand.authority_fitness < 0.45:
                 continue
             if cand.authority_fitness < min_fitness and covered & required:
@@ -174,6 +182,8 @@ def _rejection_reason(
 ) -> str:
     if candidate.forbidden_for_query:
         return "forbidden_aspect_for_intent"
+    if candidate.compatibility_label == "adjacent_incompatible":
+        return "adjacent_product_or_scope"
     if per_source.get(candidate.source_id, 0) >= max_per_source:
         return "source_chunk_limit"
     if candidate.authority_fitness < 0.18 and selected:

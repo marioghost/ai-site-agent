@@ -26,6 +26,7 @@ class CompactPromptBuilder:
         org_name: str = "the organization",
         speech_act_guidance: str | None = None,
         answer_plan: AnswerPlan | None = None,
+        additional_guidance: list[str] | None = None,
         intent: str = "",
     ) -> tuple[str, str]:
         _ = org_name, intent
@@ -44,6 +45,9 @@ class CompactPromptBuilder:
             instruction = cls._default_instruction(intent)
         if instruction:
             parts.append(f"Instruction: {instruction}")
+        task_lines = cls._task_lines(answer_plan, additional_guidance or [])
+        if task_lines:
+            parts.append("Task:\n" + "\n".join(f"- {line}" for line in task_lines))
         parts.append(f"Question: {message.strip()}")
         parts.append("Answer:")
         user = "\n\n".join(parts)
@@ -152,3 +156,30 @@ class CompactPromptBuilder:
         if intent_l in {"listing", "product_query", "category_overview"}:
             return "List the relevant options found in the evidence; do not claim completeness unless stated."
         return ""
+
+    @staticmethod
+    def _task_lines(answer_plan: AnswerPlan | None, additional_guidance: list[str]) -> list[str]:
+        lines: list[str] = []
+        if answer_plan:
+            required = ", ".join(answer_plan.required_slot_order)
+            if required:
+                lines.append(f"Cover first: {required}.")
+            optional_keep = list(answer_plan.optional_slot_order[: answer_plan.optional_slot_limit])
+            optional_drop = list(answer_plan.optional_slot_order[answer_plan.optional_slot_limit :])
+            if optional_keep:
+                lines.append(f"If space remains: {', '.join(optional_keep)}.")
+            if optional_drop:
+                lines.append(f"Drop first under output pressure: {', '.join(optional_drop)}.")
+            if answer_plan.target_words or answer_plan.target_sentences:
+                budget_parts: list[str] = []
+                if answer_plan.target_words:
+                    budget_parts.append(f"about {answer_plan.target_words} words")
+                if answer_plan.target_sentences:
+                    budget_parts.append(f"{answer_plan.target_sentences} short sentences")
+                if budget_parts:
+                    lines.append(f"Keep it to {' and '.join(budget_parts)}.")
+        for entry in additional_guidance:
+            text = (entry or "").strip()
+            if text:
+                lines.append(text)
+        return lines

@@ -147,6 +147,7 @@ class DocumentScorer:
             "evidence_score": round(compat.evidence_score, 4),
             "intent_match_score": round(compat.intent_match_score, 4),
             "topic_match_score": round(compat.topic_match_score, 4),
+            "focus_match_score": round(compat.focus_match_score, 4),
             "quality_score": round(quality_score, 4),
             "answerability_score": round(compat.answerability_score, 4),
             "confidence_score": round(confidence, 4),
@@ -156,6 +157,7 @@ class DocumentScorer:
             "final_score": round(final, 4),
             "si_incomplete": compat.si_incomplete,
             "si_warning": compat.si_warning,
+            "compatibility_label": compat.compatibility_label,
             "signals": compat.signals,
             "query_understanding": understanding.to_dict(),
         }
