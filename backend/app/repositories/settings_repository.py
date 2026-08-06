@@ -6,8 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_config
 from app.models.settings import Settings
-
-DEFAULT_SYSTEM_PROMPT = ""
+from app.services.system_prompt_defaults import DEFAULT_SYSTEM_PROMPT
 
 DEFAULT_FALLBACK = "Я не знайшов цієї інформації на сайті."
 

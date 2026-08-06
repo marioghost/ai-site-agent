@@ -282,11 +282,9 @@ export default function SettingsAdvancedSection({
             <h4 className="ds-settings-advanced__heading">{t("settings.generation.system_prompt")}</h4>
             <p className="ds-settings-advanced__hint">{t("settings.docs.generation.system_prompt")}</p>
             <Textarea
-              rows={4}
+              rows={10}
               value={settings.system_prompt}
-              readOnly
-              disabled
-              aria-describedby="system-prompt-unused"
+              onChange={(e) => onChange("system_prompt", e.target.value)}
             />
           </div>
         </>

@@ -1,4 +1,4 @@
-"""Compact prompt builder — single source of truth for generation instructions."""
+"""Compact prompt builder — admin system prompt is primary; intent cues stay thin."""
 from __future__ import annotations
 
 from app.services.context_builder_service import BuiltContext
@@ -6,6 +6,10 @@ from app.services.language_resolver_service import detect_query_language
 from app.services.llm_mode_service import get_mode_profile
 from app.services.qdrant_service import SearchHit
 from app.services.source_intelligence_constants import PROMPT_TEMPLATE_VERSION
+from app.services.system_prompt_defaults import DEFAULT_SYSTEM_PROMPT
+
+# Re-export for callers that import from prompt_builder.
+__all__ = ("CompactPromptBuilder", "DEFAULT_SYSTEM_PROMPT", "OVERVIEW_INTENTS")
 
 OVERVIEW_INTENTS = frozenset({
     "entity_overview",
@@ -28,29 +32,15 @@ SUPPORT_INTENTS = frozenset({
     "troubleshooting",
 })
 
-# Production system prompt — English, positive, optimized for Qwen/Llama/Gemma.
-# Intent-specific lines append once; settings.system_prompt is not prepended (avoids conflicts).
-SYSTEM_CORE = (
-    "You are this website's AI assistant.\n"
-    "Sources are the only factual authority — treat them as evidence.\n"
-    "Synthesize across sources into one coherent answer; never summarize page-by-page.\n"
-    "Lead with the answer; add details next; keep qualifiers last.\n"
-    "Prefer synthesis over extraction; rewrite naturally; never repeat the same fact.\n"
-    "Ignore marketing, navigation, and boilerplate.\n"
-    "Complete every sentence; never stop mid-thought.\n"
-    "Answer the user, not the documents.\n"
-    "Write in {lang_instruction}"
-)
-
 OVERVIEW_FOCUS = (
-    "For this overview of {org_name}: cover what it is and the most important "
-    "organization facts from the sources. Prefer substance over promotions and news. "
-    "Stay within about {word_limit} words."
+    "Overview of {org_name}: cover what it is and the most important organization "
+    "facts from the sources. Prefer substance over promotions and news. "
+    "About {word_limit} words."
 )
 
-LISTING_FOCUS = "Use a concise list when it helps clarity. Name source titles for distinct items."
+LISTING_FOCUS = "Use a concise list when helpful. Name source titles for distinct items."
 
-SUPPORT_FOCUS = "Answer directly in a clear support style. Keep steps short when applicable."
+SUPPORT_FOCUS = "Answer in a clear support style. Keep steps short when applicable."
 
 GENERIC_FOCUS = "Stay focused and factual."
 
@@ -70,11 +60,8 @@ class CompactPromptBuilder:
         org_name: str = "the organization",
         speech_act_guidance: str | None = None,
     ) -> tuple[str, str]:
-        # speech_act_guidance intentionally unused: qualify/refuse wording is
-        # applied post-generation (suffix / deterministic replies) to avoid
-        # duplicated hedging instructions in the system prompt.
+        # Qualify/refuse wording is applied post-generation (suffix / deterministic).
         _ = speech_act_guidance
-        query_lang = detect_query_language(message)
         profile = get_mode_profile(settings)
 
         if built_context and built_context.prompt_text:
@@ -82,30 +69,42 @@ class CompactPromptBuilder:
         else:
             context_block = cls._format_hits(hits)
 
-        system = cls._system_prompt(
-            query_lang=query_lang,
+        system = cls.resolve_system_prompt(settings)
+        task = cls._task_line(
             intent=intent,
             word_limit=profile.max_answer_words_overview,
             org_name=org_name,
+            message=message,
         )
-        user = f"Sources:\n{context_block}\n\nQuestion: {message.strip()}\n\nAnswer:"
+        user = (
+            f"Sources:\n{context_block}\n\n"
+            f"Task: {task}\n\n"
+            f"Question: {message.strip()}\n\n"
+            f"Answer:"
+        )
         return system, user
 
     @classmethod
-    def _system_prompt(
+    def resolve_system_prompt(cls, settings) -> str:
+        """Admin system prompt is the primary agent control surface."""
+        custom = (getattr(settings, "system_prompt", None) or "").strip()
+        return custom or DEFAULT_SYSTEM_PROMPT
+
+    @classmethod
+    def _task_line(
         cls,
         *,
-        query_lang: str,
         intent: str,
         word_limit: int,
         org_name: str,
+        message: str,
     ) -> str:
-        lang_instruction = (
-            "natural Ukrainian."
+        query_lang = detect_query_language(message)
+        lang = (
+            "Reply in natural Ukrainian."
             if query_lang == "uk"
-            else "the same language as the user's question."
+            else "Reply in the same language as the question."
         )
-        body = SYSTEM_CORE.format(lang_instruction=lang_instruction)
         if intent in OVERVIEW_INTENTS:
             focus = OVERVIEW_FOCUS.format(org_name=org_name, word_limit=word_limit)
         elif intent in SUPPORT_INTENTS:
@@ -114,7 +113,7 @@ class CompactPromptBuilder:
             focus = LISTING_FOCUS
         else:
             focus = GENERIC_FOCUS
-        return f"{body}\n{focus}"
+        return f"{focus} {lang}"
 
     @staticmethod
     def _format_hits(hits: list[SearchHit]) -> str:
@@ -141,10 +140,18 @@ class CompactPromptBuilder:
         marker = "\n\nQuestion:"
         idx = user.rfind(marker)
         if idx >= 0:
-            sources = user[:idx]
+            head = user[:idx]
             tail = user[idx:]
-            keep = max(200, len(sources) - overflow)
-            return system, sources[:keep].rstrip() + tail
+            # Prefer trimming Sources block; keep Task + Question when present.
+            task_marker = "\n\nTask:"
+            task_idx = head.rfind(task_marker)
+            if task_idx >= 0:
+                sources = head[:task_idx]
+                task_part = head[task_idx:]
+                keep = max(200, len(sources) - overflow)
+                return system, sources[:keep].rstrip() + task_part + tail
+            keep = max(200, len(head) - overflow)
+            return system, head[:keep].rstrip() + tail
         return system, user[: max(200, len(user) - overflow)]
 
     @staticmethod

@@ -1310,7 +1310,7 @@ export const uk: TranslationDict = {
   "settings.docs.generation.max_tokens":
     "Максимальна довжина відповіді в токенах.",
   "settings.docs.generation.system_prompt":
-    "Не застосовується до генерації Ask. Відповіді використовують вбудований системний промт CompactPromptBuilder (prompt-v4).",
+    "Головні інструкції для асистента. Цей текст є основним системним промтом, який надсилається моделі для кожної відповіді Ask.",
   "settings.docs.generation.fallback":
     "Текст, коли в базі знань нічого не знайдено вище порогу релевантності.",
   "settings.docs.retrieval.mode":

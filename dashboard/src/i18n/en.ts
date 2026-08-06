@@ -1288,7 +1288,7 @@ export const en: TranslationDict = {
   "settings.docs.generation.max_tokens":
     "Maximum answer length in tokens.",
   "settings.docs.generation.system_prompt":
-    "Not applied to Ask generation. Production answers use the built-in CompactPromptBuilder system prompt (prompt-v4).",
+    "Primary instructions for the assistant. This text is the main system prompt sent to the model for every Ask answer.",
   "settings.docs.generation.fallback":
     "Message when nothing relevant is found above the similarity threshold.",
   "settings.docs.retrieval.mode":

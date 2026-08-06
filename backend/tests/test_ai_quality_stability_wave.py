@@ -182,8 +182,11 @@ def test_metrics_respect_explicit_stop_even_if_eval_equals_cap():
 
 
 @pytest.mark.unit
-def test_overview_prompt_prefers_org_facts_over_promotions():
-    settings = Settings(llm_mode_profile="high_quality", system_prompt="OLD UKRAINIAN CONTEXT RULES")
+def test_overview_prompt_uses_admin_system_and_task_focus():
+    settings = Settings(
+        llm_mode_profile="high_quality",
+        system_prompt="CUSTOM AGENT RULES: be concise and cite sources.",
+    )
     system, user = CompactPromptBuilder.build(
         message="розкажи про банк",
         hits=[],
@@ -192,22 +195,38 @@ def test_overview_prompt_prefers_org_facts_over_promotions():
         settings=settings,
         org_name="UKRSIBBANK",
     )
-    assert "OLD UKRAINIAN" not in system
-    assert "Sources are the only factual authority" in system
-    assert "promotions" in system.lower()
-    assert "UKRSIBBANK" in system
-    assert "Lead with the answer" in system
+    assert system == "CUSTOM AGENT RULES: be concise and cite sources."
+    assert "Task:" in user
+    assert "UKRSIBBANK" in user
+    assert "promotions" in user.lower()
     assert "Sources:" in user
     assert "Question:" in user
+    assert "natural Ukrainian" in user
+
+
+@pytest.mark.unit
+def test_empty_system_prompt_falls_back_to_quality_default():
+    settings = Settings(llm_mode_profile="high_quality", system_prompt="")
+    system, _ = CompactPromptBuilder.build(
+        message="who are you",
+        hits=[],
+        built_context=None,
+        intent="factual",
+        settings=settings,
+    )
+    assert "Sources are the only factual authority" in system
+    assert "Lead with the answer" in system
+    assert "never stop mid-thought" in system
 
 
 @pytest.mark.unit
 def test_truncate_prompts_preserves_question_anchor():
     system = "sys"
-    user = "Sources:\n" + ("x" * 5000) + "\n\nQuestion: who?\n\nAnswer:"
+    user = "Sources:\n" + ("x" * 5000) + "\n\nTask: Stay focused.\n\nQuestion: who?\n\nAnswer:"
     truncated_system, truncated_user = CompactPromptBuilder.truncate_prompts(system, user, 800)
     assert truncated_system == system
     assert "\n\nQuestion: who?\n\nAnswer:" in truncated_user
+    assert "Task:" in truncated_user
     assert len(truncated_system) + len(truncated_user) + 2 <= 800 or truncated_user.endswith(
         "Question: who?\n\nAnswer:"
     )

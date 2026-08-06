@@ -19,6 +19,7 @@ from app.schemas.settings import (
 )
 from app.services.cache_invalidation_service import CacheInvalidationService
 from app.services.memory_version_service import MemoryVersionService
+from app.services.system_prompt_defaults import DEFAULT_SYSTEM_PROMPT
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -77,7 +78,7 @@ def _to_read(model: Settings) -> SettingsRead:
         similarity_threshold=model.similarity_threshold,
         temperature=model.temperature,
         max_tokens=model.max_tokens,
-        system_prompt=model.system_prompt,
+        system_prompt=(model.system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT,
         fallback_answer=model.fallback_answer,
         enable_sources=model.enable_sources,
         enable_chat_logs=model.enable_chat_logs,
