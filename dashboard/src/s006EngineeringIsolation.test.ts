@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ENGINEERING_NAV } from "./lib/navConfig";
 import askScreenSource from "./features/ask/AskScreen.tsx?raw";
+import askDiagnosticsSlotSource from "./features/ask/widgets/AskDiagnosticsSlot.tsx?raw";
 import chatToolbarSource from "./components/chat/ChatToolbar.tsx?raw";
 import updateScreenSource from "./features/knowledge/update/UpdateScreen.tsx?raw";
 import engKnowledgeScreenSource from "./features/engineering/knowledge/EngKnowledgeScreen.tsx?raw";
-import engAskDetailsScreenSource from "./features/engineering/ask-details/EngAskDetailsScreen.tsx?raw";
 import engAdvancedScreenSource from "./features/engineering/advanced/EngAdvancedScreen.tsx?raw";
 import engBuildScreenSource from "./features/engineering/build/EngBuildScreen.tsx?raw";
 import engStatusScreenSource from "./features/engineering/status/EngStatusScreen.tsx?raw";
@@ -16,10 +16,18 @@ import answersScreenSource from "./features/settings/answers/AnswersScreen.tsx?r
 import accessScreenSource from "./features/settings/access/AccessScreen.tsx?raw";
 
 describe("S006 Engineering isolation + Ask handoff", () => {
-  it("Ask no longer mounts ChatDiagnosticsSidebar or ChatHistoryModal", () => {
-    expect(askScreenSource).not.toMatch(/ChatDiagnosticsSidebar/);
+  it("Ask keeps product surface free of ChatHistoryModal; diagnostics only via Eng Mode slot", () => {
     expect(askScreenSource).not.toMatch(/ChatHistoryModal/);
     expect(askScreenSource).not.toMatch(/MigrationPlaceholder/);
+    expect(askScreenSource).not.toMatch(/ChatDiagnosticsSidebar/);
+    expect(askScreenSource).toMatch(/AskDiagnosticsSlot/);
+    expect(askScreenSource).toMatch(/useEngineeringMode/);
+    expect(askScreenSource).toMatch(/engineeringModeOn/);
+  });
+
+  it("AskDiagnosticsSlot owns ChatDiagnosticsSidebar (RFC-102 Eng Mode slot)", () => {
+    expect(askDiagnosticsSlotSource).toMatch(/ChatDiagnosticsSidebar/);
+    expect(askDiagnosticsSlotSource).toMatch(/useAskDiagnosticsView/);
   });
 
   it("keeps Ask's core chat chrome (progressive disclosure — simple, not empty)", () => {
@@ -39,16 +47,8 @@ describe("S006 Engineering isolation + Ask handoff", () => {
     expect(chatToolbarSource).not.toMatch(/historyOpen/);
   });
 
-  it("EngAskDetailsScreen hosts Ask diagnostics ownership (G3-P2)", () => {
-    expect(engAskDetailsScreenSource).not.toMatch(/MigrationPlaceholder/);
-    expect(engAskDetailsScreenSource).toMatch(/ChatDiagnosticsSidebar/);
-    expect(engAskDetailsScreenSource).toMatch(/useChatSession/);
-    expect(engAskDetailsScreenSource).toMatch(/\/ask/);
-  });
-
   it("Eng screens no longer use the S001 MigrationPlaceholder scaffold", () => {
     expect(engKnowledgeScreenSource).not.toMatch(/MigrationPlaceholder/);
-    expect(engAskDetailsScreenSource).not.toMatch(/MigrationPlaceholder/);
     expect(engAdvancedScreenSource).not.toMatch(/MigrationPlaceholder/);
     expect(engBuildScreenSource).not.toMatch(/MigrationPlaceholder/);
     expect(engStatusScreenSource).not.toMatch(/MigrationPlaceholder/);
@@ -56,21 +56,17 @@ describe("S006 Engineering isolation + Ask handoff", () => {
   });
 
   it("moves Source Intelligence generate/preview chrome from Update into Eng Knowledge (G4-P4)", () => {
-    // UpdateScreen no longer imports the SI generate/preview widgets from a product path
     expect(updateScreenSource).not.toMatch(/SourceIntelligencePanel/);
     expect(updateScreenSource).not.toMatch(/SourceIntelligencePreviewModal/);
     expect(updateScreenSource).not.toMatch(/generateSourceIntelligence/);
-    // Update keeps the indexing job itself intact
     expect(updateScreenSource).toMatch(/startIndexing/);
     expect(updateScreenSource).toMatch(/stopIndexing/);
     expect(updateScreenSource).toMatch(/reindexAll/);
     expect(updateScreenSource).toMatch(/reprocessExisting/);
-    // Update only links to Engineering, gated on Engineering Mode
     expect(updateScreenSource).toMatch(/useEngineeringMode/);
     expect(updateScreenSource).toMatch(/engineeringModeOn/);
     expect(updateScreenSource).toMatch(/\/engineering\/knowledge/);
 
-    // Eng Knowledge hosts the generate/preview SI UX
     expect(engKnowledgeScreenSource).toMatch(/generateSourceIntelligence/);
     expect(engKnowledgeScreenSource).toMatch(/SourceIntelligencePanel/);
     expect(engKnowledgeScreenSource).toMatch(/SourceIntelligencePreviewModal/);
@@ -104,14 +100,13 @@ describe("S006 Engineering isolation + Ask handoff", () => {
     expect(engTensionsScreenSource).toMatch(/\/diagnostics\/epistemic-health/);
   });
 
-  it("EngineeringLayout adds section nav for all 6 Engineering destinations", () => {
+  it("EngineeringLayout adds section nav for remaining Engineering destinations (no Chat details)", () => {
     expect(engineeringLayoutSource).toMatch(/NavLink/);
     expect(engineeringLayoutSource).toMatch(/ENGINEERING_NAV/);
     expect(engineeringLayoutSource).toMatch(/<Outlet/);
-    expect(ENGINEERING_NAV.items).toHaveLength(6);
+    expect(ENGINEERING_NAV.items).toHaveLength(5);
     expect(ENGINEERING_NAV.items.map((item) => item.to)).toEqual([
       "/engineering/status",
-      "/engineering/ask-details",
       "/engineering/knowledge",
       "/engineering/tensions",
       "/engineering/advanced",

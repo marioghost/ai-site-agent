@@ -13,7 +13,6 @@ import {
   Stethoscope,
   TriangleAlert,
   Users,
-  Wrench,
 } from "lucide-react";
 
 export type NavItem = {
@@ -74,7 +73,6 @@ export const ENGINEERING_NAV: NavSection = {
   labelKey: "nav.engineering",
   items: [
     { to: "/engineering/status", labelKey: "nav.eng_status", Icon: Stethoscope },
-    { to: "/engineering/ask-details", labelKey: "nav.eng_ask_details", Icon: Wrench },
     { to: "/engineering/knowledge", labelKey: "nav.eng_knowledge", Icon: BookOpen },
     { to: "/engineering/tensions", labelKey: "nav.eng_tensions", Icon: TriangleAlert },
     { to: "/engineering/advanced", labelKey: "nav.eng_advanced", Icon: SlidersHorizontal },

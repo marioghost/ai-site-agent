@@ -31,9 +31,6 @@ const ModelsScreen = lazy(() => import("./features/settings/models/ModelsScreen"
 const AnswersScreen = lazy(() => import("./features/settings/answers/AnswersScreen"));
 const AccessScreen = lazy(() => import("./features/settings/access/AccessScreen"));
 const EngStatusScreen = lazy(() => import("./features/engineering/status/EngStatusScreen"));
-const EngAskDetailsScreen = lazy(
-  () => import("./features/engineering/ask-details/EngAskDetailsScreen")
-);
 const EngKnowledgeScreen = lazy(
   () => import("./features/engineering/knowledge/EngKnowledgeScreen")
 );
@@ -229,7 +226,7 @@ export default function App() {
               >
                 <Route index element={<Navigate to="status" replace />} />
                 <Route path="status" element={<EngStatusScreen />} />
-                <Route path="ask-details" element={<EngAskDetailsScreen />} />
+                <Route path="ask-details" element={<Navigate to="/ask" replace />} />
                 <Route path="knowledge" element={<EngKnowledgeScreen />} />
                 <Route path="tensions" element={<EngTensionsScreen />} />
                 <Route path="advanced" element={<EngAdvancedScreen />} />

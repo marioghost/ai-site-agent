@@ -9,7 +9,7 @@ import accessScreenSource from "./features/settings/access/AccessScreen.tsx?raw"
 import answersScreenSource from "./features/settings/answers/AnswersScreen.tsx?raw";
 import generalScreenSource from "./features/settings/general/GeneralScreen.tsx?raw";
 import homeScreenSource from "./features/home/HomeScreen.tsx?raw";
-import engAskDetailsSource from "./features/engineering/ask-details/EngAskDetailsScreen.tsx?raw";
+import askDiagnosticsSlotSource from "./features/ask/widgets/AskDiagnosticsSlot.tsx?raw";
 import dashboardLayoutSource from "./components/layout/DashboardLayout.tsx?raw";
 import viewportGateSource from "./components/layout/ViewportGate.tsx?raw";
 import chatToolbarSource from "./components/chat/ChatToolbar.tsx?raw";
@@ -71,10 +71,10 @@ describe("Release 1.0 final UX wave — Home contracts", () => {
 });
 
 describe("Release 1.0 final UX wave — Ask product density", () => {
-  it("Ask uses product density and does not select turns", () => {
-    expect(askScreenSource).toMatch(/density=\"product\"/);
-    expect(askScreenSource).not.toMatch(/onSelectAssistant/);
-    expect(askScreenSource).not.toMatch(/selectedTurnIndex/);
+  it("Ask uses product density when Eng Mode is off; Eng Mode enables turn selection", () => {
+    expect(askScreenSource).toMatch(/density=\{engineeringModeOn \? "engineering" : "product"\}/);
+    expect(askScreenSource).toMatch(/onSelectAssistant=\{engineeringModeOn \? selectAssistantTurn : undefined\}/);
+    expect(askScreenSource).toMatch(/AskDiagnosticsSlot/);
   });
 
   it("assistant cards hide engineering metrics in product density", () => {
@@ -88,8 +88,8 @@ describe("Release 1.0 final UX wave — Ask product density", () => {
     expect(chatToolbarSource).not.toMatch(/sessionId:/);
   });
 
-  it("Engineering Ask details still mounts diagnostics", () => {
-    expect(engAskDetailsSource).toMatch(/ChatDiagnosticsSidebar/);
+  it("Ask Eng Mode slot mounts diagnostics beside chat", () => {
+    expect(askDiagnosticsSlotSource).toMatch(/ChatDiagnosticsSidebar/);
   });
 });
 
@@ -196,7 +196,7 @@ describe("Release 1.0 final UX wave — Insights / Settings / Shell", () => {
   it("nav ownership remains product + engineering contracts", () => {
     expect(PRODUCT_NAV.some((e) => e.kind === "item" && e.labelKey === "nav.home")).toBe(true);
     expect(PRODUCT_NAV.some((e) => e.kind === "item" && e.labelKey === "nav.ask")).toBe(true);
-    expect(ENGINEERING_NAV.items.length).toBe(6);
+    expect(ENGINEERING_NAV.items.length).toBe(5);
   });
 });
 

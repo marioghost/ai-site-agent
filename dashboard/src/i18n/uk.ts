@@ -66,7 +66,6 @@ export const uk: TranslationDict = {
   "nav.access": "Користувачі",
   "nav.engineering": "Інструменти розробника",
   "nav.eng_status": "Стан системи",
-  "nav.eng_ask_details": "Деталі чату",
   "nav.eng_knowledge": "Профілі джерел",
   "nav.eng_tensions": "Можливі проблеми знань",
   "nav.eng_advanced": "Розширені керування",
@@ -77,13 +76,6 @@ export const uk: TranslationDict = {
   "eng.status.error_title": "Не вдалося завантажити стан",
   "eng.status.error_description": "Не вдалося завантажити стан системи. Спробуйте ще раз.",
   "eng.status.release_tag": "Реліз {release}",
-  "eng.ask_details.subtitle": "Перегляд діагностики пошуку, промпту та трасування для активної сесії чату.",
-  "eng.ask_details.explainer":
-    "Технічна діагностика розмови, відкритої в розділі Чат. Сам Чат лишається для розмови — повертайтесь сюди, щоб переглянути пошук, промпти та трасування.",
-  "eng.ask_details.empty_title": "Ще немає сесії чату для перегляду",
-  "eng.ask_details.empty_body": "Почніть або продовжте розмову в розділі Чат, а потім поверніться сюди, щоб побачити діагностику.",
-  "eng.ask_details.go_ask": "Відкрити Чат",
-  "eng.ask_details.session_title": "Активна сесія чату",
   "eng.knowledge.subtitle": "Генерація та перегляд профілів Source Intelligence для індексованих джерел.",
   "eng.advanced.subtitle": "Налаштування розбиття, пошуку, кешу, трасування та лімітів. Не показується в продуктових Налаштуваннях.",
   "eng.advanced.profile_owned_by_answers":

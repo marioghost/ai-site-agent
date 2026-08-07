@@ -36,7 +36,6 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   // Engineering (Owner/admin + Mode on enforced by guard)
   "/engineering": ["admin"],
   "/engineering/status": ["admin"],
-  "/engineering/ask-details": ["admin"],
   "/engineering/knowledge": ["admin"],
   "/engineering/tensions": ["admin"],
   "/engineering/advanced": ["admin"],

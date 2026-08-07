@@ -33,7 +33,6 @@ import modelsScreenSource from "./features/settings/models/ModelsScreen.tsx?raw"
 import answersScreenSource from "./features/settings/answers/AnswersScreen.tsx?raw";
 import accessScreenSource from "./features/settings/access/AccessScreen.tsx?raw";
 import engStatusScreenSource from "./features/engineering/status/EngStatusScreen.tsx?raw";
-import engAskDetailsScreenSource from "./features/engineering/ask-details/EngAskDetailsScreen.tsx?raw";
 import engKnowledgeScreenSource from "./features/engineering/knowledge/EngKnowledgeScreen.tsx?raw";
 import engTensionsScreenSource from "./features/engineering/tensions/EngTensionsScreen.tsx?raw";
 import engAdvancedScreenSource from "./features/engineering/advanced/EngAdvancedScreen.tsx?raw";
@@ -182,9 +181,8 @@ describe("S008 Product Completion — final route model contracts", () => {
       expect(accessScreenSource).not.toMatch(/MigrationPlaceholder/);
     });
 
-    it("Engineering owners (all 6 destinations) own real content (no placeholder)", () => {
+    it("Engineering owners own real content (no placeholder)", () => {
       expect(engStatusScreenSource).not.toMatch(/MigrationPlaceholder/);
-      expect(engAskDetailsScreenSource).not.toMatch(/MigrationPlaceholder/);
       expect(engKnowledgeScreenSource).not.toMatch(/MigrationPlaceholder/);
       expect(engTensionsScreenSource).not.toMatch(/MigrationPlaceholder/);
       expect(engAdvancedScreenSource).not.toMatch(/MigrationPlaceholder/);
@@ -199,10 +197,9 @@ describe("S008 Product Completion — final route model contracts", () => {
   });
 
   describe("Engineering isolation structure", () => {
-    it("EngineeringLayout renders section nav for all 6 Engineering destinations", () => {
+    it("EngineeringLayout renders section nav for Engineering destinations (no Chat details)", () => {
       expect(ENGINEERING_NAV.items.map((item) => item.to)).toEqual([
         "/engineering/status",
-        "/engineering/ask-details",
         "/engineering/knowledge",
         "/engineering/tensions",
         "/engineering/advanced",
@@ -212,14 +209,16 @@ describe("S008 Product Completion — final route model contracts", () => {
       expect(engineeringLayoutSource).toMatch(/Outlet/);
     });
 
-    it("App.tsx registers all 6 Engineering routes behind RequireEngineeringMode", () => {
+    it("App.tsx registers Engineering routes behind RequireEngineeringMode; ask-details redirects to Ask", () => {
       expect(appSource).toMatch(/RequireEngineeringMode/);
       expect(appSource).toMatch(/path="status"/);
       expect(appSource).toMatch(/path="ask-details"/);
+      expect(appSource).toMatch(/Navigate to="\/ask"/);
       expect(appSource).toMatch(/path="knowledge"/);
       expect(appSource).toMatch(/path="tensions"/);
       expect(appSource).toMatch(/path="advanced"/);
       expect(appSource).toMatch(/path="build"/);
+      expect(askScreenSource).toMatch(/AskDiagnosticsSlot/);
     });
   });
 

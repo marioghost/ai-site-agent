@@ -63,7 +63,6 @@ export const en: TranslationDict = {
   "nav.access": "Users",
   "nav.engineering": "Developer tools",
   "nav.eng_status": "System status",
-  "nav.eng_ask_details": "Chat details",
   "nav.eng_knowledge": "Source profiles",
   "nav.eng_tensions": "Possible knowledge issues",
   "nav.eng_advanced": "Advanced controls",
@@ -74,13 +73,6 @@ export const en: TranslationDict = {
   "eng.status.error_title": "Can't load status",
   "eng.status.error_description": "We couldn't load system health. Please try again.",
   "eng.status.release_tag": "Release {release}",
-  "eng.ask_details.subtitle": "Inspect retrieval, prompt, and trace diagnostics for the active chat session.",
-  "eng.ask_details.explainer":
-    "Technical diagnostics for the chat you have open under Chat. The Chat page stays focused on the conversation; come here to inspect retrieval, prompts, and traces.",
-  "eng.ask_details.empty_title": "No chat session to inspect yet",
-  "eng.ask_details.empty_body": "Start or continue a conversation under Chat, then return here to see its diagnostics.",
-  "eng.ask_details.go_ask": "Open Chat",
-  "eng.ask_details.session_title": "Active chat session",
   "eng.knowledge.subtitle": "Generate and preview Source Intelligence profiles for indexed sources.",
   "eng.advanced.subtitle": "Chunking, retrieval, cache, tracing, and limit knobs. Not shown on product Settings.",
   "eng.advanced.profile_owned_by_answers":
