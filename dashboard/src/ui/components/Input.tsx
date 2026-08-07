@@ -1,4 +1,13 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useId,
+  type InputHTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from "react";
 import { Search } from "lucide-react";
 import { cn } from "../utils/cn";
 
@@ -8,12 +17,40 @@ type FieldProps = {
   className?: string;
 };
 
+function stampId(node: ReactNode, id: string): ReactNode {
+  if (!isValidElement(node)) return node;
+  const el = node as ReactElement<{ id?: string; children?: ReactNode }>;
+  const type = el.type;
+
+  if (type === Input || type === Select) {
+    return cloneElement(el, { id: el.props.id || id });
+  }
+  if (type === SearchInput) {
+    return cloneElement(el, { id: el.props.id || id });
+  }
+  if (typeof type === "string" && ["input", "select", "textarea"].includes(type)) {
+    return cloneElement(el, { id: el.props.id || id });
+  }
+  if (el.props.children) {
+    return cloneElement(el, {
+      children: Children.map(el.props.children, (child) => stampId(child, id)),
+    });
+  }
+  return node;
+}
+
 export function Field({ label, children, className }: FieldProps) {
+  const autoId = useId();
+  const controlId = `field-${autoId.replace(/:/g, "")}`;
   return (
-    <label className={cn("ds-field", className)}>
-      {label && <span className="ds-field__label">{label}</span>}
-      {children}
-    </label>
+    <div className={cn("ds-field", className)}>
+      {label ? (
+        <label className="ds-field__label" htmlFor={controlId}>
+          {label}
+        </label>
+      ) : null}
+      {label ? stampId(children, controlId) : children}
+    </div>
   );
 }
 

@@ -29,6 +29,7 @@ dashboard/dist/
 
 # Local browser / audit tooling artifacts (never commit)
 artifacts/
+tmp/
 .playwright-mcp/
 /UX-*.png
 /ux-*.png

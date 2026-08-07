@@ -181,8 +181,13 @@ export default function ActivityScreen() {
                     <ul className="ds-activity-card__sources">
                       {sourceList.map((s, i) => (
                         <li key={`${log.id}-src-${i}`}>
-                          <a href={s.url} target="_blank" rel="noreferrer">
-                            {s.title || s.url}
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={s.title || s.url || t("activity.source_link")}
+                          >
+                            {s.title || s.url || t("activity.source_link")}
                           </a>
                         </li>
                       ))}

@@ -172,6 +172,7 @@ export const en: TranslationDict = {
   "activity.no_match": "No matches on this page",
   "activity.no_match_hint": "Try different words, clear the search, or open another page.",
   "activity.details": "Show full answer and sources",
+  "activity.source_link": "Source link",
   "activity.status.sourced": "{count} sources",
   "activity.status.no_sources": "No sources",
   "activity.status.cached": "Cached",

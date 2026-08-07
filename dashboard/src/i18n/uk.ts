@@ -175,6 +175,7 @@ export const uk: TranslationDict = {
   "activity.no_match": "Немає збігів на цій сторінці",
   "activity.no_match_hint": "Спробуйте інші слова, очистіть пошук або відкрийте іншу сторінку.",
   "activity.details": "Показати повну відповідь і джерела",
+  "activity.source_link": "Посилання на джерело",
   "activity.status.sourced": "{count} джерел",
   "activity.status.no_sources": "Без джерел",
   "activity.status.cached": "З кешу",
