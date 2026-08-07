@@ -67,6 +67,13 @@ export default function SiteScreen() {
     setShowReindexWarn(true);
   };
 
+  const applyGenerated = (next: KnowledgeProfile) => {
+    setProfile(next);
+    setAdvancedJson(JSON.stringify(next, null, 2));
+    setShowReindexWarn(true);
+    setMessage(t("knowledge_profile.generate.applied"));
+  };
+
   const onSave = async () => {
     setBusy(true);
     setMessage(null);
@@ -345,9 +352,7 @@ export default function SiteScreen() {
       {showWizard ? (
         <KnowledgeProfileGenerateWizard
           onApplied={(p) => {
-            update(p);
-            setMessage(t("knowledge_profile.generate.applied"));
-            setShowWizard(false);
+            applyGenerated(p);
           }}
           onClose={() => setShowWizard(false)}
         />

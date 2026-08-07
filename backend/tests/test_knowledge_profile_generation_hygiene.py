@@ -186,3 +186,64 @@ def test_assembler_uses_generic_base_not_industry_preset():
     assert "банк" not in " ".join(assembled.profile.overview_query_patterns).lower()
     assert assembled.profile.site_subject.startswith("Acme")
     assert all(isinstance(t, ImportantTopic) for t in assembled.profile.important_topics)
+
+
+@pytest.mark.unit
+def test_organization_prefers_hostname_over_partner_frequency():
+    from app.services.knowledge_profile_generation.metadata_extractor import (
+        WebsiteMetadataExtractor,
+    )
+    from app.services.knowledge_profile_generation.organization_detector import (
+        OrganizationDetector,
+    )
+
+    pages = [
+        _page(
+            source_id=1,
+            url="https://ukrsibbank.com/",
+            title="UKRSIBBANK | Promo with VISA",
+            path_segments=[],
+            texts=["© UKRSIBBANK 2024. All rights reserved.", "VISA VISA VISA Mastercard"],
+            is_homepage=True,
+        ),
+        _page(
+            source_id=2,
+            url="https://ukrsibbank.com/cards",
+            title="Cards",
+            path_segments=["cards"],
+            texts=["VISA premium card", "VISA", "VISA", "Mastercard"],
+        ),
+        _page(
+            source_id=3,
+            url="https://ukrsibbank.com/about",
+            title="About UKRSIBBANK",
+            path_segments=["about"],
+            texts=["UKRSIBBANK is a leading bank.", "© UKRSIBBANK 2024"],
+        ),
+    ]
+    meta = WebsiteMetadataExtractor().extract(pages, "https://ukrsibbank.com")
+    hierarchy = WebsiteStructureAnalyzer().analyze(pages, meta)
+    org = OrganizationDetector().detect(meta, pages, hierarchy)
+    assert "UKRSIBBANK" in org.name.upper()
+    assert "VISA" not in org.name.upper()
+
+
+@pytest.mark.unit
+def test_sanitize_adds_missing_doc_types_and_hints():
+    from app.services.knowledge_profile_sanitize import prepare_profile_for_persist
+    from app.services.knowledge_profile_service import generic_corporate_profile
+
+    profile = generic_corporate_profile()
+    profile.organization_name = "Acme"
+    profile.important_topics = [
+        ImportantTopic(
+            key="rates",
+            label="Rates",
+            preferred_document_types=["rates_page"],
+            preferred_content_hints=["custom_hint"],
+        )
+    ]
+    ready, errors = prepare_profile_for_persist(profile)
+    assert errors == []
+    assert any(r.document_type == "rates_page" for r in ready.document_type_rules)
+    assert any(r.content_type_hint == "custom_hint" for r in ready.content_hint_rules)

@@ -109,6 +109,9 @@ class LlmRefiner:
 
         filtered_topics: list[ImportantTopic] = []
         topic_map = {t.id: t for t in ctx.topics}
+        allowed_doc_types = {
+            r.document_type for r in profile.document_type_rules
+        } | {"homepage", "generic_page", "category_page"}
         for topic in profile.important_topics:
             if topic.key not in allowed_ids:
                 continue
@@ -116,8 +119,22 @@ class LlmRefiner:
             hints = [h for h in topic.preferred_content_hints if h in hint_set]
             if src and not hints:
                 hints = [h for h in src.preferred_content_hints if h in hint_set]
+            doc_types = [
+                d for d in topic.preferred_document_types if d in allowed_doc_types
+            ]
+            if not doc_types and src:
+                doc_types = [
+                    d for d in src.preferred_document_types if d in allowed_doc_types
+                ]
+            if not doc_types:
+                doc_types = ["category_page"]
             filtered_topics.append(
-                topic.model_copy(update={"preferred_content_hints": hints})
+                topic.model_copy(
+                    update={
+                        "preferred_content_hints": hints,
+                        "preferred_document_types": doc_types,
+                    }
+                )
             )
 
         if not filtered_topics and ctx.topics:

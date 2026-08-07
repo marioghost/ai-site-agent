@@ -14,8 +14,8 @@ _ORG_SOURCE_WEIGHTS: dict[str, float] = {
     "homepage": 15,
     "about_page": 10,
     "contact_page": 8,
-    "frequency": 15,
-    "hostname": 10,
+    "frequency": 8,
+    "hostname": 35,
     "llm": 5,
 }
 
@@ -24,8 +24,14 @@ class ConfidenceEngine:
     def organization_score(self, evidence: list[EvidenceItem]) -> float:
         by_source: dict[str, float] = {}
         for item in evidence:
-            base = _ORG_SOURCE_WEIGHTS.get(item.source, item.weight)
-            by_source[item.source] = max(by_source.get(item.source, 0), base)
+            catalog = _ORG_SOURCE_WEIGHTS.get(item.source)
+            if item.weight > 0:
+                pts = float(item.weight)
+            elif catalog is not None:
+                pts = float(catalog)
+            else:
+                pts = 5.0
+            by_source[item.source] = max(by_source.get(item.source, 0), pts)
         raw = sum(by_source.values())
         return min(1.0, raw / 100.0)
 

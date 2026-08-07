@@ -11,6 +11,7 @@ _LOCALE_SEGMENT = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2,3})?$")
 _SENTENCE_END = re.compile(r"[.!?…]")
 
 # Universal URL/section stems that must not be treated as organization names.
+# No vertical product vocabulary (rates/cards/loans/etc.).
 SECTION_NOISE_LABELS = frozenset(
     {
         "branch",
@@ -33,9 +34,6 @@ SECTION_NOISE_LABELS = frozenset(
         "about",
         "products",
         "services",
-        "rates",
-        "cards",
-        "loans",
         "documents",
         "privacy",
         "terms",

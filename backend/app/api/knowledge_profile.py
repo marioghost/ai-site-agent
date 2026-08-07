@@ -48,15 +48,17 @@ def update_profile(
     db: Session = Depends(get_db),
     _user=Depends(require_admin),
 ) -> KnowledgeProfile:
-    errors = KnowledgeProfileService.validate_profile(payload.profile)
+    from app.services.knowledge_profile_sanitize import prepare_profile_for_persist
+
+    profile, errors = prepare_profile_for_persist(payload.profile)
     if errors:
         raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
     settings = repo.get_or_create()
     persist_knowledge_profile(
-        db, settings, payload.profile, reason="knowledge_profile_updated"
+        db, settings, profile, reason="knowledge_profile_updated"
     )
-    return payload.profile
+    return profile
 
 
 @router.get("/presets")
@@ -91,7 +93,9 @@ def load_preset(
         preset.organization_aliases = current.organization_aliases or preset.organization_aliases
         preset.site_subject = current.site_subject or preset.site_subject
         preset.entity_type = current.entity_type or preset.entity_type
-    errors = KnowledgeProfileService.validate_profile(preset)
+    from app.services.knowledge_profile_sanitize import prepare_profile_for_persist
+
+    preset, errors = prepare_profile_for_persist(preset)
     if errors:
         raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
@@ -117,10 +121,15 @@ def import_profile(
     db: Session = Depends(get_db),
     _user=Depends(require_admin),
 ) -> KnowledgeProfile:
+    from app.services.knowledge_profile_sanitize import prepare_profile_for_persist
+
     try:
         profile = KnowledgeProfileService.import_profile(payload.profile)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    profile, errors = prepare_profile_for_persist(profile)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
     settings = repo.get_or_create()
     persist_knowledge_profile(

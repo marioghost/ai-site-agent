@@ -276,7 +276,8 @@ export const uk: TranslationDict = {
     "Елементи з низькою впевненістю виділені — перевірте перед застосуванням.",
   "knowledge_profile.generate.error_start": "Не вдалося запустити генерацію",
   "knowledge_profile.generate.error_apply": "Не вдалося застосувати профіль",
-  "knowledge_profile.generate.applied": "Профіль застосовано",
+  "knowledge_profile.generate.applied":
+    "Профіль збережено з генерації. Редагуйте поля нижче і натисніть Зберегти лише якщо щось змінили.",
   "common.cancel": "Скасувати",
 
   "nav.agent_settings": "Налаштування агента",

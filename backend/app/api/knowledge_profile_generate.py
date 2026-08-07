@@ -108,9 +108,6 @@ def apply_generated_profile(
     db: Session = Depends(get_db),
     _user=Depends(require_admin),
 ) -> dict:
-    errors = KnowledgeProfileService.validate_profile(payload.profile)
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
     settings = repo.get_or_create()
     current = KnowledgeProfileService.from_settings(settings)
@@ -136,6 +133,11 @@ def apply_generated_profile(
         if "query_expansions" not in sections:
             merged.query_expansion_rules = current.query_expansion_rules
     from app.services.knowledge_profile_persistence import persist_knowledge_profile
+    from app.services.knowledge_profile_sanitize import prepare_profile_for_persist
+
+    merged, errors = prepare_profile_for_persist(merged)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
 
     persist_knowledge_profile(
         db, settings, merged, reason="knowledge_profile_generated"

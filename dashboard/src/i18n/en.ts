@@ -273,7 +273,8 @@ export const en: TranslationDict = {
     "Low-confidence items are highlighted — review before applying.",
   "knowledge_profile.generate.error_start": "Failed to start generation",
   "knowledge_profile.generate.error_apply": "Failed to apply profile",
-  "knowledge_profile.generate.applied": "Profile applied",
+  "knowledge_profile.generate.applied":
+    "Profile saved from generation. Edit fields below and Save only if you change them.",
   "common.cancel": "Cancel",
 
   "nav.agent_settings": "Agent Settings",

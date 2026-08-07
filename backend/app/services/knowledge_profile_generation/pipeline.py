@@ -228,8 +228,13 @@ class KnowledgeProfilePipeline:
             if issue.severity == "warning":
                 ctx.report.warnings.append(issue.message)
 
+        from app.services.knowledge_profile_sanitize import sanitize_profile_for_persist
+
+        assert ctx.profile is not None
+        ctx.profile = sanitize_profile_for_persist(ctx.profile)
+
         stage("preview", 99)
-        preview = self._build_preview(ctx, assembled.profile)
+        preview = self._build_preview(ctx, ctx.profile)
         ctx.report.generation_seconds = round(time.monotonic() - t0, 2)
         ctx.report.confidence_distribution = self.confidence.distribution(
             [t.confidence for t in ctx.topics]
