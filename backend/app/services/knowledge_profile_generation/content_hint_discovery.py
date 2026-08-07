@@ -1,9 +1,10 @@
-"""Stage 6 — content hint discovery with registration and validation."""
+"""Stage 6 — content hint discovery from site structure (no industry vocab)."""
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 
+from app.services.knowledge_profile_generation.confidence_engine import ConfidenceEngine
 from app.services.knowledge_profile_generation.models import (
     ContentHintCandidate,
     DiscoveredTopic,
@@ -11,25 +12,20 @@ from app.services.knowledge_profile_generation.models import (
     PageRecord,
     WebsiteHierarchy,
 )
-from app.services.knowledge_profile_generation.confidence_engine import ConfidenceEngine
-
-_BASE_HINTS: dict[str, list[str]] = {
-    "about": ["about us", "про нас", "про банк", "about the company"],
-    "contacts": ["contact", "контакт", "телефон", "email", "зв'яз"],
-    "faq": ["faq", "question", "питання", "часті питання"],
-    "rates": ["exchange rate", "курс", "валют", "currency"],
-    "products": ["product", "card", "карт", "кредит", "loan", "deposit"],
-    "news": ["news", "новин", "press", "announcement"],
-    "pricing": ["price", "tariff", "тариф", "commission", "коміс"],
-    "support": ["support", "help", "допомог", "служба підтримки"],
-    "delivery": ["delivery", "достав", "shipping"],
-    "docs": ["documentation", "документ", "api reference", "guide"],
-}
 
 
 def _slug_hint(text: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9]+", "_", text.lower()).strip("_")
     return s[:32] or "generic"
+
+
+def _patterns_for(hint_id: str) -> list[str]:
+    """Derive match patterns from the hint id itself (structural, not lexical catalogs)."""
+    spaced = hint_id.replace("_", " ").strip()
+    parts = [p for p in hint_id.split("_") if p]
+    out = [spaced] if spaced else []
+    out.extend(parts)
+    return list(dict.fromkeys(a for a in out if a))[:6]
 
 
 class ContentHintDiscovery:
@@ -45,55 +41,49 @@ class ContentHintDiscovery:
     ) -> list[ContentHintCandidate]:
         self._registry.clear()
         hint_pages: dict[str, set[str]] = defaultdict(set)
-        heading_signals: Counter[str] = Counter()
 
         cat_by_url = {c.url: c.category for c in hierarchy.categories}
 
         for page in pages:
             cat = cat_by_url.get(page.url, "")
             if cat and cat not in ("general", "homepage"):
-                hint_id = _slug_hint(cat)
-                hint_pages[hint_id].add(page.url)
-                for pat in _BASE_HINTS.get(cat, [cat.replace("_", " ")]):
-                    heading_signals[hint_id] += 1
+                hint_pages[_slug_hint(cat)].add(page.url)
 
             for hint in page.content_hints:
                 if hint and hint != "generic":
-                    hid = _slug_hint(hint)
-                    hint_pages[hid].add(page.url)
-
-            for h in page.headings:
-                hl = h.lower()
-                for hint_id, patterns in _BASE_HINTS.items():
-                    if any(p in hl for p in patterns):
-                        hint_pages[hint_id].add(page.url)
-                        heading_signals[hint_id] += 1
+                    hint_pages[_slug_hint(hint)].add(page.url)
 
         for topic in topics:
             for hint in topic.preferred_content_hints:
                 hid = _slug_hint(hint)
                 hint_pages.setdefault(hid, set()).update(
-                    p.url for p in pages if topic.cluster_key in p.url
+                    p.url for p in pages if topic.cluster_key and topic.cluster_key in p.url
+                )
+            if topic.cluster_key:
+                guess = _slug_hint(topic.cluster_key)
+                hint_pages.setdefault(guess, set()).update(
+                    p.url for p in pages if topic.cluster_key in (p.path_segments or [])
+                    or topic.cluster_key in p.url
                 )
 
         for hint_id, urls in hint_pages.items():
-            patterns = list(_BASE_HINTS.get(hint_id, [hint_id.replace("_", " ")]))
             page_count = len(urls)
-            conf = self.confidence.hint_score(page_count, min(1.0, heading_signals[hint_id] / 10))
-            candidate = ContentHintCandidate(
-                hint_id=hint_id,
-                patterns=patterns,
-                confidence=round(conf, 3),
-                evidence=[
-                    EvidenceItem(
-                        source="pages",
-                        weight=min(40, page_count * 2),
-                        detail=f"{page_count} pages",
-                    )
-                ],
-                page_count=page_count,
+            conf = self.confidence.hint_score(page_count, min(1.0, page_count / 10))
+            self.register(
+                ContentHintCandidate(
+                    hint_id=hint_id,
+                    patterns=_patterns_for(hint_id),
+                    confidence=round(conf, 3),
+                    evidence=[
+                        EvidenceItem(
+                            source="pages",
+                            weight=min(40, page_count * 2),
+                            detail=f"{page_count} pages",
+                        )
+                    ],
+                    page_count=page_count,
+                )
             )
-            self.register(candidate)
 
         if "generic" not in self._registry:
             self.register(
@@ -136,7 +126,7 @@ class ContentHintDiscovery:
             rules.append(
                 ContentHintRule(
                     content_type_hint=hint_id,
-                    patterns=cand.patterns or [hint_id.replace("_", " ")],
+                    patterns=cand.patterns or _patterns_for(hint_id),
                     priority=min(100, 40 + cand.page_count),
                 )
             )

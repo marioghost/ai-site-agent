@@ -331,11 +331,15 @@ def test_step_054_preset_410_unchanged(monkeypatch):
 
     monkeypatch.setattr("app.api.knowledge_profile.SettingsRepository", lambda db: FakeRepo())
     monkeypatch.setattr(
-        "app.api.knowledge_profile.CacheInvalidationService",
+        "app.services.knowledge_profile_persistence.SettingsRepository",
+        lambda db: FakeRepo(),
+    )
+    monkeypatch.setattr(
+        "app.services.knowledge_profile_persistence.CacheInvalidationService",
         lambda db, s: MagicMock(invalidate_for_correctness=lambda reason: 0),
     )
     monkeypatch.setattr(
-        "app.api.knowledge_profile.mark_sources_needs_reprocess",
+        "app.services.knowledge_profile_persistence.mark_sources_needs_reprocess",
         lambda db, reason: None,
     )
     app.dependency_overrides[require_admin] = lambda: MagicMock()

@@ -3,14 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   exportKnowledgeProfile,
   getKnowledgeProfile,
-  getKnowledgeProfilePresets,
   importKnowledgeProfile,
-  loadKnowledgeProfilePreset,
   updateKnowledgeProfile,
 } from "../../../api/client";
+import { useEngineeringMode } from "../../../context/EngineeringModeContext";
 import { useTranslation } from "../../../i18n";
-import { isLegacyKpPresetsDisabledError } from "../../../lib/legacyKpPresetsDisabled";
-import type { KnowledgeProfile, KnowledgeProfilePreset } from "../../../types";
+import { ANSWER_STRATEGIES } from "../../../lib/answerStrategies";
+import type { KnowledgeProfile } from "../../../types";
 import {
   Alert,
   Button,
@@ -27,8 +26,6 @@ import {
   Textarea,
 } from "../../../ui";
 import KnowledgeProfileGenerateWizard from "./widgets/KnowledgeProfileGenerateWizard";
-import KnowledgeProfileLegacyBanner from "./widgets/KnowledgeProfileLegacyBanner";
-import { ANSWER_STRATEGIES } from "../../../lib/answerStrategies";
 
 function lines(text: string): string[] {
   return text
@@ -39,9 +36,8 @@ function lines(text: string): string[] {
 
 export default function SiteScreen() {
   const { t } = useTranslation();
+  const { enabled: engineeringModeOn } = useEngineeringMode();
   const [profile, setProfile] = useState<KnowledgeProfile | null>(null);
-  const [presets, setPresets] = useState<KnowledgeProfilePreset[]>([]);
-  const [presetsUnavailable, setPresetsUnavailable] = useState(false);
   const [advancedJson, setAdvancedJson] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReindexWarn, setShowReindexWarn] = useState(false);
@@ -55,17 +51,6 @@ export default function SiteScreen() {
       setProfile(p);
       setAdvancedJson(JSON.stringify(p, null, 2));
     });
-    getKnowledgeProfilePresets()
-      .then((list) => {
-        setPresets(list);
-        setPresetsUnavailable(false);
-      })
-      .catch((err: unknown) => {
-        setPresets([]);
-        if (isLegacyKpPresetsDisabledError(err)) {
-          setPresetsUnavailable(true);
-        }
-      });
   }, []);
 
   if (!profile) {
@@ -87,7 +72,7 @@ export default function SiteScreen() {
     setMessage(null);
     try {
       let payload = profile;
-      if (showAdvanced) {
+      if (engineeringModeOn && showAdvanced) {
         payload = JSON.parse(advancedJson) as KnowledgeProfile;
       }
       const saved = await updateKnowledgeProfile(payload);
@@ -97,28 +82,9 @@ export default function SiteScreen() {
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string | string[] } } };
       const detail = err?.response?.data?.detail;
-      setMessage(Array.isArray(detail) ? detail.join("; ") : detail || t("knowledge_profile.error_save"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onLoadPreset = async (presetId: string) => {
-    if (!confirm(t("knowledge_profile.preset_confirm"))) return;
-    setBusy(true);
-    try {
-      const loaded = await loadKnowledgeProfilePreset(presetId);
-      update(loaded);
-      setPresetsUnavailable(false);
-      setMessage(t("knowledge_profile.preset_loaded"));
-    } catch (err: unknown) {
-      if (isLegacyKpPresetsDisabledError(err)) {
-        setPresetsUnavailable(true);
-        setPresets([]);
-        setMessage(t("knowledge_profile.presets.disabled_banner"));
-      } else {
-        setMessage(t("knowledge_profile.error_preset"));
-      }
+      setMessage(
+        Array.isArray(detail) ? detail.join("; ") : detail || t("knowledge_profile.error_save")
+      );
     } finally {
       setBusy(false);
     }
@@ -130,7 +96,7 @@ export default function SiteScreen() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "knowledge-profile.json";
+    a.download = "site-profile.json";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -143,64 +109,35 @@ export default function SiteScreen() {
     setMessage(t("knowledge_profile.imported"));
   };
 
-  const disabledBanner = t("knowledge_profile.presets.disabled_banner");
   const messageVariant =
     message === t("knowledge_profile.saved") ||
     message === t("knowledge_profile.imported") ||
-    message === t("knowledge_profile.preset_loaded") ||
     message === t("knowledge_profile.generate.applied")
       ? "success"
-      : message === disabledBanner
-        ? "info"
-        : "error";
+      : "error";
 
   return (
     <PageLayout className="ds-page--wide">
       <PageHeader title={t("knowledge.site.title")} subtitle={t("knowledge.site.subtitle")} />
 
-      <KnowledgeProfileLegacyBanner />
-
-      {presetsUnavailable ? <Alert variant="info">{disabledBanner}</Alert> : null}
       {showReindexWarn ? <Alert variant="warning">{t("knowledge_profile.reindex_warning")}</Alert> : null}
       {message ? <Alert variant={messageVariant}>{message}</Alert> : null}
 
       <SectionCard
-        title={
-          presetsUnavailable
-            ? t("knowledge_profile.presets.actions_title")
-            : t("knowledge_profile.presets.title")
-        }
-        subtitle={
-          presetsUnavailable ? t("knowledge_profile.presets.actions_subtitle") : undefined
-        }
+        title={t("knowledge_profile.presets.actions_title")}
+        subtitle={t("knowledge_profile.presets.actions_subtitle")}
       >
-        {!presetsUnavailable ? (
-          <FormGrid columns={2}>
-            <Field label={t("knowledge_profile.presets.load")}>
-              <Select
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) void onLoadPreset(e.target.value);
-                  e.target.value = "";
-                }}
-                disabled={busy}
-              >
-                <option value="">{t("knowledge_profile.presets.load")}</option>
-                {presets.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </FormGrid>
-        ) : null}
-        <div className="ds-action-toolbar" style={{ marginTop: "var(--ds-space-4)" }}>
+        <div className="ds-action-toolbar">
           <div className="ds-action-toolbar__start">
             <Button type="button" variant="secondary" size="sm" onClick={onExport}>
               {t("knowledge_profile.export")}
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => fileRef.current?.click()}
+            >
               {t("knowledge_profile.import")}
             </Button>
           </div>
@@ -217,7 +154,8 @@ export default function SiteScreen() {
           style={{ display: "none" }}
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) void onImportFile(f).catch(() => setMessage(t("knowledge_profile.error_import")));
+            if (f)
+              void onImportFile(f).catch(() => setMessage(t("knowledge_profile.error_import")));
           }}
         />
       </SectionCard>
@@ -380,21 +318,23 @@ export default function SiteScreen() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("knowledge_profile.advanced_json")}>
-        <CheckboxField
-          label={t("knowledge_profile.advanced_json")}
-          checked={showAdvanced}
-          onChange={(e) => setShowAdvanced(e.target.checked)}
-        />
-        {showAdvanced ? (
-          <Textarea
-            rows={20}
-            value={advancedJson}
-            onChange={(e) => setAdvancedJson(e.target.value)}
-            style={{ fontFamily: "monospace", fontSize: 12, marginTop: "var(--ds-space-4)" }}
+      {engineeringModeOn ? (
+        <SectionCard title={t("knowledge_profile.advanced_json")}>
+          <CheckboxField
+            label={t("knowledge_profile.advanced_json")}
+            checked={showAdvanced}
+            onChange={(e) => setShowAdvanced(e.target.checked)}
           />
-        ) : null}
-      </SectionCard>
+          {showAdvanced ? (
+            <Textarea
+              rows={20}
+              value={advancedJson}
+              onChange={(e) => setAdvancedJson(e.target.value)}
+              style={{ fontFamily: "monospace", fontSize: 12, marginTop: "var(--ds-space-4)" }}
+            />
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <div className="ds-kp-page-footer">
         <Button onClick={onSave} disabled={busy}>

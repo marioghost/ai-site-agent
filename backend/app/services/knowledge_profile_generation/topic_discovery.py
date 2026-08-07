@@ -4,14 +4,17 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 
+from app.services.knowledge_profile_generation.confidence_engine import ConfidenceEngine
 from app.services.knowledge_profile_generation.models import (
     DiscoveredTopic,
-    EvidenceItem,
     ExtractedEntity,
     PageRecord,
     WebsiteHierarchy,
 )
-from app.services.knowledge_profile_generation.confidence_engine import ConfidenceEngine
+from app.services.knowledge_profile_generation.structural_filters import (
+    first_meaningful_path_segment,
+    is_locale_like_path_segment,
+)
 
 _GENERIC_LABELS = frozenset(
     {
@@ -32,19 +35,6 @@ _GENERIC_LABELS = frozenset(
         "home",
     }
 )
-
-_STRATEGY_MAP = {
-    "rates": "table",
-    "contacts": "contact",
-    "faq": "generic",
-    "pricing": "pricing",
-    "about": "overview",
-    "cards": "list",
-    "loans": "list",
-    "deposits": "list",
-    "branches": "list",
-    "documents": "list",
-}
 
 
 def _slug(text: str) -> str:
@@ -80,10 +70,12 @@ class TopicDiscovery:
 
         for page in pages:
             cat = cat_by_url.get(page.url, "")
-            if cat in ("general", "homepage", ""):
+            if cat in ("general", "homepage", "") or is_locale_like_path_segment(cat):
                 key = self._cluster_key_from_page(page)
             else:
                 key = cat
+            if not key or is_locale_like_path_segment(key):
+                continue
             cluster = clusters[key]
             cluster["urls"].add(page.url)
             cluster["category"] = cat or key
@@ -94,10 +86,6 @@ class TopicDiscovery:
             for seg in page.path_segments[:2]:
                 if seg in menu_set:
                     cluster["menu_hits"] += 1
-
-        entity_by_type: dict[str, list[ExtractedEntity]] = defaultdict(list)
-        for ent in entities:
-            entity_by_type[ent.entity_type].append(ent)
 
         for key, data in list(clusters.items()):
             label_l = self._humanize(key, "").lower()
@@ -115,11 +103,11 @@ class TopicDiscovery:
             title = data["title"] or self._humanize(key, key)
             label_l = title.lower()
 
+            if is_locale_like_path_segment(key) or is_locale_like_path_segment(label_l):
+                continue
             if self._is_generic(title, page_count, total):
                 continue
             if organization_name and label_l == organization_name.lower():
-                continue
-            if re.search(r"branches?\s+and\s+atms?", title, re.I):
                 continue
 
             topic_id = _slug(key)
@@ -142,9 +130,6 @@ class TopicDiscovery:
                 continue
 
             aliases = self._aliases(title, key, data["headings"])
-            doc_types = self._doc_types(key, data["category"])
-            hints = self._hint_guess(key, data["category"])
-
             topics.append(
                 DiscoveredTopic(
                     id=topic_id,
@@ -154,9 +139,9 @@ class TopicDiscovery:
                     page_count=page_count,
                     confidence=round(conf, 3),
                     evidence=evidence,
-                    preferred_content_hints=hints,
-                    preferred_document_types=doc_types,
-                    answer_strategy=_STRATEGY_MAP.get(key, "overview"),
+                    preferred_content_hints=[],
+                    preferred_document_types=["category_page"],
+                    answer_strategy="generic",
                     cluster_key=key,
                 )
             )
@@ -165,9 +150,10 @@ class TopicDiscovery:
         return topics[:15]
 
     def _cluster_key_from_page(self, page: PageRecord) -> str:
-        if page.path_segments:
-            return page.path_segments[0]
-        return _slug(page.title[:30])
+        seg = first_meaningful_path_segment(list(page.path_segments or []))
+        if seg:
+            return seg
+        return _slug(page.title[:30]) if page.title else "topic"
 
     def _humanize(self, key: str, fallback: str) -> str:
         if fallback and key in ("general", "") and "|" not in fallback:
@@ -188,29 +174,3 @@ class TopicDiscovery:
             if 4 <= len(h) <= 60:
                 aliases.append(h)
         return list(dict.fromkeys(a for a in aliases if a))[:8]
-
-    def _doc_types(self, key: str, category: str) -> list[str]:
-        mapping = {
-            "faq": ["faq_page"],
-            "contacts": ["contact_page"],
-            "about": ["about_page"],
-            "rates": ["rates_page"],
-            "cards": ["product_page"],
-            "loans": ["product_page"],
-            "news": ["news_page"],
-        }
-        return mapping.get(category or key, ["category_page"])
-
-    def _hint_guess(self, key: str, category: str) -> list[str]:
-        mapping = {
-            "faq": "faq",
-            "contacts": "contacts",
-            "about": "about",
-            "rates": "rates",
-            "cards": "products",
-            "loans": "products",
-            "news": "news",
-            "branches": "contacts",
-        }
-        hint = mapping.get(category or key)
-        return [hint] if hint else []

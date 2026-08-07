@@ -135,12 +135,10 @@ def apply_generated_profile(
             merged.source_priority_rules = current.source_priority_rules
         if "query_expansions" not in sections:
             merged.query_expansion_rules = current.query_expansion_rules
-    settings.knowledge_profile_json = KnowledgeProfileService.to_json(merged)
-    repo.save(settings)
-    from app.services.cache_invalidation_service import CacheInvalidationService
+    from app.services.knowledge_profile_persistence import persist_knowledge_profile
 
-    CacheInvalidationService(db, settings).invalidate_for_correctness(
-        "knowledge_profile_generated"
+    persist_knowledge_profile(
+        db, settings, merged, reason="knowledge_profile_generated"
     )
     return {"message": "Profile applied", "profile": merged.model_dump()}
 

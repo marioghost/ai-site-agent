@@ -11,6 +11,10 @@ from app.services.knowledge_profile_generation.models import (
     PageRecord,
 )
 
+from app.services.knowledge_profile_generation.structural_filters import (
+    is_section_noise_label,
+)
+
 _PHONE_RE = re.compile(
     r"(?:\+?\d{1,3}[\s\-]?)?(?:\(\d{2,4}\)[\s\-]?)?\d{2,4}[\s\-]?\d{2,4}[\s\-]?\d{2,4}(?:[\s\-]?\d{2,4})?"
 )
@@ -27,32 +31,14 @@ _OG_SITE_RE = re.compile(
     r'property=["\']og:site_name["\'][^>]*content=["\']([^"\']+)["\']',
     re.IGNORECASE,
 )
-_META_DESC_RE = re.compile(
-    r'name=["\']description["\'][^>]*content=["\']([^"\']+)["\']',
-    re.IGNORECASE,
-)
 _SCHEMA_ORG_NAME_RE = re.compile(
-    r'"@type"\s*:\s*"(?:Organization|Bank|Corporation|FinancialService)"[^}]*"name"\s*:\s*"([^"]+)"',
+    r'"@type"\s*:\s*"(?:Organization|Corporation|LocalBusiness)"[^}]*"name"\s*:\s*"([^"]+)"',
     re.IGNORECASE,
 )
-_CURRENCY_RE = re.compile(
-    r"\b(USD|EUR|UAH|GBP|CHF|PLN|JPY|CNY)\b|\b(долар|євро|гривн)\w*\b",
-    re.IGNORECASE,
-)
+_CURRENCY_RE = re.compile(r"\b(USD|EUR|UAH|GBP|CHF|PLN|JPY|CNY)\b")
 _ORG_CANDIDATE_RE = re.compile(
     r"\b([A-ZА-ЯІЇЄ][A-ZА-ЯІЇЄ0-9\-]{2,}(?:\s+[A-ZА-ЯІЇЄ][A-ZА-ЯІЇЄ0-9\-]{2,}){0,3})\b"
 )
-_BRANCH_ATM_NOISE = re.compile(
-    r"\b(branches?\s+and\s+atms?|відділен\w*|банкомат\w*|atm\s+locator)\b",
-    re.IGNORECASE,
-)
-_PRODUCT_SERVICE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("product", re.compile(r"\b(credit card|дебетов\w*\s+карт\w*|кредитн\w*\s+карт\w*)\b", re.I)),
-    ("service", re.compile(r"\b(internet banking|online banking|мобільн\w*\s+банк\w*)\b", re.I)),
-    ("loan", re.compile(r"\b(mortgage|кредит|loan|іпотек\w*)\b", re.I)),
-    ("deposit", re.compile(r"\b(deposit|депозит\w*)\b", re.I)),
-    ("rate", re.compile(r"\b(exchange rate|курс\w*\s+валют|currency rate)\b", re.I)),
-]
 
 
 class WebsiteMetadataExtractor:
@@ -84,11 +70,11 @@ class WebsiteMetadataExtractor:
                 copyright_lines=_COPYRIGHT_RE.findall(full_text)[:3],
                 footer_text=self._footer_snippet(full_text),
                 organization_mentions=self._org_mentions(full_text),
-                product_names=self._named_matches(full_text, "product"),
-                service_names=self._named_matches(full_text, "service"),
-                branch_mentions=self._find_branch_atm(full_text, "branch"),
-                atm_mentions=self._find_branch_atm(full_text, "atm"),
-                language=self._guess_language(full_text),
+                product_names=[],
+                service_names=[],
+                branch_mentions=self._section_mentions(page, "branches"),
+                atm_mentions=self._section_mentions(page, "atm"),
+                language="",
                 currency=self._guess_currency(full_text),
             )
 
@@ -131,13 +117,12 @@ class WebsiteMetadataExtractor:
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         if not lines:
             return ""
-        tail = lines[-8:]
-        return "\n".join(tail)[:800]
+        return "\n".join(lines[-8:])[:800]
 
     def _org_mentions(self, text: str) -> list[str]:
         found: list[str] = []
         for m in _ORG_CANDIDATE_RE.findall(text):
-            if _BRANCH_ATM_NOISE.search(m):
+            if is_section_noise_label(m):
                 continue
             if len(m) >= 4 and m not in found:
                 found.append(m)
@@ -145,24 +130,11 @@ class WebsiteMetadataExtractor:
                 break
         return found
 
-    def _named_matches(self, text: str, kind: str) -> list[str]:
-        names: list[str] = []
-        for label, pat in _PRODUCT_SERVICE_PATTERNS:
-            if label != kind and kind not in (label,):
-                continue
-            for m in pat.findall(text):
-                val = m if isinstance(m, str) else m[0]
-                if val and val not in names:
-                    names.append(val.strip())
-        return names[:10]
-
-    def _find_branch_atm(self, text: str, kind: str) -> list[str]:
-        pat = re.compile(
-            r"\b(branches?\s+and\s+atms?|відділен\w*|банкомат\w*)\b" if kind == "branch"
-            else r"\b(atm|банкомат\w*)\b",
-            re.IGNORECASE,
-        )
-        return list(dict.fromkeys(pat.findall(text)))[:5]
+    def _section_mentions(self, page: PageRecord, needle: str) -> list[str]:
+        segs = [s.lower() for s in page.path_segments]
+        if any(needle in s or s in needle for s in segs):
+            return [needle]
+        return []
 
     def _json_ld_names(self, raw: str) -> list[str]:
         names: list[str] = []
@@ -174,38 +146,32 @@ class WebsiteMetadataExtractor:
                     if isinstance(item, dict):
                         if item.get("@type") in (
                             "Organization",
-                            "Bank",
                             "Corporation",
-                            "FinancialService",
+                            "LocalBusiness",
                         ):
                             n = item.get("name")
                             if isinstance(n, str) and n.strip():
                                 names.append(n.strip())
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 continue
-        return names
-
-    def _guess_language(self, text: str) -> str:
-        sample = text[:2000].lower()
-        uk = sum(sample.count(c) for c in "іїєґ")
-        if uk >= 3:
-            return "uk"
-        if re.search(r"[а-яА-Я]", sample):
-            return "ru"
-        return "en"
+        return names[:10]
 
     def _guess_currency(self, text: str) -> str:
         m = _CURRENCY_RE.search(text)
         return m.group(0).upper() if m else ""
 
-    def _first_sentence(self, text: str, limit: int) -> str:
-        clean = re.sub(r"\s+", " ", text).strip()
-        return clean[:limit]
+    def _first_sentence(self, text: str, max_len: int) -> str:
+        raw = " ".join(text.split())
+        if not raw:
+            return ""
+        for sep in (". ", "! ", "? "):
+            if sep in raw:
+                raw = raw.split(sep, 1)[0]
+                break
+        return raw[:max_len]
 
     def _clean_org_name(self, name: str) -> str:
-        n = re.sub(r"\s+", " ", name).strip(" .,;|")
-        if _BRANCH_ATM_NOISE.search(n):
+        clean = re.sub(r"\s+", " ", (name or "").strip())
+        if len(clean) < 3 or is_section_noise_label(clean):
             return ""
-        if len(n) < 3 or len(n) > 80:
-            return ""
-        return n
+        return clean[:80]

@@ -12,9 +12,12 @@ from app.services.knowledge_profile_generation.models import (
     WebsiteHierarchy,
 )
 from app.services.knowledge_profile_generation.confidence_engine import ConfidenceEngine
+from app.services.knowledge_profile_generation.structural_filters import (
+    is_section_noise_label,
+)
 
 _BRANCH_ATM_NOISE = re.compile(
-    r"\b(branches?\s+and\s+atms?|відділен\w*\s+та\s+банкомат\w*|atm\s+locator)\b",
+    r"\b(branches?\s+and\s+atms?|atm\s+locator)\b",
     re.IGNORECASE,
 )
 
@@ -114,6 +117,8 @@ class OrganizationDetector:
             return ""
         lower = n.lower()
         if lower in {"home", "welcome", "main", "index", "about us", "contacts"}:
+            return ""
+        if is_section_noise_label(n):
             return ""
         return n
 

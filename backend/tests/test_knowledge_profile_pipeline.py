@@ -210,6 +210,7 @@ def _seed_ukrsibbank(db: Session) -> None:
     db.commit()
 
 
+@pytest.mark.unit
 class TestMetadataExtractor:
     def test_extracts_phones_and_org_mentions(self):
         pages = _ukrsibbank_pages()
@@ -218,6 +219,7 @@ class TestMetadataExtractor:
         assert any("UKRSIBBANK" in k for k in meta.aggregated_org_mentions)
 
 
+@pytest.mark.unit
 class TestOrganizationDetector:
     def test_detects_ukrsibbank_not_branches(self):
         pages = _ukrsibbank_pages()
@@ -230,6 +232,7 @@ class TestOrganizationDetector:
         assert any(e.source in ("footer", "footer_copyright", "homepage", "frequency") for e in org.evidence)
 
 
+@pytest.mark.unit
 class TestTopicDiscovery:
     def test_no_generic_only_topics(self):
         pages = _ukrsibbank_pages()
@@ -245,6 +248,7 @@ class TestTopicDiscovery:
         assert len(topics) >= 3
 
 
+@pytest.mark.unit
 class TestContentHintDiscovery:
     def test_unknown_hint_prevention(self):
         pages = _ukrsibbank_pages()
@@ -262,6 +266,7 @@ class TestContentHintDiscovery:
                 assert hint in registered
 
 
+@pytest.mark.unit
 class TestValidator:
     def test_rejects_unknown_content_hint(self):
         profile = generic_corporate_profile()
@@ -273,6 +278,7 @@ class TestValidator:
         assert any(i.code == "unknown_content_hint" for i in issues)
 
 
+@pytest.mark.unit
 class TestAutoRepair:
     def test_creates_missing_hint(self):
         profile = generic_corporate_profile()
@@ -308,6 +314,7 @@ class TestAutoRepair:
         assert not any(i.code == "duplicate_alias" for i in remaining_issues)
 
 
+@pytest.mark.unit
 class TestAliasUtils:
     def test_dedupe_keeps_first_occurrence(self):
         profile = generic_corporate_profile()
@@ -322,6 +329,7 @@ class TestAliasUtils:
         assert "loans" in deduped.important_topics[1].aliases
 
 
+@pytest.mark.unit
 class TestConfidenceEngine:
     def test_organization_score_from_evidence(self):
         engine = ConfidenceEngine()
@@ -335,13 +343,14 @@ class TestConfidenceEngine:
         assert score >= 0.7
 
 
+@pytest.mark.unit
 class TestEntityExtractor:
-    def test_extracts_currencies_and_products(self):
+    def test_extracts_currencies_from_structure(self):
         pages = _ukrsibbank_pages()
         meta = WebsiteMetadataExtractor().extract(pages, "https://ukrsibbank.com")
         entities = EntityExtractor().extract(pages, meta, organization_name="UKRSIBBANK")
         types = {e.entity_type for e in entities}
-        assert "product" in types or "service" in types or "currency" in types
+        assert "currency" in types or "organization_mention" in types or "branch" in types
 
 
 class TestPipelineIntegration:

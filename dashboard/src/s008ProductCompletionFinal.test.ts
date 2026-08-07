@@ -227,7 +227,9 @@ describe("S008 Product Completion — final route model contracts", () => {
     it("Library/Update/Site remain the sole Knowledge owners with their S002 implementations", () => {
       expect(libraryScreenSource).toMatch(/SourcesTable/);
       expect(updateScreenSource).toMatch(/IndexingConfigCard/);
-      expect(siteScreenSource).toMatch(/KnowledgeProfileLegacyBanner/);
+      expect(siteScreenSource).toMatch(/KnowledgeProfileGenerateWizard/);
+      expect(siteScreenSource).not.toMatch(/KnowledgeProfileLegacyBanner/);
+      expect(siteScreenSource).not.toMatch(/getKnowledgeProfilePresets/);
       expect(libraryScreenSource).not.toMatch(/components\/sources/);
       expect(updateScreenSource).not.toMatch(/components\/indexing/);
       expect(siteScreenSource).not.toMatch(/components\/knowledge-profile/);

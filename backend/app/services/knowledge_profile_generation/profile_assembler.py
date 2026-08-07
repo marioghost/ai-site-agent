@@ -16,7 +16,10 @@ from app.services.knowledge_profile_generation.models import (
     AssembledProfile,
     PipelineContext,
 )
-from app.services.knowledge_profile_service import PRESETS, generic_corporate_profile
+from app.services.knowledge_profile_generation.structural_filters import (
+    derive_site_subject,
+)
+from app.services.knowledge_profile_service import generic_corporate_profile
 
 
 def _slug(text: str) -> str:
@@ -30,26 +33,25 @@ class ProfileAssembler:
         assert ctx.hierarchy is not None
         assert ctx.statistics is not None
 
-        preset_id = ctx.hierarchy.preset_seed
-        base = deepcopy(PRESETS.get(preset_id, generic_corporate_profile()))
+        # Always assemble from the generic base — never seed industry PRESETS.
+        base = deepcopy(generic_corporate_profile())
 
         hint_rules = ctx.extras.get("hint_rules", [])
         doc_rules = self._document_rules(ctx, base)
         topics = self._important_topics(ctx)
 
-        entity_type = preset_id.replace("_", " ").split()[0]
-        if preset_id == "bank_financial":
-            entity_type = "bank"
-        elif preset_id == "ecommerce":
-            entity_type = "online_store"
-
-        homepage_excerpt = ""
+        homepage_texts: list[str] = []
         for page in ctx.pages:
             if page.is_homepage and page.texts:
-                homepage_excerpt = page.texts[0][:300]
+                homepage_texts = list(page.texts)
                 break
 
-        overview_patterns = self._overview_patterns(preset_id, ctx)
+        site_subject = derive_site_subject(
+            organization_name=ctx.organization.name,
+            homepage_texts=homepage_texts,
+        )
+
+        overview_patterns = self._overview_patterns(ctx, base)
         expansions = self._expansions(ctx, topics, base)
         priorities = self._priorities(doc_rules, base, ctx)
 
@@ -57,11 +59,9 @@ class ProfileAssembler:
             site_display_name=ctx.organization.name,
             organization_name=ctx.organization.name,
             organization_aliases=list(ctx.organization.aliases),
-            site_subject=homepage_excerpt or base.site_subject,
-            entity_type=entity_type,
-            overview_query_patterns=list(
-                dict.fromkeys(base.overview_query_patterns + overview_patterns)
-            ),
+            site_subject=site_subject,
+            entity_type="organization",
+            overview_query_patterns=overview_patterns,
             important_topics=topics,
             document_type_rules=doc_rules,
             content_hint_rules=hint_rules or base.content_hint_rules,
@@ -125,14 +125,14 @@ class ProfileAssembler:
                 )
         return rules
 
-    def _overview_patterns(self, preset_id: str, ctx: PipelineContext) -> list[str]:
-        patterns = ["розкажи про", "tell me about", "about us"]
+    def _overview_patterns(
+        self, ctx: PipelineContext, base: KnowledgeProfile
+    ) -> list[str]:
+        patterns = list(base.overview_query_patterns)
         org = ctx.organization.name if ctx.organization else ""
         if org:
             patterns.append(org.lower())
-        if preset_id == "bank_financial":
-            patterns.extend(["про банк", "банк"])
-        return patterns
+        return list(dict.fromkeys(patterns))
 
     def _expansions(
         self,

@@ -1,4 +1,4 @@
-"""Stage 4 — entity extraction from metadata and page content."""
+"""Stage 4 — entity extraction from metadata and page structure."""
 from __future__ import annotations
 
 import re
@@ -9,28 +9,13 @@ from app.services.knowledge_profile_generation.models import (
     MetadataDataset,
     PageRecord,
 )
+from app.services.knowledge_profile_generation.structural_filters import (
+    SECTION_NOISE_LABELS,
+)
 
-_ENTITY_PATTERNS: dict[str, list[re.Pattern[str]]] = {
-    "organization": [
-        re.compile(r"\b([A-ZА-ЯІЇЄ][A-ZА-ЯІЇЄ0-9\-]{2,})\b"),
-    ],
-    "product": [
-        re.compile(r"\b(credit card|debit card|premium card|кредитн\w*\s+карт\w*)\b", re.I),
-        re.compile(r"\b(mortgage loan|auto loan|споживч\w*\s+кредит)\b", re.I),
-    ],
-    "service": [
-        re.compile(r"\b(internet banking|mobile banking|online banking)\b", re.I),
-        re.compile(r"\b(payment system|apple pay|google pay)\b", re.I),
-    ],
-    "currency": [re.compile(r"\b(USD|EUR|UAH|GBP|CHF|PLN)\b")],
-    "country": [re.compile(r"\b(Ukraine|Україна|USA|Poland)\b", re.I)],
-    "city": [re.compile(r"\b(Kyiv|Kiev|Kharkiv|Lviv|Odesa|Дніпро)\b", re.I)],
-    "branch": [re.compile(r"\b(branch office|відділен\w*)\b", re.I)],
-    "atm": [re.compile(r"\b(ATM|банкомат\w*)\b", re.I)],
-    "card_type": [re.compile(r"\b(visa|mastercard|mc|unionpay)\b", re.I)],
-    "loan_type": [re.compile(r"\b(mortgage|consumer loan|auto loan|іпотек\w*)\b", re.I)],
-    "deposit_type": [re.compile(r"\b(term deposit|savings deposit|депозит\w*)\b", re.I)],
-}
+# Shape-based extractors only (no industry phrase catalogs).
+_ORG_TOKEN = re.compile(r"\b([A-ZА-ЯІЇЄ][A-ZА-ЯІЇЄ0-9\-]{2,})\b")
+_CURRENCY = re.compile(r"\b(USD|EUR|UAH|GBP|CHF|PLN|JPY|CNY)\b")
 
 
 class EntityExtractor:
@@ -47,21 +32,23 @@ class EntityExtractor:
 
         for page in pages:
             blob = " ".join([page.title] + page.headings + page.texts)
-            for entity_type, patterns in _ENTITY_PATTERNS.items():
-                for pat in patterns:
-                    for match in pat.findall(blob):
-                        name = match if isinstance(match, str) else match[0]
-                        name = re.sub(r"\s+", " ", name).strip()
-                        if len(name) < 2:
-                            continue
-                        if entity_type == "organization":
-                            if name.lower() in org_blocklist:
-                                continue
-                            if name.lower() in {"branch", "branches", "atm", "atms"}:
-                                continue
-                        key = (entity_type, name)
-                        freq[key] += 1
-                        page_map[key].add(page.url)
+            for name in _ORG_TOKEN.findall(blob):
+                if name.lower() in org_blocklist or name.lower() in SECTION_NOISE_LABELS:
+                    continue
+                key = ("organization", name)
+                freq[key] += 1
+                page_map[key].add(page.url)
+            for name in _CURRENCY.findall(blob):
+                key = ("currency", name.upper())
+                freq[key] += 1
+                page_map[key].add(page.url)
+
+            for seg in page.path_segments[:1]:
+                slug = seg.lower()
+                if slug in ("branches", "branch"):
+                    key = ("branch", seg)
+                    freq[key] += 1
+                    page_map[key].add(page.url)
 
         for name, count in metadata.aggregated_org_mentions.items():
             if organization_name and name.lower() == organization_name.lower():
@@ -84,7 +71,7 @@ class EntityExtractor:
 
         entities: list[ExtractedEntity] = []
         for (entity_type, name), count in freq.most_common(80):
-            if count < 2 and entity_type not in ("currency", "country", "city"):
+            if count < 2 and entity_type not in ("currency",):
                 continue
             pages_list = sorted(page_map[(entity_type, name)])[:20]
             confidence = min(0.98, 0.35 + count * 0.08)

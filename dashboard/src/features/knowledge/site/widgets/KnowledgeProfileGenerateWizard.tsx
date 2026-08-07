@@ -14,29 +14,11 @@ import {
   Modal,
   StatusBadge,
 } from "../../../../ui";
-import KnowledgeProfileLegacyBanner from "./KnowledgeProfileLegacyBanner";
 
 type Props = {
   onApplied: (profile: KnowledgeProfile) => void;
   onClose: () => void;
 };
-
-const STAGE_ORDER = [
-  "metadata_extraction",
-  "website_analysis",
-  "statistics",
-  "entity_extraction",
-  "organization_detection",
-  "topic_discovery",
-  "content_hint_discovery",
-  "knowledge_graph",
-  "profile_assembly",
-  "llm_refinement",
-  "validation",
-  "auto_repair",
-  "preview",
-  "complete",
-] as const;
 
 function confidenceVariant(c: number): "ready" | "pending" | "failed" {
   if (c >= 0.75) return "ready";
@@ -87,11 +69,6 @@ export default function KnowledgeProfileGenerateWizard({ onApplied, onClose }: P
   const [mergeIdentity, setMergeIdentity] = useState(false);
   const [useLlm, setUseLlm] = useState(true);
   const timer = useRef<number | null>(null);
-
-  const stageIndex = useMemo(
-    () => STAGE_ORDER.indexOf(stage as (typeof STAGE_ORDER)[number]),
-    [stage]
-  );
 
   const running = busy || status === "running";
   const summarizedWarnings = useMemo(
@@ -196,8 +173,6 @@ export default function KnowledgeProfileGenerateWizard({ onApplied, onClose }: P
     >
       <div className={`ds-kp-wizard${running ? " ds-kp-wizard--running" : ""}`}>
         <div className="ds-kp-wizard__main">
-          <KnowledgeProfileLegacyBanner />
-
           {!showPreview && (
             <div className="ds-kp-wizard__options">
               <CheckboxField
@@ -232,18 +207,14 @@ export default function KnowledgeProfileGenerateWizard({ onApplied, onClose }: P
                 </div>
               )}
 
-              {preview.website_type && (
+              {preview.profile?.site_subject ? (
                 <div className="ds-kp-wizard__fact">
-                  <span className="ds-kp-wizard__fact-label">{t("knowledge_profile.generate.type")}</span>
-                  <span className="ds-kp-wizard__fact-value">
-                    {preview.website_type.value}
-                    <StatusBadge
-                      variant={confidenceVariant(preview.website_type.confidence)}
-                      label={`${Math.round(preview.website_type.confidence * 100)}%`}
-                    />
+                  <span className="ds-kp-wizard__fact-label">
+                    {t("knowledge_profile.identity.subject")}
                   </span>
+                  <span className="ds-kp-wizard__fact-value">{preview.profile.site_subject}</span>
                 </div>
-              )}
+              ) : null}
 
               {preview.topics.length > 0 && (
                 <div className="ds-kp-wizard__block">
@@ -307,16 +278,6 @@ export default function KnowledgeProfileGenerateWizard({ onApplied, onClose }: P
             <div className="ds-kp-wizard__progress">
               <div className="ds-kp-wizard__progress-bar" style={{ width: `${progress}%` }} />
             </div>
-            <ol className="ds-kp-stage-list">
-              {STAGE_ORDER.slice(0, -1).map((s, i) => (
-                <li
-                  key={s}
-                  className={`ds-kp-stage-list__item${stageIndex >= i ? " ds-kp-stage-list__item--done" : ""}${stage === s ? " ds-kp-stage-list__item--active" : ""}`}
-                >
-                  {stageLabel(s, t)}
-                </li>
-              ))}
-            </ol>
             {status === "running" && !preview ? (
               <LoadingState label={t("common.processing")} />
             ) : null}

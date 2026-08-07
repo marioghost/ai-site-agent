@@ -59,7 +59,9 @@ describe("S002 Knowledge product cutover", () => {
   it("migrates owner implementation into Knowledge feature modules", () => {
     expect(libraryScreenSource).toMatch(/SourcesTable/);
     expect(updateScreenSource).toMatch(/IndexingConfigCard/);
-    expect(siteScreenSource).toMatch(/KnowledgeProfileLegacyBanner/);
+    expect(siteScreenSource).toMatch(/KnowledgeProfileGenerateWizard/);
+    expect(siteScreenSource).not.toMatch(/KnowledgeProfileLegacyBanner/);
+    expect(siteScreenSource).not.toMatch(/getKnowledgeProfilePresets/);
     expect(libraryScreenSource).not.toMatch(/components\/sources/);
     expect(updateScreenSource).not.toMatch(/components\/indexing/);
     expect(siteScreenSource).not.toMatch(/components\/knowledge-profile/);

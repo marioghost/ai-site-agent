@@ -13,10 +13,9 @@ from app.api.knowledge_profile_preset_errors import raise_legacy_kp_presets_disa
 from app.core.database import get_db
 from app.repositories.settings_repository import SettingsRepository
 from app.schemas.knowledge_profile import KnowledgeProfile
-from app.services.cache_invalidation_service import CacheInvalidationService
 from app.services.feature_flags import allow_legacy_kp_presets
+from app.services.knowledge_profile_persistence import persist_knowledge_profile
 from app.services.knowledge_profile_service import KnowledgeProfileService
-from app.services.reprocess_service import mark_sources_needs_reprocess
 
 router = APIRouter(prefix="/api/knowledge-profile", tags=["knowledge-profile"])
 
@@ -54,12 +53,9 @@ def update_profile(
         raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
     settings = repo.get_or_create()
-    settings.knowledge_profile_json = KnowledgeProfileService.to_json(payload.profile)
-    repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_for_correctness(
-        "knowledge_profile_updated"
+    persist_knowledge_profile(
+        db, settings, payload.profile, reason="knowledge_profile_updated"
     )
-    mark_sources_needs_reprocess(db, reason="knowledge_profile_updated")
     return payload.profile
 
 
@@ -99,12 +95,9 @@ def load_preset(
     if errors:
         raise HTTPException(status_code=422, detail=errors)
     repo = SettingsRepository(db)
-    settings.knowledge_profile_json = KnowledgeProfileService.to_json(preset)
-    repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_for_correctness(
-        "knowledge_profile_preset_loaded"
+    persist_knowledge_profile(
+        db, settings, preset, reason="knowledge_profile_preset_loaded"
     )
-    mark_sources_needs_reprocess(db, reason="knowledge_profile_preset_loaded")
     apply_knowledge_profile_preset_load_deprecation(response)
     return preset
 
@@ -130,10 +123,7 @@ def import_profile(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     repo = SettingsRepository(db)
     settings = repo.get_or_create()
-    settings.knowledge_profile_json = json.dumps(payload.profile, ensure_ascii=False, indent=2)
-    repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_for_correctness(
-        "knowledge_profile_imported"
+    persist_knowledge_profile(
+        db, settings, profile, reason="knowledge_profile_imported"
     )
-    mark_sources_needs_reprocess(db, reason="knowledge_profile_imported")
     return profile
