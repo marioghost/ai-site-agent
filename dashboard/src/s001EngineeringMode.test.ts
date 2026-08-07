@@ -109,7 +109,7 @@ describe("S001 glossary i18n", () => {
     expect(uk["scaffold.not_migrated"]).toBeTruthy();
     expect(en["nav.home"]).toBe("Home");
     expect(uk["nav.home"]).toBeTruthy();
-    expect(en["nav.ask"]).toBe("Ask");
+    expect(en["nav.ask"]).toBe("Chat");
   });
 });
 

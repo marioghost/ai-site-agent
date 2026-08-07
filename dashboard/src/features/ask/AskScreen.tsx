@@ -9,7 +9,7 @@ import ChatComposer from "../../components/chat/ChatComposer";
 
 /**
  * Ask is the product-only chat surface.
- * Engineering diagnostics live under Engineering → Ask details.
+ * Engineering diagnostics live under Developer tools → Chat details.
  * History browsing lives under Insights → Activity.
  */
 export default function AskScreen() {

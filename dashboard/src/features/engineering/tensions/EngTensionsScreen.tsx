@@ -3,14 +3,22 @@ import { Link } from "react-router-dom";
 import { getEpistemicHealthSummary } from "../../../api/client";
 import { useTranslation } from "../../../i18n";
 import type { EpistemicHealthSummary } from "../../../types";
-import { Button, LoadingState, MetricCard, MetricGrid, PageHeader, PageLayout, SectionCard } from "../../../ui";
+import {
+  Button,
+  LoadingState,
+  MetricCard,
+  MetricGrid,
+  PageHeader,
+  PageLayout,
+  SectionCard,
+} from "../../../ui";
 
 /**
- * S006 — Engineering owner for knowledge tension navigation. The full
- * tension explorer already exists at `/diagnostics/epistemic-health`
- * (`EpistemicHealthPage`); this screen shows a lightweight summary and
- * links out to it rather than duplicating that page's fetch/filter/pagination
- * logic (RFC-102 duplication ban).
+ * S006 — Engineering owner for knowledge-issue navigation. The full
+ * explorer already exists at `/diagnostics/epistemic-health`
+ * (`EpistemicHealthPage`); this screen shows a plain-language summary and
+ * links out rather than duplicating fetch/filter/pagination
+ * (RFC-102 duplication ban).
  */
 export default function EngTensionsScreen() {
   const { t } = useTranslation();
@@ -37,6 +45,14 @@ export default function EngTensionsScreen() {
   return (
     <PageLayout className="ds-page--wide">
       <PageHeader title={t("nav.eng_tensions")} subtitle={t("eng.tensions.subtitle")} />
+
+      <SectionCard title={t("eng.tensions.what_title")}>
+        <p className="ds-help">{t("eng.tensions.what_body")}</p>
+      </SectionCard>
+
+      <SectionCard title={t("eng.tensions.why_title")}>
+        <p className="ds-help">{t("eng.tensions.why_body")}</p>
+      </SectionCard>
 
       {loading ? (
         <LoadingState label={t("common.loading")} />
