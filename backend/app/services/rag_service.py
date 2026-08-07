@@ -75,6 +75,8 @@ class CacheStatusInfo:
     negative_cache: bool = False
     bypassed: bool = False
     invalidation_version: str | None = None
+    answer_lookup_attempted: bool = False
+    retrieval_lookup_attempted: bool = False
 
 
 @dataclass
@@ -241,7 +243,15 @@ class RagService:
         canonical_shadow: MemoryCanonicalShadowResult | None = None
 
         # --- Semantic answer cache ---
-        if s.enable_semantic_answer_cache and not bypass_cache:
+        from app.services.answer_cache_policy import (
+            answer_cache_permitted,
+            answer_cache_skip_reason,
+        )
+
+        if answer_cache_permitted(
+            s, bypass_cache=bypass_cache, apply_memory_assist=apply_memory_assist
+        ):
+            cache_info.answer_lookup_attempted = True
             if trace:
                 trace.begin("semantic_answer_cache_lookup")
             try:
@@ -290,7 +300,11 @@ class RagService:
         elif trace:
             trace.skip(
                 "semantic_answer_cache_lookup",
-                "disabled" if not s.enable_semantic_answer_cache else "bypassed",
+                answer_cache_skip_reason(
+                    s,
+                    bypass_cache=bypass_cache,
+                    apply_memory_assist=apply_memory_assist,
+                ),
             )
 
         cache_hit = False
@@ -310,6 +324,7 @@ class RagService:
         cached_retrieval: CachedRetrievalResult | None = None
 
         if s.enable_retrieval_cache and not bypass_cache:
+            cache_info.retrieval_lookup_attempted = True
             if trace:
                 trace.begin("retrieval_cache_lookup")
             try:
@@ -819,7 +834,9 @@ class RagService:
             canonical_shadow=canonical_shadow,
         )
 
-        if s.enable_semantic_answer_cache and query_vector is not None and not bypass_cache:
+        if answer_cache_permitted(
+            s, bypass_cache=bypass_cache, apply_memory_assist=apply_memory_assist
+        ) and query_vector is not None:
             try:
                 self.answer_cache.store(
                     normalized_query=normalized,

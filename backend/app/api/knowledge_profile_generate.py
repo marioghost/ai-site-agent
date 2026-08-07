@@ -139,7 +139,7 @@ def apply_generated_profile(
     repo.save(settings)
     from app.services.cache_invalidation_service import CacheInvalidationService
 
-    CacheInvalidationService(db, settings).invalidate_retrieval_cache(
+    CacheInvalidationService(db, settings).invalidate_for_correctness(
         "knowledge_profile_generated"
     )
     return {"message": "Profile applied", "profile": merged.model_dump()}

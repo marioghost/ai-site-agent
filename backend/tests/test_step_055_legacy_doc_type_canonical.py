@@ -140,7 +140,7 @@ def test_settings_api_get_put_flag(monkeypatch):
         settings_api,
         "CacheInvalidationService",
         lambda db, s: MagicMock(
-            invalidate_retrieval_cache=lambda reason: None,
+            invalidate_for_correctness=lambda reason: 0,
             invalidate_answer_cache=lambda reason: None,
         ),
     )
@@ -332,7 +332,7 @@ def test_step_054_preset_410_unchanged(monkeypatch):
     monkeypatch.setattr("app.api.knowledge_profile.SettingsRepository", lambda db: FakeRepo())
     monkeypatch.setattr(
         "app.api.knowledge_profile.CacheInvalidationService",
-        lambda db, s: MagicMock(invalidate_retrieval_cache=lambda reason: None),
+        lambda db, s: MagicMock(invalidate_for_correctness=lambda reason: 0),
     )
     monkeypatch.setattr(
         "app.api.knowledge_profile.mark_sources_needs_reprocess",

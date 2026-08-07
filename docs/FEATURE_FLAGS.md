@@ -135,6 +135,9 @@ cd backend
 - Change cache storage schema or TTL logic
 - Change chat, retrieval, or Executive paths
 
+**Related:** When Memory evidence assist is effective, answer cache lookup/store
+are skipped (ADR-0003). See [CACHE_RUNBOOK.md](CACHE_RUNBOOK.md).
+
 **Verification:**
 
 ```bash
@@ -231,7 +234,9 @@ See [0.7-step-049-offline-memory-eval.md](releases/0.7-step-049-offline-memory-e
 
 **Behavior when OFF (default):** Comparator returns `path=off`; zero shadow diagnostics.
 
-**Does not:** Perform retrieval, Memory reads, or influence answers. Skipped on answer cache hit.
+**Does not:** Perform retrieval, Memory reads, or influence answers. Answer cache
+is also skipped when assist is effective (ADR-0003), so this path is not gated
+solely on answer-cache hits.
 
 **Deploy:** migration `0017_memory_canonical_shadow_enabled`.
 

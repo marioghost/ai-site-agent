@@ -142,5 +142,7 @@ class PerformanceStatus(BaseModel):
     average_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
     cache_hit_rate: float = 0.0
+    answer_cache_hit_rate: float = 0.0
+    retrieval_cache_hit_rate: float = 0.0
     ollama_status: str = "unknown"
     qdrant_status: str = "unknown"

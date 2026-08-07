@@ -1,7 +1,7 @@
 """Centralized cache invalidation for retrieval and answer caches."""
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -29,9 +29,18 @@ class CacheInvalidationService:
         logger.info("Answer cache invalidated: %s", reason)
 
     def invalidate_all_caches(self, reason: str) -> int:
+        """Clear both chat caches. Prefer this for correctness events."""
         retrieval_rows = self.invalidate_retrieval_cache(reason)
         self.invalidate_answer_cache(reason)
         return retrieval_rows
+
+    def invalidate_for_correctness(self, reason: str) -> int:
+        """Settings/profile/SI correctness changes — must clear answer too.
+
+        Retrieval-only clears leave semantic answers that can still hit until
+        namespace miss, and orphans accumulate in Qdrant.
+        """
+        return self.invalidate_all_caches(reason)
 
     @staticmethod
     def purge_poisoned_entries(db: Session, *, fallback_answer: str = "") -> dict[str, int]:

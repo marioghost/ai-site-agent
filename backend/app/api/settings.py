@@ -373,7 +373,7 @@ def update_settings(
 
     settings = repo.save(settings)
     if _retrieval_settings_changed(before, payload):
-        CacheInvalidationService(db, settings).invalidate_retrieval_cache(
+        CacheInvalidationService(db, settings).invalidate_for_correctness(
             "retrieval_settings_updated"
         )
     return _to_read(settings)

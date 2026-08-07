@@ -56,7 +56,7 @@ def update_profile(
     settings = repo.get_or_create()
     settings.knowledge_profile_json = KnowledgeProfileService.to_json(payload.profile)
     repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_retrieval_cache(
+    CacheInvalidationService(db, settings).invalidate_for_correctness(
         "knowledge_profile_updated"
     )
     mark_sources_needs_reprocess(db, reason="knowledge_profile_updated")
@@ -101,7 +101,7 @@ def load_preset(
     repo = SettingsRepository(db)
     settings.knowledge_profile_json = KnowledgeProfileService.to_json(preset)
     repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_retrieval_cache(
+    CacheInvalidationService(db, settings).invalidate_for_correctness(
         "knowledge_profile_preset_loaded"
     )
     mark_sources_needs_reprocess(db, reason="knowledge_profile_preset_loaded")
@@ -132,7 +132,7 @@ def import_profile(
     settings = repo.get_or_create()
     settings.knowledge_profile_json = json.dumps(payload.profile, ensure_ascii=False, indent=2)
     repo.save(settings)
-    CacheInvalidationService(db, settings).invalidate_retrieval_cache(
+    CacheInvalidationService(db, settings).invalidate_for_correctness(
         "knowledge_profile_imported"
     )
     mark_sources_needs_reprocess(db, reason="knowledge_profile_imported")

@@ -231,7 +231,9 @@ def chat(payload: ChatRequest, request: Request) -> ChatResponse:
                     close_quietly(db)
 
             concurrency.metrics.record_latency(result.total_ms)
-            concurrency.metrics.record_cache(result.cache_hit)
+            concurrency.metrics.record_request_cache(
+                overall_hit=result.cache_hit, cache_info=result.cache
+            )
 
             builder = ChatResponseBuilder(settings)
             response = builder.from_rag_result(
@@ -477,7 +479,10 @@ def chat_stream(payload: ChatRequest, request: Request):
                         concurrency.metrics.record_latency(
                             final_response.timing.total_ms
                         )
-                        concurrency.metrics.record_cache(final_response.cache_hit)
+                        concurrency.metrics.record_request_cache(
+                            overall_hit=final_response.cache_hit,
+                            cache_info=getattr(final_response, "cache", None),
+                        )
 
                     yield "data: [DONE]\n\n"
                     log_chat_dispatch(

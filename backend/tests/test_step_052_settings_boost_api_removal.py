@@ -263,13 +263,13 @@ def test_homepage_inject_formula_unchanged_with_orm_defaults():
 
 
 @pytest.mark.unit
-def test_cache_namespace_still_hashes_orm_boost_fields():
+def test_cache_namespace_ignores_orm_boost_fields():
+    """ADR-0004: legacy boost columns are not part of the namespace hash."""
     a = _settings_row(cache_namespace_v2_enabled=False)
     b = _settings_row(cache_namespace_v2_enabled=False, title_match_boost=0.99)
     ns_a = build_retrieval_namespace(a)
     ns_b = build_retrieval_namespace(b)
-    assert ns_a["retrieval_settings_version"] != ns_b["retrieval_settings_version"]
-    # Defaults match → stable namespace for live default rows.
+    assert ns_a["retrieval_settings_version"] == ns_b["retrieval_settings_version"]
     ns_default = build_retrieval_namespace(_settings_row(cache_namespace_v2_enabled=False))
     assert ns_a["retrieval_settings_version"] == ns_default["retrieval_settings_version"]
 

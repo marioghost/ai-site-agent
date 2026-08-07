@@ -31,6 +31,8 @@ class CacheStatusRead(BaseModel):
     negative_cache: bool = False
     bypassed: bool = False
     invalidation_version: str | None = None
+    answer_lookup_attempted: bool = False
+    retrieval_lookup_attempted: bool = False
 
 
 class ChatResponse(BaseModel):

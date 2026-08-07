@@ -53,7 +53,7 @@ def _stub_kp_repo(monkeypatch, *, allow_presets: bool) -> MagicMock:
     monkeypatch.setattr("app.api.knowledge_profile.SettingsRepository", lambda db: FakeRepo())
     monkeypatch.setattr(
         "app.api.knowledge_profile.CacheInvalidationService",
-        lambda db, s: MagicMock(invalidate_retrieval_cache=lambda reason: None),
+        lambda db, s: MagicMock(invalidate_for_correctness=lambda reason: 0),
     )
     monkeypatch.setattr(
         "app.api.knowledge_profile.mark_sources_needs_reprocess",
@@ -264,7 +264,7 @@ def test_settings_api_exposes_and_updates_flag(monkeypatch):
         settings_api,
         "CacheInvalidationService",
         lambda db, s: MagicMock(
-            invalidate_retrieval_cache=lambda reason: None,
+            invalidate_for_correctness=lambda reason: 0,
             invalidate_answer_cache=lambda reason: None,
         ),
     )

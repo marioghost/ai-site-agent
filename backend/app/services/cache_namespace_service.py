@@ -85,11 +85,7 @@ def build_retrieval_namespace(
         "enable_source_intelligence": bool(getattr(settings, "enable_source_intelligence", True)),
         "llm_num_predict": getattr(settings, "llm_num_predict", 512),
         "polish_mode": getattr(settings, "polish_mode", "off"),
-        "homepage_boost_enabled": bool(settings.homepage_boost_enabled),
-        "homepage_boost_value": settings.homepage_boost_value,
-        "title_match_boost": settings.title_match_boost,
-        "heading_match_boost": settings.heading_match_boost,
-        "short_query_lexical_boost": settings.short_query_lexical_boost,
+        # Legacy ORM boost columns intentionally excluded (ADR-0004).
     }
     active = bool(speech_acts_active)
     assist_active = bool(memory_assist_active)

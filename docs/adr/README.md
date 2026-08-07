@@ -42,5 +42,7 @@ Copy `0000-template.md` when creating a new ADR.
 |-----|-------|--------|
 | [0001](0001-shadow-observation-key-per-source.md) | Shadow observation identity keyed per source | Accepted |
 | [0002](0002-tension-taxonomy-ownership.md) | Tension taxonomy ownership | Accepted |
+| [0003](0003-bypass-answer-cache-when-memory-assist.md) | Bypass answer cache when Memory evidence assist is effective | Implemented |
+| [0004](0004-exclude-legacy-boosts-from-cache-namespace.md) | Exclude legacy boost fields from cache namespace hash | Implemented |
 
 *Update this table when ADRs are added.*

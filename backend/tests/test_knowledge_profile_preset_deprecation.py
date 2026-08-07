@@ -32,7 +32,7 @@ def _stub_knowledge_profile_deps(monkeypatch, *, allow_presets: bool = True) -> 
     monkeypatch.setattr("app.api.knowledge_profile.SettingsRepository", lambda db: FakeRepo())
     monkeypatch.setattr(
         "app.api.knowledge_profile.CacheInvalidationService",
-        lambda db, settings: MagicMock(invalidate_retrieval_cache=lambda reason: None),
+        lambda db, settings: MagicMock(invalidate_for_correctness=lambda reason: 0),
     )
     monkeypatch.setattr(
         "app.api.knowledge_profile.mark_sources_needs_reprocess",

@@ -50,6 +50,10 @@ class PerformanceMetrics:
     latencies_ms: deque[float] = field(default_factory=lambda: deque(maxlen=500))
     cache_hits: int = 0
     cache_misses: int = 0
+    answer_cache_hits: int = 0
+    answer_cache_misses: int = 0
+    retrieval_cache_hits: int = 0
+    retrieval_cache_misses: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record_latency(self, ms: float) -> None:
@@ -63,6 +67,30 @@ class PerformanceMetrics:
             else:
                 self.cache_misses += 1
 
+    def record_answer_cache(self, hit: bool) -> None:
+        with self._lock:
+            if hit:
+                self.answer_cache_hits += 1
+            else:
+                self.answer_cache_misses += 1
+
+    def record_retrieval_cache(self, hit: bool) -> None:
+        with self._lock:
+            if hit:
+                self.retrieval_cache_hits += 1
+            else:
+                self.retrieval_cache_misses += 1
+
+    def record_request_cache(self, *, overall_hit: bool, cache_info=None) -> None:
+        """Record aggregate + layer hit rates from a turn's CacheStatusInfo."""
+        self.record_cache(overall_hit)
+        if cache_info is None:
+            return
+        if getattr(cache_info, "answer_lookup_attempted", False):
+            self.record_answer_cache(bool(cache_info.answer_cache_hit))
+        if getattr(cache_info, "retrieval_lookup_attempted", False):
+            self.record_retrieval_cache(bool(cache_info.retrieval_cache_hit))
+
     def latency_stats(self) -> tuple[float, float]:
         with self._lock:
             if not self.latencies_ms:
@@ -72,10 +100,22 @@ class PerformanceMetrics:
             p95_idx = max(0, int(len(sorted_vals) * 0.95) - 1)
             return avg, sorted_vals[p95_idx]
 
+    @staticmethod
+    def _rate(hits: int, misses: int) -> float:
+        total = hits + misses
+        return hits / total if total else 0.0
+
     def cache_hit_rate(self) -> float:
         with self._lock:
-            total = self.cache_hits + self.cache_misses
-            return self.cache_hits / total if total else 0.0
+            return self._rate(self.cache_hits, self.cache_misses)
+
+    def answer_cache_hit_rate(self) -> float:
+        with self._lock:
+            return self._rate(self.answer_cache_hits, self.answer_cache_misses)
+
+    def retrieval_cache_hit_rate(self) -> float:
+        with self._lock:
+            return self._rate(self.retrieval_cache_hits, self.retrieval_cache_misses)
 
 
 @dataclass(frozen=True)

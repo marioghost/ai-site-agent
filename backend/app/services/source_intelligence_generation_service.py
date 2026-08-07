@@ -302,7 +302,7 @@ class SourceIntelligenceGenerationService:
                 "source_intelligence_generated"
             )
         elif mode == "delete_related":
-            CacheInvalidationService(self.db, self.settings).invalidate_retrieval_cache(
+            CacheInvalidationService(self.db, self.settings).invalidate_for_correctness(
                 "source_intelligence_generated"
             )
         if should_stop and should_stop():

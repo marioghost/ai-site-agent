@@ -210,6 +210,26 @@ export default function SettingsAdvancedSection({
                   onChange={(e) => onChange("answer_cache_ttl_seconds", Number(e.target.value))}
                 />
               </Field>
+              <Field label={t("settings.cache.similarity")}>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={1}
+                  value={settings.semantic_cache_similarity_threshold}
+                  onChange={(e) =>
+                    onChange("semantic_cache_similarity_threshold", Number(e.target.value))
+                  }
+                />
+              </Field>
+              <Field label={t("settings.cache.max_answers")}>
+                <Input
+                  type="number"
+                  min={0}
+                  value={settings.max_cached_answers}
+                  onChange={(e) => onChange("max_cached_answers", Number(e.target.value))}
+                />
+              </Field>
             </FormGrid>
             <div className="ds-settings-advanced__actions">
               <Button

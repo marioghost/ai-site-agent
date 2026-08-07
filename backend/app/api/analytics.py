@@ -219,6 +219,10 @@ def system_performance(
         average_latency_ms=round(avg, 1),
         p95_latency_ms=round(p95, 1),
         cache_hit_rate=round(concurrency.metrics.cache_hit_rate(), 4),
+        answer_cache_hit_rate=round(concurrency.metrics.answer_cache_hit_rate(), 4),
+        retrieval_cache_hit_rate=round(
+            concurrency.metrics.retrieval_cache_hit_rate(), 4
+        ),
         ollama_status="ok" if ollama_ok else "error",
         qdrant_status="ok" if qdrant_ok else "error",
     )

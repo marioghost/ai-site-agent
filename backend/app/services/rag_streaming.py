@@ -509,10 +509,15 @@ class RagStreamingService:
             memory_assist=prepared.memory_assist,
         )
 
+        from app.services.answer_cache_policy import answer_cache_permitted
+
         if (
-            self.settings.enable_semantic_answer_cache
+            answer_cache_permitted(
+                self.settings,
+                bypass_cache=prepared.bypass_cache,
+                apply_memory_assist=prepared.apply_memory_assist,
+            )
             and prepared.query_vector is not None
-            and not prepared.bypass_cache
         ):
             try:
                 from app.services.reasoning.memory_assist_policy import (
@@ -520,6 +525,10 @@ class RagStreamingService:
                     memory_assist_effective,
                 )
 
+                assist_active = (
+                    prepared.apply_memory_assist
+                    and memory_assist_effective(self.settings)
+                )
                 self.answer_cache.store(
                     normalized_query=prepared.normalized,
                     query_text=message,
@@ -532,12 +541,10 @@ class RagStreamingService:
                         self.settings,
                         db=self.db,
                         speech_acts_active=prepared.apply_speech_acts,
-                        memory_assist_active=prepared.apply_memory_assist
-                        and memory_assist_effective(self.settings),
+                        memory_assist_active=assist_active,
                         corpus_boundary_fingerprint=(
                             corpus_boundary_fingerprint_for_settings(self.settings)
-                            if prepared.apply_memory_assist
-                            and memory_assist_effective(self.settings)
+                            if assist_active
                             else None
                         ),
                     ),
@@ -756,7 +763,15 @@ class RagStreamingService:
         all_hits: list[SearchHit] = []
         memory_assist: MemoryAssistResult | None = None
 
-        if s.enable_semantic_answer_cache and not bypass_cache:
+        from app.services.answer_cache_policy import (
+            answer_cache_permitted,
+            answer_cache_skip_reason,
+        )
+
+        if answer_cache_permitted(
+            s, bypass_cache=bypass_cache, apply_memory_assist=apply_memory_assist
+        ):
+            cache_info.answer_lookup_attempted = True
             if trace:
                 trace.begin("semantic_answer_cache_lookup")
             try:
@@ -830,7 +845,11 @@ class RagStreamingService:
         elif trace:
             trace.skip(
                 "semantic_answer_cache_lookup",
-                "disabled" if not s.enable_semantic_answer_cache else "bypassed",
+                answer_cache_skip_reason(
+                    s,
+                    bypass_cache=bypass_cache,
+                    apply_memory_assist=apply_memory_assist,
+                ),
             )
 
         cache_hit = False
@@ -849,6 +868,7 @@ class RagStreamingService:
         hits: list[SearchHit] | None = None
 
         if s.enable_retrieval_cache and not bypass_cache:
+            cache_info.retrieval_lookup_attempted = True
             if trace:
                 trace.begin("retrieval_cache_lookup")
             try:

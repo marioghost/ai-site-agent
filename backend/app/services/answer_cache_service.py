@@ -65,8 +65,10 @@ class AnswerCacheService:
                 self.qdrant.delete_points([point_id])
                 return None
             if row.knowledge_version != knowledge_version:
+                self._delete_row(row)
                 return None
             if ns_hash and row.namespace_hash and row.namespace_hash != ns_hash:
+                self._delete_row(row)
                 return None
             if is_expired(row.expires_at):
                 self._delete_row(row)
@@ -182,6 +184,32 @@ class AnswerCacheService:
             return len(expired)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Answer cache purge_expired failed: %s", exc)
+            self.db.rollback()
+            return 0
+
+    def purge_stale_namespace(
+        self, *, knowledge_version: int, namespace_hash: str
+    ) -> int:
+        """Delete rows (and Qdrant points) that no longer match the live namespace."""
+        if not namespace_hash:
+            return 0
+        try:
+            rows = list(self.db.scalars(select(AnswerCache)).all())
+            stale = [
+                r
+                for r in rows
+                if r.knowledge_version != knowledge_version
+                or (r.namespace_hash and r.namespace_hash != namespace_hash)
+            ]
+            if not stale:
+                return 0
+            self.qdrant.delete_points([r.vector_id for r in stale])
+            for r in stale:
+                self.db.delete(r)
+            self.db.commit()
+            return len(stale)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Answer cache purge_stale_namespace failed: %s", exc)
             self.db.rollback()
             return 0
 

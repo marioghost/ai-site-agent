@@ -1,4 +1,4 @@
-"""Background worker that deletes expired cache rows in batches."""
+"""Background worker that deletes expired cache rows and stale answer vectors."""
 from __future__ import annotations
 
 import threading
@@ -11,6 +11,9 @@ from app.core.database import SessionLocal
 from app.core.logging import get_logger
 from app.models.cache import AnswerCache, RetrievalCache
 from app.models.source_intelligence_llm_cache import SourceIntelligenceLlmCache
+from app.repositories.settings_repository import SettingsRepository
+from app.services.answer_cache_service import AnswerCacheService
+from app.services.cache_namespace_service import build_retrieval_namespace, namespace_hash
 from app.utils.time_utils import utcnow
 
 logger = get_logger(__name__)
@@ -41,7 +44,7 @@ class CacheCleanupWorker:
             try:
                 deleted = self.run_once()
                 if deleted:
-                    logger.info("Cache cleanup removed %d expired row(s)", deleted)
+                    logger.info("Cache cleanup removed %d expired/stale row(s)", deleted)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Cache cleanup failed: %s", exc)
             self._stop.wait(interval)
@@ -53,30 +56,65 @@ class CacheCleanupWorker:
         total = 0
         db = SessionLocal()
         try:
-            for model in (RetrievalCache, AnswerCache, SourceIntelligenceLlmCache):
-                while True:
-                    ids = list(
-                        db.scalars(
-                            select(model.id)
-                            .where(model.expires_at.is_not(None))
-                            .where(model.expires_at < now)
-                            .order_by(model.id.asc())
-                            .limit(batch_size)
-                        ).all()
-                    )
-                    if not ids:
-                        break
-                    db.execute(delete(model).where(model.id.in_(ids)))
-                    db.commit()
-                    total += len(ids)
-                    if len(ids) < batch_size:
-                        break
-                    time.sleep(0.01)
+            total += self._purge_expired_by_pk(
+                db, RetrievalCache, pk_attr="id", batch_size=batch_size, now=now
+            )
+            # Answer: expire via service so Qdrant points are removed too.
+            settings = SettingsRepository(db).get_or_create()
+            answer_svc = AnswerCacheService(db, settings)
+            total += answer_svc.purge_expired()
+            try:
+                ns = build_retrieval_namespace(settings, db=db)
+                total += answer_svc.purge_stale_namespace(
+                    knowledge_version=int(settings.knowledge_version or 1),
+                    namespace_hash=namespace_hash(ns),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Answer stale-namespace sweep skipped: %s", exc)
+
+            total += self._purge_expired_by_pk(
+                db,
+                SourceIntelligenceLlmCache,
+                pk_attr="cache_key",
+                batch_size=batch_size,
+                now=now,
+            )
         except Exception:
             db.rollback()
             raise
         finally:
             db.close()
+        return total
+
+    @staticmethod
+    def _purge_expired_by_pk(
+        db,
+        model,
+        *,
+        pk_attr: str,
+        batch_size: int,
+        now,
+    ) -> int:
+        pk_col = getattr(model, pk_attr)
+        total = 0
+        while True:
+            keys = list(
+                db.scalars(
+                    select(pk_col)
+                    .where(model.expires_at.is_not(None))
+                    .where(model.expires_at < now)
+                    .order_by(pk_col.asc())
+                    .limit(batch_size)
+                ).all()
+            )
+            if not keys:
+                break
+            db.execute(delete(model).where(pk_col.in_(keys)))
+            db.commit()
+            total += len(keys)
+            if len(keys) < batch_size:
+                break
+            time.sleep(0.01)
         return total
 
 

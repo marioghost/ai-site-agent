@@ -754,6 +754,8 @@ export interface PerformanceStatus {
   average_latency_ms: number;
   p95_latency_ms: number;
   cache_hit_rate: number;
+  answer_cache_hit_rate?: number;
+  retrieval_cache_hit_rate?: number;
   ollama_status: string;
   qdrant_status: string;
 }
