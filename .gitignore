@@ -28,6 +28,7 @@ node_modules/
 dashboard/dist/
 
 # Local browser / audit tooling artifacts (never commit)
+artifacts/
 .playwright-mcp/
 /UX-*.png
 /ux-*.png
