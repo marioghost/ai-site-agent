@@ -21,6 +21,8 @@ class KnowledgePlan:
     unsuitable_purposes: tuple[str, ...] = ()
     preferred_document_types: frozenset[str] = frozenset()
     deprioritized_document_types: frozenset[str] = frozenset()
+    semantic_focus: str = "general"
+    expected_evidence_type: str = "general"
     plan_reasons: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -34,6 +36,8 @@ class KnowledgePlan:
             "unsuitable_purposes": list(self.unsuitable_purposes),
             "preferred_document_types": sorted(self.preferred_document_types),
             "deprioritized_document_types": sorted(self.deprioritized_document_types),
+            "semantic_focus": self.semantic_focus,
+            "expected_evidence_type": self.expected_evidence_type,
             "plan_reasons": list(self.plan_reasons),
         }
 

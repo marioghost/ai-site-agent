@@ -85,25 +85,31 @@ class DiagnosticsBuilder:
 
     @staticmethod
     def selected_candidates(selected: list[RankedDocument]) -> list[dict]:
-        return [
-            {
-                "url": doc.url,
-                "title": doc.title,
-                "document_type": doc.document_type,
-                "page_role": doc.representative_chunk.page_role,
-                "importance": doc.representative_chunk.importance,
-                "content_quality": doc.representative_chunk.content_quality,
-                "dense_score": round(doc.score.dense_score, 4),
-                "lexical_score": round(doc.score.lexical_score, 4),
-                "metadata_boost": round(doc.score.metadata_boost, 4),
-                "intent_boost": round(doc.score.intent_boost, 4),
-                "quality_boost": round(doc.score.quality_boost, 4),
-                "freshness_boost": round(doc.score.freshness_boost, 4),
-                "final_score": round(doc.score.final_score, 4),
-                "confidence": round(doc.score.confidence, 4),
-                "why_selected": doc.why_selected,
-                "ranking_reason": doc.ranking_reason,
-                "score_breakdown": doc.score_breakdown,
-            }
-            for doc in selected
-        ]
+        out = []
+        for doc in selected:
+            breakdown = doc.score_breakdown or {}
+            out.append(
+                {
+                    "url": doc.url,
+                    "title": doc.title,
+                    "document_type": doc.document_type,
+                    "page_role": doc.representative_chunk.page_role,
+                    "importance": doc.representative_chunk.importance,
+                    "content_quality": doc.representative_chunk.content_quality,
+                    "dense_score": round(doc.score.dense_score, 4),
+                    "lexical_score": round(doc.score.lexical_score, 4),
+                    "metadata_boost": round(doc.score.metadata_boost, 4),
+                    "intent_boost": round(doc.score.intent_boost, 4),
+                    "quality_boost": round(doc.score.quality_boost, 4),
+                    "freshness_boost": round(doc.score.freshness_boost, 4),
+                    "final_score": round(doc.score.final_score, 4),
+                    "confidence": round(doc.score.confidence, 4),
+                    "compatibility_label": breakdown.get("compatibility_label")
+                    or "ambiguous",
+                    "focus_match_score": breakdown.get("focus_match_score"),
+                    "why_selected": doc.why_selected,
+                    "ranking_reason": doc.ranking_reason,
+                    "score_breakdown": doc.score_breakdown,
+                }
+            )
+        return out

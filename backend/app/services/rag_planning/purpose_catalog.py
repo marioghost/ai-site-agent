@@ -36,16 +36,70 @@ ROLE_TO_DEFAULT_PURPOSE: dict[str, str] = {
     "legal": "legal information",
     "pricing": "pricing",
     "generic": "general information",
+    "download": "documentation",
 }
 
 DOC_TYPE_TO_PURPOSE: dict[str, str] = {
     "news_page": "news",
+    "blog_page": "news",
+    "blog_post": "news",
     "promotion_page": "promotion",
+    "campaign_page": "promotion",
+    "offer_page": "promotion",
+    "action_page": "promotion",
     "about_page": "about company",
+    "company_page": "about company",
     "contact_page": "contact information",
     "documentation_page": "documentation",
+    "knowledge_base_page": "documentation",
     "product_page": "product details",
+    "service_page": "service description",
+    "category_page": "product listing",
+    "pricing_page": "pricing",
+    "faq_page": "faq",
+    "support_page": "support",
+    "legal_page": "legal information",
     "homepage": "landing page",
+    "landing_page": "landing page",
+}
+
+# Inverse for refining page_role from high-confidence purpose (SI only).
+PURPOSE_TO_DEFAULT_ROLE: dict[str, str] = {
+    "about company": "organization_overview",
+    "landing page": "marketing",
+    "service description": "service_overview",
+    "product details": "product_details",
+    "product listing": "service_overview",
+    "pricing": "pricing",
+    "news": "news",
+    "promotion": "campaign",
+    "contact information": "contact",
+    "documentation": "documentation",
+    "faq": "faq",
+    "support": "support",
+    "legal information": "legal",
+    "policy": "legal",
+    "general information": "generic",
+}
+
+# Chunk content_type_hint → SI purpose vocabulary (evidence/retrieval).
+CONTENT_HINT_TO_PURPOSE: dict[str, str] = {
+    "about": "about company",
+    "overview": "about company",
+    "contacts": "contact information",
+    "contact": "contact information",
+    "faq": "faq",
+    "pricing": "pricing",
+    "rates": "pricing",
+    "products": "product details",
+    "product": "product details",
+    "docs": "documentation",
+    "documentation": "documentation",
+    "support": "support",
+    "news": "news",
+    "schedule": "general information",
+    "delivery": "service description",
+    "returns": "support",
 }
 
 
@@ -58,6 +112,18 @@ def purpose_from_metadata(*, page_role: str, document_type: str) -> str:
         return DOC_TYPE_TO_PURPOSE[doc]
     mapped_role = DOCUMENT_TYPE_TO_ROLE.get(doc, "generic")
     return ROLE_TO_DEFAULT_PURPOSE.get(mapped_role, "general information")
+
+
+def role_from_purpose(purpose: str, *, fallback_role: str = "generic") -> str:
+    key = (purpose or "").lower().strip()
+    return PURPOSE_TO_DEFAULT_ROLE.get(key, fallback_role or "generic")
+
+
+def normalize_content_hint_to_purpose(hint: str) -> str:
+    h = (hint or "").lower().strip()
+    if not h or h == "generic":
+        return ""
+    return CONTENT_HINT_TO_PURPOSE.get(h, "")
 
 
 def purposes_to_forbidden_slots(purposes: list[str]) -> tuple[str, ...]:
@@ -81,21 +147,40 @@ def infer_knowledge_slots(
     heading: str,
     text: str,
 ) -> frozenset[str]:
-    """Map source metadata to generic knowledge slots."""
+    """Map source metadata + text cues to generic knowledge slots.
+
+    Role alone must not invent full overview coverage — thin about pages would
+    otherwise satisfy identity/activity/capabilities without evidence.
+    """
     aspects: set[str] = set()
     role = (page_role or "").lower()
     doc = (document_type or "").lower()
     purpose = (source_purpose or purpose_from_metadata(page_role=role, document_type=doc)).lower()
     blob = f"{heading} {text[:600]}".lower()
-
-    if role in {"organization_overview", "service_overview"} or doc in {
+    org_like = role in {"organization_overview", "service_overview"} or doc in {
         "about_page",
         "company_page",
         "homepage",
-    }:
-        aspects.update({"identity", "activity", "capabilities"})
-    if purpose in {"about company", "landing page"}:
-        aspects.update({"identity", "activity"})
+    }
+    if org_like or purpose in {"about company", "landing page"}:
+        # Always allow identity for org/homepage surfaces.
+        aspects.add("identity")
+        # Activity/capabilities require textual support (or longer body).
+        activity_cues = (
+            "service",
+            "product",
+            "offer",
+            "provide",
+            "activity",
+            "mission",
+            "we ",
+            "our ",
+        )
+        capability_cues = ("service", "product", "solution", "platform", "capabilit")
+        if any(c in blob for c in activity_cues) or len(blob) >= 280:
+            aspects.add("activity")
+        if any(c in blob for c in capability_cues) or len(blob) >= 400:
+            aspects.add("capabilities")
     if purpose in {"service description", "product details", "product listing"}:
         aspects.update({"capabilities", "options", "product_identity", "benefits"})
     if purpose == "pricing":

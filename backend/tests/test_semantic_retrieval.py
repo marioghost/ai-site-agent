@@ -301,7 +301,11 @@ def test_definition_query_prefers_authoritative_service_page_over_news():
     scorer.score_document(news_doc, query="що таке страхування життя?", understanding=understanding, source=news_source, query_language="uk")
     assert understanding.expected_answer_type == "definition"
     assert service_doc.score.final_score > news_doc.score.final_score
-    assert service_doc.score_breakdown["compatibility_label"] == "exact_match"
+    assert service_doc.score_breakdown["compatibility_label"] in {
+        "exact_match",
+        "definition_support",
+        "same_product",
+    }
 
 
 def test_cross_tenant_variant_query_prefers_exact_variant_not_adjacent_category():

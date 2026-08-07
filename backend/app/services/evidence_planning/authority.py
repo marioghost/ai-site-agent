@@ -1,12 +1,15 @@
 """Intent-aware authority and fitness evaluation."""
 from __future__ import annotations
 
-import re
-
 from app.schemas.knowledge_profile import KnowledgeProfile
 from app.services.evidence_planning.types import EvidenceCandidate
 from app.services.knowledge_profile_service import KnowledgeProfileService
 from app.services.rag_planning.contracts import KnowledgePlan
+from app.services.retrieval_engine.focus_compatibility import (
+    evaluate_focus_compatibility,
+    is_negative_compatibility,
+    is_strong_compatibility,
+)
 from app.services.retrieval_engine.query_understanding import QueryUnderstanding
 from app.services.rag_planning.intent_taxonomy import (
     INCIDENTAL_DOCUMENT_TYPES as LOW_OVERVIEW_DOCUMENT_TYPES,
@@ -44,22 +47,6 @@ _ROLE_INTENT_FIT: dict[str, dict[str, float]] = {
 }
 
 
-def _overlap_ratio(focus_terms: set[str], candidate_terms: set[str]) -> float:
-    matched = 0
-    for term in focus_terms:
-        if term in candidate_terms:
-            matched += 1
-            continue
-        needle = term[:5]
-        if len(needle) >= 4 and any(
-            other.startswith(needle) or term.startswith(other[:5])
-            for other in candidate_terms
-            if len(other) >= 4
-        ):
-            matched += 1
-    return matched / max(len(focus_terms), 1)
-
-
 def evaluate_authority_fitness(
     candidate: EvidenceCandidate,
     *,
@@ -88,12 +75,29 @@ def evaluate_authority_fitness(
     candidate.compatibility_label = compatibility_label
     factors["focus_consistency"] = round(focus_fit, 4)
     score += 0.18 * focus_fit
-    if compatibility_label == "adjacent_incompatible":
+    if is_negative_compatibility(compatibility_label):
         score -= 0.18
-        factors["adjacent_incompatible"] = -0.18
-    elif compatibility_label in {"exact_match", "organization_support", "navigation_support"}:
+        factors["negative_compatibility"] = -0.18
+    elif is_strong_compatibility(compatibility_label):
         score += 0.06
         factors["compatibility_bonus"] = 0.06
+    elif compatibility_label in {"same_category", "category_support", "supporting_evidence"}:
+        score += 0.02
+        factors["category_bonus"] = 0.02
+
+    # Prefer expected evidence type alignment from knowledge plan.
+    expected = getattr(knowledge_plan, "expected_evidence_type", "") or ""
+    semantic_focus = getattr(knowledge_plan, "semantic_focus", "") or ""
+    if expected and is_strong_compatibility(compatibility_label):
+        score += 0.04
+        factors["expected_evidence_match"] = 0.04
+    if semantic_focus == "organization_profile" and candidate.page_role in {
+        "product_details",
+        "pricing",
+        "campaign",
+    }:
+        score -= 0.10
+        factors["org_vs_product_penalty"] = -0.10
 
     if candidate.canonical:
         score += 0.08
@@ -197,59 +201,27 @@ def _focus_consistency(
     candidate: EvidenceCandidate,
     understanding: QueryUnderstanding | None,
 ) -> tuple[float, str]:
-    if understanding is None:
-        return 0.45, "ambiguous"
+    # Prefer DFP-seeded label when already computed on the candidate.
+    seeded = (candidate.compatibility_label or "").strip()
+    seeded_score = float(candidate.focus_match_score or 0.0)
+    if seeded and seeded != "ambiguous" and seeded_score > 0:
+        return seeded_score, seeded
 
-    if understanding.scope_type == "organization_overview":
-        if candidate.page_role == "organization_overview" or candidate.source_purpose in {
-            "about company",
-            "landing page",
-        }:
-            return 1.0, "organization_support"
-        if candidate.page_role in {"service_overview", "documentation", "faq"}:
-            return 0.68, "category_support"
-        if candidate.page_role in {"news", "campaign", "product_details", "pricing"}:
-            return 0.14, "adjacent_incompatible"
-        return 0.42, "ambiguous"
-
-    focus_terms = {
-        term for term in getattr(understanding, "focus_terms", []) if len(term) >= 3
-    }
-    if not focus_terms:
-        return 0.45, "ambiguous"
-
-    blob = " ".join(
-        part
-        for part in [
-            candidate.title,
+    result = evaluate_focus_compatibility(
+        understanding,
+        title=candidate.title,
+        purpose=candidate.source_purpose,
+        page_role=candidate.page_role,
+        document_type=candidate.document_type,
+        text=candidate.text,
+        url=candidate.url or "",
+        semantic_phrases=[
             candidate.heading,
             candidate.section_heading,
             candidate.source_purpose,
-            candidate.document_type,
-            candidate.page_role,
-            candidate.text[:240],
-        ]
-        if part
-    ).lower()
-    candidate_terms = set(re.findall(r"[\w\u0400-\u04FF]{3,}", blob))
-    overlap = _overlap_ratio(focus_terms, candidate_terms)
-    short_focus = {term for term in focus_terms if len(term) <= 3}
-    missing_short_focus = bool(short_focus and not short_focus.issubset(candidate_terms))
-
-    if understanding.scope_type == "navigation":
-        if candidate.page_role in {"contact", "support", "faq"} or "contact" in candidate.source_purpose:
-            return max(0.75, overlap), "navigation_support"
-        return (0.48, "category_support") if overlap >= 0.34 else (0.20, "adjacent_incompatible")
-
-    if overlap >= 0.66 and not missing_short_focus:
-        return 0.96, "exact_match"
-    if overlap >= 0.34:
-        return 0.64, "category_support"
-    if overlap > 0:
-        return 0.38, "ambiguous"
-    if candidate.page_role in {"product_details", "service_overview", "pricing", "news", "campaign"}:
-        return 0.14, "adjacent_incompatible"
-    return 0.28, "ambiguous"
+        ],
+    )
+    return result.score, result.label
 
 
 def _fitness_band(fitness: float) -> str:

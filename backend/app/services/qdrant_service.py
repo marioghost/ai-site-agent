@@ -54,6 +54,10 @@ class SearchHit:
     source_profile_summary: str = ""
     profile_routing_reason: str = ""
     source_language: str = "unknown"
+    # SI document purpose (evidence/authority vocabulary).
+    document_purpose: str = ""
+    # Content fingerprint for cross-URL duplicate evidence control.
+    content_hash: str = ""
     # Populated by canonical source selection.
     is_canonical: bool = False
     excluded_as_news: bool = False

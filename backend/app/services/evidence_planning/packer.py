@@ -37,7 +37,14 @@ def pack_selected_evidence(
     total = 0
     truncated = False
 
-    for item in sorted(selected, key=lambda s: s.final_order):
+    for item in sorted(
+        selected,
+        key=lambda s: (
+            -float(s.candidate.authority_fitness or 0.0),
+            -float(s.marginal_value or 0.0),
+            s.final_order,
+        ),
+    ):
         text = item.candidate.section_text or item.candidate.text
         piece = min(len(text), per_source_cap) + len(item.candidate.title) + len(item.candidate.url) + 80
         if len(kept) >= max_pages:
@@ -75,6 +82,10 @@ def pack_selected_evidence(
                 continue
         kept.append(item)
         total += piece
+
+    # Prompt order follows fitness so the model sees strongest evidence first.
+    for idx, item in enumerate(kept):
+        item.final_order = idx
 
     return kept, decisions, truncated
 

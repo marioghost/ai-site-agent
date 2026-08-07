@@ -15,6 +15,7 @@ The architecture phase is complete. These foundations exist and must not be rede
 - `COGNITIVE_ARCHITECTURE.md`
 - `RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md`
 - `KNOWLEDGE_OS_ARCHITECTURE_v1.md`
+- `ARCHITECTURE_CONTRACT_1.0.md` — AI Platform merge-gate constitution
 - `RFC-100-PRODUCTION-MIGRATION-STRATEGY.md`
 - `DEVELOPMENT_CHARTER.md`
 

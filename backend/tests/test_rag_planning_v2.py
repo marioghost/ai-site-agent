@@ -51,7 +51,27 @@ def test_query_planner_runs_understanding_once():
     assert decision.retrieval_strategy.top_k_dense > 0
     assert decision.retrieval_budget.chunk_pool_size >= 12
     assert len(decision.decision_chain) >= 3
+    assert decision.understanding.semantic_focus
+    assert decision.understanding.expected_evidence_type
+    assert decision.knowledge_plan.semantic_focus == decision.understanding.semantic_focus
+    assert (
+        decision.knowledge_plan.expected_evidence_type
+        == decision.understanding.expected_evidence_type
+    )
 
+
+@pytest.mark.unit
+def test_benefits_query_plans_organization_profile_focus():
+    decision = QueryPlanner.plan(
+        "What are the benefits of Example Org?",
+        intent_result=_intent("entity_overview"),
+        profile=KnowledgeProfile(),
+        settings=_settings(),
+        query_language="en",
+    )
+    assert decision.understanding.semantic_focus == "organization_profile"
+    assert decision.understanding.expected_answer_type == "overview"
+    assert decision.knowledge_plan.expected_evidence_type == "organization_profile"
 
 @pytest.mark.unit
 def test_retrieval_candidate_count_affects_budget():

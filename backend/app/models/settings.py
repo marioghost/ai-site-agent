@@ -150,6 +150,9 @@ class Settings(Base):
     prefer_user_language_sources: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_source_intelligence: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_llm_source_intelligence: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Knowledge Understanding Layer (SEMANTIC_UNDERSTANDING_MVP Phase 0).
+    # Default off: rebuild still runs after SI; flag gates query-time assist (Phase 1+).
+    enable_knowledge_understanding: Mapped[bool] = mapped_column(Boolean, default=False)
     source_intelligence_importance_threshold: Mapped[int] = mapped_column(Integer, default=70)
     penalize_campaigns_for_overview: Mapped[bool] = mapped_column(Boolean, default=True)
     source_intelligence_db_batch_size: Mapped[int] = mapped_column(Integer, default=50)

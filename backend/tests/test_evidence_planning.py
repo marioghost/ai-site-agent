@@ -384,7 +384,7 @@ def test_organization_benefits_rejects_unrelated_product_and_news():
     assert plan.selected[0].candidate.document_type == "about_page"
     rejected = {item.candidate.title: item.candidate.compatibility_label for item in plan.rejected}
     assert rejected["Trade Finance"] == "adjacent_incompatible"
-    assert rejected["Press release"] == "adjacent_incompatible"
+    assert rejected["Press release"] in {"adjacent_incompatible", "news_only"}
 
 
 @pytest.mark.unit

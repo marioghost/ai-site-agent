@@ -119,9 +119,13 @@ grep -q 'Base.metadata.create_all' "$BACKEND/migrations/versions/0001_initial_sc
   || fail "0001 must remain create_all (not rewritten)"
 grep -q 'job_events' "$BACKEND/migrations/versions/0003_performance_indexes_and_aggregates.py" \
   || fail "0003 must still reference job_events"
-# Proof historical migrations are untouched in this working tree vs origin/main tip parent
+# Proof historical migrations are untouched in this working tree vs origin/main tip parent.
+# New untracked revision files (next head) are allowed; edits/deletes of existing ones are not.
 if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  dirty_mig="$(git -C "$ROOT" status --porcelain -- backend/migrations/versions/ | wc -l)"
+  dirty_mig="$(
+    git -C "$ROOT" status --porcelain -- backend/migrations/versions/ \
+      | awk '$1 !~ /^\?\?/ { c++ } END { print c+0 }'
+  )"
   [[ "$dirty_mig" -eq 0 ]] || fail "historical migrations must not be modified (got $dirty_mig dirty)"
 fi
 pass "historical migrations not rewritten"

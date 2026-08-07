@@ -85,6 +85,7 @@ class SettingsBase(BaseModel):
     prefer_user_language_sources: bool = True
     enable_source_intelligence: bool = True
     enable_llm_source_intelligence: bool = True
+    enable_knowledge_understanding: bool = False
     source_intelligence_importance_threshold: int = Field(default=70, ge=0, le=100)
     penalize_campaigns_for_overview: bool = True
     source_intelligence_db_batch_size: int = Field(default=50, ge=1, le=500)

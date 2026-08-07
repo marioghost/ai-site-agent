@@ -11,7 +11,9 @@ def diversity_allows(
     used_groups: dict[str, int],
     knowledge_plan: KnowledgePlan,
 ) -> bool:
-    if used_groups.get(candidate.duplicate_group, 0) >= 2:
+    # Exact content_hash groups: keep a single primary source.
+    max_per_group = 1 if candidate.duplicate_group.startswith("hash:") else 2
+    if used_groups.get(candidate.duplicate_group, 0) >= max_per_group:
         return False
     same_source = sum(1 for s in selected if s.candidate.source_id == candidate.source_id)
     if same_source >= 2:
@@ -39,9 +41,14 @@ def dedupe_language_candidates(
     if query_language in {"", "unknown"} or len(candidates) < 2:
         return candidates, []
 
+    from app.services.language_resolver_service import normalize_url_for_lang_dedupe
+
     by_group: dict[str, list[EvidenceCandidate]] = {}
     for c in candidates:
-        by_group.setdefault(c.duplicate_group, []).append(c)
+        # Collapse bilingual URL twins here; hash-based republish control is in diversity_allows.
+        lang_base = normalize_url_for_lang_dedupe(c.url)
+        key = f"lang:{lang_base}" if lang_base else c.duplicate_group
+        by_group.setdefault(key, []).append(c)
 
     kept: list[EvidenceCandidate] = []
     excluded: list[dict] = []
@@ -53,12 +60,18 @@ def dedupe_language_candidates(
             seen_ids.add(items[0].candidate_id)
             continue
         preferred = [i for i in items if i.language == query_language]
-        chosen = max(preferred or items, key=lambda c: c.authority_fitness)
+        # Prefer query language, then authority fitness, then retrieval score.
+        pool = preferred or items
+        chosen = max(
+            pool,
+            key=lambda c: (c.authority_fitness, c.rerank_score, c.quality_score),
+        )
         kept.append(chosen)
         seen_ids.add(chosen.candidate_id)
         for other in items:
             if other.candidate_id == chosen.candidate_id:
                 continue
+            seen_ids.add(other.candidate_id)
             excluded.append(
                 {
                     "url": other.url,

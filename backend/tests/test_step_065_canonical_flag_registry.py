@@ -31,6 +31,7 @@ EXPECTED_SETTINGS = {
     "memory_canonical_shadow_enabled",
     "allow_legacy_kp_presets",
     "legacy_doc_type_canonical_enabled",
+    "enable_knowledge_understanding",
 }
 EXPECTED_INT = {"MAINTENANCE_INVESTIGATIONS_PER_CYCLE"}
 

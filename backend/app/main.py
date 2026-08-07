@@ -16,6 +16,7 @@ from app.api import (
     indexing,
     knowledge_profile,
     knowledge_profile_generate,
+    knowledge_understanding,
     llm,
     logs,
     metrics,
@@ -146,6 +147,7 @@ app.include_router(llm.router)
 app.include_router(traces.router)
 app.include_router(analytics.router)
 app.include_router(understanding.router)
+app.include_router(knowledge_understanding.router)
 
 
 @app.get("/")

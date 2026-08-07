@@ -164,6 +164,9 @@ def _to_read(model: Settings) -> SettingsRead:
         prefer_user_language_sources=getattr(model, "prefer_user_language_sources", True),
         enable_source_intelligence=getattr(model, "enable_source_intelligence", True),
         enable_llm_source_intelligence=getattr(model, "enable_llm_source_intelligence", True),
+        enable_knowledge_understanding=getattr(
+            model, "enable_knowledge_understanding", False
+        ),
         source_intelligence_importance_threshold=getattr(
             model, "source_intelligence_importance_threshold", 70
         ),
@@ -292,6 +295,7 @@ def update_settings(
     settings.prefer_user_language_sources = payload.prefer_user_language_sources
     settings.enable_source_intelligence = payload.enable_source_intelligence
     settings.enable_llm_source_intelligence = payload.enable_llm_source_intelligence
+    settings.enable_knowledge_understanding = payload.enable_knowledge_understanding
     settings.source_intelligence_importance_threshold = payload.source_intelligence_importance_threshold
     settings.penalize_campaigns_for_overview = payload.penalize_campaigns_for_overview
     settings.source_intelligence_db_batch_size = payload.source_intelligence_db_batch_size

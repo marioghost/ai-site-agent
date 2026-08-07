@@ -9,6 +9,11 @@ from app.models.chunk import Chunk
 from app.models.epistemic_memory import EpistemicClaim, EvidenceLink, ObservationRef
 from app.models.index_job import IndexJob
 from app.models.job_event import JobEvent
+from app.models.knowledge_understanding import (
+    UnderstandingConcept,
+    UnderstandingEvidence,
+    UnderstandingSnapshot,
+)
 from app.models.profile_generation_job import ProfileGenerationJob
 from app.models.settings import Settings
 from app.models.source import Source
@@ -33,5 +38,8 @@ __all__ = [
     "RetrievalCache",
     "AnswerCache",
     "AnswerTrace",
+    "UnderstandingSnapshot",
+    "UnderstandingConcept",
+    "UnderstandingEvidence",
     "User",
 ]

@@ -294,6 +294,12 @@ class SourceIntelligenceGenerationService:
             CacheInvalidationService(self.db, self.settings).invalidate_retrieval_cache(
                 "source_intelligence_generated"
             )
+        # Knowledge Understanding Layer — rebuild site-wide model after SI batch.
+        from app.services.knowledge_understanding.rebuild import (
+            UnderstandingRebuildService,
+        )
+
+        UnderstandingRebuildService(self.db, self.settings).rebuild_after_si()
 
     @staticmethod
     def _process_source_in_worker(

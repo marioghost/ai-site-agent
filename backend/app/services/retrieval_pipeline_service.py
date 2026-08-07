@@ -612,6 +612,20 @@ class RetrievalPipelineService:
         )
 
         for row, source in rows:
+            page_role = (getattr(source, "page_role", "") or "").lower()
+            doc_type = (
+                row.document_type or source.document_type or "generic_page"
+            ).lower()
+            # Never seed overview packages with news/campaign noise.
+            if page_role in {"news", "campaign", "marketing"} or doc_type in {
+                "news_page",
+                "blog_page",
+                "blog_post",
+                "promotion_page",
+                "offer_page",
+                "action_page",
+            }:
+                continue
             if row.url in existing_urls and any(
                 h.source_id == row.source_id for h in existing
             ):
@@ -627,6 +641,15 @@ class RetrievalPipelineService:
                 base += 0.04
             if getattr(source, "should_answer_company", False):
                 base += 0.03
+            purpose = ""
+            try:
+                import json as _json
+
+                sem = _json.loads(getattr(source, "intelligence_json", None) or "{}")
+                if isinstance(sem, dict):
+                    purpose = str(sem.get("document_purpose") or "").strip()
+            except (TypeError, ValueError):
+                purpose = ""
             injected.append(
                 SearchHit(
                     score=base,
@@ -640,16 +663,18 @@ class RetrievalPipelineService:
                     is_homepage=bool(row.is_homepage),
                     is_structured_block=bool(row.is_structured_block),
                     content_type_hint=row.content_type_hint or "generic",
-                    document_type=row.document_type or source.document_type or "generic_page",
+                    document_type=doc_type,
                     dense_score=0.0,
                     lexical_score=0.35,
                     final_score=base,
                     is_canonical=bool(getattr(source, "canonical", False)),
                     selection_reason="broad_inject:source_intelligence",
-                    page_role=getattr(source, "page_role", "") or "",
+                    page_role=page_role,
                     importance=importance,
                     content_quality=int(getattr(source, "content_quality", 0) or 0),
                     source_canonical=bool(getattr(source, "canonical", False)),
+                    content_hash=(getattr(source, "content_hash", None) or "").strip(),
+                    document_purpose=purpose,
                 )
             )
             existing_keys.add(key)

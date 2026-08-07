@@ -118,6 +118,8 @@ class EvidencePlanSufficiency:
     required_aspects_missing: tuple[str, ...]
     reasons: tuple[str, ...] = ()
     contradiction_count: int = 0
+    goal_satisfaction: float = 0.0
+    expected_evidence_matched: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +128,8 @@ class EvidencePlanSufficiency:
             "required_aspects_missing": list(self.required_aspects_missing),
             "reasons": list(self.reasons),
             "contradiction_count": self.contradiction_count,
+            "goal_satisfaction": round(self.goal_satisfaction, 4),
+            "expected_evidence_matched": self.expected_evidence_matched,
         }
 
 
@@ -146,6 +150,10 @@ class EvidencePlan:
         return {
             "intent": self.intent,
             "knowledge_plan": self.knowledge_plan.to_dict(),
+            "semantic_focus": getattr(self.knowledge_plan, "semantic_focus", None),
+            "expected_evidence_type": getattr(
+                self.knowledge_plan, "expected_evidence_type", None
+            ),
             "candidate_count": self.candidate_count,
             "selected_count": len(self.selected),
             "rejected_count": len(self.rejected),

@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from app.models.source import Source
 from app.schemas.source_intelligence import SourceSemanticProfile
 from app.services.qdrant_service import SearchHit
+from app.services.retrieval_engine.focus_compatibility import (
+    evaluate_focus_compatibility,
+    is_negative_compatibility,
+)
 from app.services.retrieval_engine.query_understanding import QueryUnderstanding
 from app.services.source_intelligence_service import SourceIntelligenceService, SourceProfile
 
@@ -17,22 +21,6 @@ def _norm(text: str) -> str:
 
 def _tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[\w\u0400-\u04FF]{3,}", _norm(text))}
-
-
-def _overlap_ratio(focus_terms: set[str], source_terms: set[str]) -> float:
-    matched = 0
-    for term in focus_terms:
-        if term in source_terms:
-            matched += 1
-            continue
-        needle = term[:5]
-        if len(needle) >= 4 and any(
-            candidate.startswith(needle) or term.startswith(candidate[:5])
-            for candidate in source_terms
-            if len(candidate) >= 4
-        ):
-            matched += 1
-    return matched / max(len(focus_terms), 1)
 
 
 def _phrase_overlap(query: str, phrases: list[str]) -> float:
@@ -179,6 +167,8 @@ class SemanticCompatibilityScorer:
         topic_score = 0.0
         if semantic:
             topic_phrases = [semantic.main_topic, *semantic.subtopics, *semantic.search_keywords]
+            if not semantic.search_keywords and profile and profile.keywords:
+                topic_phrases = list(topic_phrases) + list(profile.keywords[:12])
             topic_score = max(
                 _phrase_overlap(understanding.query, topic_phrases),
                 _phrase_overlap(understanding.topic or "", topic_phrases),
@@ -187,6 +177,8 @@ class SemanticCompatibilityScorer:
                 topic_score = max(topic_score, semantic.main_topic_confidence or 0.5)
         if profile and profile.topics:
             topic_score = max(topic_score, _phrase_overlap(understanding.query, profile.topics))
+        if profile and profile.keywords and topic_score < 0.25:
+            topic_score = max(topic_score, _phrase_overlap(understanding.query, profile.keywords[:12]))
         result.topic_match_score = min(1.0, topic_score)
         if topic_score >= 0.4:
             signals.append("topic_overlap")
@@ -257,6 +249,8 @@ class SemanticCompatibilityScorer:
         )
         if focus_label == "adjacent_incompatible":
             result.compatibility_score *= 0.72
+        elif is_negative_compatibility(focus_label):
+            result.compatibility_score *= 0.78
         if result.si_incomplete:
             result.compatibility_score *= 0.72
         elif not has_semantic and has_structural:
@@ -355,7 +349,16 @@ class SemanticCompatibilityScorer:
             base += 0.1
         if semantic and semantic.suitable_for:
             base += 0.05
-        if profile.llm_summary:
+        summary = (profile.llm_summary or "").strip().lower()
+        # Template leftovers must not inflate answerability.
+        template_markers = (
+            "this page describes",
+            "this page contains",
+            "this page provides",
+            "this page is a",
+            "this page offers",
+        )
+        if summary and not any(summary.startswith(m) for m in template_markers):
             base += 0.05
         return min(1.0, base)
 
@@ -367,21 +370,6 @@ class SemanticCompatibilityScorer:
         profile: SourceProfile | None,
         hit: SearchHit,
     ) -> tuple[float, str]:
-        if understanding.scope_type == "organization_overview":
-            if profile and (
-                profile.page_role == "organization_overview"
-                or (semantic and semantic.document_purpose in {"about company", "landing page"})
-            ):
-                return 1.0, "organization_support"
-            if profile and profile.page_role in {"service_overview", "documentation", "faq"}:
-                return 0.66, "category_support"
-            if profile and profile.page_role in {"news", "campaign", "product_details", "pricing"}:
-                return 0.12, "adjacent_incompatible"
-            return 0.4, "ambiguous"
-
-        focus_terms = {t for t in understanding.focus_terms if len(t) >= 4}
-        if not focus_terms:
-            return 0.45, "ambiguous"
         phrases: list[str] = []
         if semantic:
             phrases.extend(
@@ -392,30 +380,14 @@ class SemanticCompatibilityScorer:
                     *semantic.synonyms,
                 ]
             )
-        phrases.extend(
-            [
-                hit.title,
-                hit.heading,
-                hit.text[:240],
-                getattr(profile, "site_section", "") if profile else "",
-            ]
+        result = evaluate_focus_compatibility(
+            understanding,
+            title=hit.title or "",
+            purpose=(semantic.document_purpose if semantic else "") or "",
+            page_role=(profile.page_role if profile else "") or (hit.page_role or ""),
+            document_type=(hit.document_type or ""),
+            text=hit.text or "",
+            url=hit.url or "",
+            semantic_phrases=phrases,
         )
-        joined = " ".join(p for p in phrases if p).lower()
-        source_terms = _tokens(joined)
-        overlap = _overlap_ratio(focus_terms, source_terms)
-        short_focus = {t for t in focus_terms if len(t) <= 3}
-        missing_short_focus = bool(short_focus and not short_focus.issubset(source_terms))
-
-        if understanding.scope_type == "navigation":
-            if profile and profile.page_role in {"contact", "support", "faq"}:
-                return max(0.8, overlap), "navigation_support"
-            return (0.48, "category_support") if overlap >= 0.34 else (0.18, "adjacent_incompatible")
-        if overlap >= 0.66 and not missing_short_focus:
-            return 0.96, "exact_match"
-        if overlap >= 0.34:
-            return 0.62, "category_support"
-        if overlap > 0:
-            return 0.36, "ambiguous"
-        if profile and profile.page_role in {"product_details", "service_overview", "pricing", "news", "campaign"}:
-            return 0.12, "adjacent_incompatible"
-        return 0.26, "ambiguous"
+        return result.score, result.label

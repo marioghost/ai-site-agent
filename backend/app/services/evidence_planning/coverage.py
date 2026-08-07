@@ -8,6 +8,30 @@ from app.services.evidence_planning.types import (
     SelectedEvidence,
 )
 from app.services.rag_planning.contracts import KnowledgePlan
+from app.services.retrieval_engine.focus_compatibility import (
+    is_negative_compatibility,
+    is_strong_compatibility,
+)
+
+_STRONG = frozenset(
+    {
+        "exact_match",
+        "same_product",
+        "organization_support",
+        "definition_support",
+        "procedure_support",
+        "navigation_support",
+    }
+)
+_WEAK_AFTER_STRONG = frozenset(
+    {
+        "category_support",
+        "same_category",
+        "ambiguous",
+        "supporting_evidence",
+        "historical",
+    }
+)
 
 
 def select_by_coverage(
@@ -28,8 +52,21 @@ def select_by_coverage(
     rejected: list[RejectedEvidence] = []
     per_source: dict[int, int] = {}
     used_groups: dict[str, int] = {}
+    semantic_focus = getattr(knowledge_plan, "semantic_focus", "") or "general"
 
     pool = sorted(candidates, key=lambda c: c.authority_fitness, reverse=True)
+    # Organization profile: never let product pages become primary.
+    if semantic_focus == "organization_profile":
+        pool = sorted(
+            pool,
+            key=lambda c: (
+                0 if c.page_role == "organization_overview" or c.source_purpose in {
+                    "about company",
+                    "landing page",
+                } else 1,
+                -c.authority_fitness,
+            ),
+        )
     order = 0
 
     while len(selected) < max_items:
@@ -41,13 +78,8 @@ def select_by_coverage(
         for cand in pool:
             if any(s.candidate.candidate_id == cand.candidate_id for s in selected):
                 continue
-            if cand.compatibility_label == "adjacent_incompatible":
-                continue
-            selected_labels = {item.candidate.compatibility_label for item in selected}
-            if (
-                "exact_match" in selected_labels
-                and cand.compatibility_label in {"category_support", "ambiguous"}
-            ):
+            skip_reason = _skip_reason(cand, selected, knowledge_plan)
+            if skip_reason:
                 continue
             if cand.forbidden_for_query and cand.authority_fitness < 0.45:
                 continue
@@ -77,6 +109,8 @@ def select_by_coverage(
                 + missing_required_bonus
                 - 0.18 * redundancy
             )
+            if is_strong_compatibility(cand.compatibility_label):
+                marginal += 0.08
             if cand.broad_injected:
                 marginal -= 0.14 if selected else 0.08
             if not required and not new_aspects:
@@ -123,6 +157,69 @@ def select_by_coverage(
     return selected, rejected
 
 
+def _skip_reason(
+    cand: EvidenceCandidate,
+    selected: list[SelectedEvidence],
+    knowledge_plan: KnowledgePlan,
+) -> str:
+    if is_negative_compatibility(cand.compatibility_label):
+        # Last resort: allow a single adjacent candidate when nothing else can be primary.
+        # Never admit news/marketing/historical as primary for strict expected evidence.
+        if (
+            not selected
+            and cand.compatibility_label == "adjacent_incompatible"
+            and (getattr(knowledge_plan, "semantic_focus", "") or "")
+            in {
+                "product_specification",
+                "rates",
+                "eligibility",
+                "definition",
+                "locator",
+                "contact",
+            }
+        ):
+            return ""
+        return "negative_compatibility"
+    selected_labels = {item.candidate.compatibility_label for item in selected}
+    has_strong = bool(selected_labels & _STRONG)
+    focus = getattr(knowledge_plan, "semantic_focus", "") or ""
+    if (
+        has_strong
+        and cand.compatibility_label in _WEAK_AFTER_STRONG
+        and focus
+        in {
+            "product_specification",
+            "rates",
+            "eligibility",
+            "definition",
+        }
+    ):
+        return "weak_after_strong"
+    if focus == "organization_profile" and selected:
+        if cand.page_role in {"product_details", "pricing", "campaign", "news"}:
+            return "entity_inconsistency"
+    if has_strong and focus in {"product_specification", "rates", "eligibility"}:
+        if cand.compatibility_label in {"same_category", "category_support"}:
+            return "product_family_mismatch"
+    if focus == "comparison":
+        return ""
+    expected = getattr(knowledge_plan, "expected_evidence_type", "") or ""
+    if (
+        expected
+        in {
+            "organization_profile",
+            "definition",
+            "locator",
+            "product_specification",
+            "policy",
+            "contact",
+        }
+        and cand.compatibility_label in {"news_only", "marketing_only", "historical"}
+    ):
+        return "expected_evidence_mismatch"
+    return ""
+
+
 def _redundancy_penalty(candidate: EvidenceCandidate, selected: list[SelectedEvidence]) -> float:
     if not selected:
         return 0.0
@@ -139,7 +236,10 @@ def _redundancy_penalty(candidate: EvidenceCandidate, selected: list[SelectedEvi
 
 
 def _selection_reason(candidate: EvidenceCandidate, new_aspects: tuple[str, ...], req_cover: float) -> str:
-    parts = [f"fitness={candidate.authority_fitness:.2f}"]
+    parts = [
+        f"fitness={candidate.authority_fitness:.2f}",
+        f"compat={candidate.compatibility_label}",
+    ]
     if new_aspects:
         parts.append(f"new_aspects={','.join(new_aspects)}")
     if req_cover > 0:
@@ -180,10 +280,23 @@ def _rejection_reason(
     per_source: dict[int, int],
     max_per_source: int,
 ) -> str:
+    skip = _skip_reason(candidate, selected, knowledge_plan)
+    if skip == "negative_compatibility":
+        if candidate.compatibility_label == "adjacent_incompatible":
+            return "adjacent_product_or_scope"
+        if candidate.compatibility_label in {"news_only", "marketing_only"}:
+            return "expected_evidence_mismatch"
+        return candidate.compatibility_label or "negative_compatibility"
+    if skip == "entity_inconsistency":
+        return "entity_inconsistency"
+    if skip == "product_family_mismatch":
+        return "product_family_mismatch"
+    if skip == "expected_evidence_mismatch":
+        return "expected_evidence_mismatch"
+    if skip == "weak_after_strong":
+        return "lower_marginal_value"
     if candidate.forbidden_for_query:
         return "forbidden_aspect_for_intent"
-    if candidate.compatibility_label == "adjacent_incompatible":
-        return "adjacent_product_or_scope"
     if per_source.get(candidate.source_id, 0) >= max_per_source:
         return "source_chunk_limit"
     if candidate.authority_fitness < 0.18 and selected:

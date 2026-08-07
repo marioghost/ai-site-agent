@@ -191,6 +191,22 @@ FLAG_DEFINITIONS: tuple[FlagDefinition, ...] = (
         runtime_owner="feature_flags.legacy_doc_type_canonical_enabled",
         settings_attr="legacy_doc_type_canonical_enabled",
     ),
+    FlagDefinition(
+        key="enable_knowledge_understanding",
+        source="settings",
+        default=False,
+        classification="permanent_settings",
+        friendly_name="Knowledge Understanding",
+        effect=(
+            "Expose understanding diagnostics / Phase 1+ evidence routing; "
+            "site-wide concept index still rebuilds after SI"
+        ),
+        rollout="SEMANTIC_UNDERSTANDING_MVP Phase 0 — default OFF until shadow assist",
+        runtime_owner="feature_flags.knowledge_understanding_enabled",
+        settings_attr="enable_knowledge_understanding",
+        product_visibility=False,
+        engineering_visibility=True,
+    ),
 )
 
 
@@ -284,6 +300,14 @@ def cache_namespace_v2_enabled(settings) -> bool:
 def memory_shadow_write_enabled(settings) -> bool:
     """Persist SI claim proposals to epistemic tables when True (default True, Step 063)."""
     return _settings_bool(settings, "memory_shadow_write_enabled", default=True)
+
+
+def knowledge_understanding_enabled(settings) -> bool:
+    """Knowledge Understanding Layer query/diagnostics assist (default False, Phase 0).
+
+    Rebuild after SI always runs; this flag gates query-time use and API ``enabled``.
+    """
+    return _settings_bool(settings, "enable_knowledge_understanding", default=False)
 
 
 def memory_evidence_assist_enabled(settings) -> bool:

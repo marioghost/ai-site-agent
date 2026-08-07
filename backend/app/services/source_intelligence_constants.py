@@ -1,6 +1,6 @@
 """Source Intelligence Layer constants (domain-agnostic)."""
 
-SOURCE_INTELLIGENCE_VERSION = "source-intelligence-v2"
+SOURCE_INTELLIGENCE_VERSION = "source-intelligence-v3"
 PROMPT_TEMPLATE_VERSION = "prompt-v7"
 CONTEXT_BUILDER_VERSION = "context-v4"
 
@@ -81,17 +81,13 @@ DOCUMENT_TYPE_TO_ROLE: dict[str, str] = {
     "generic_page": "generic",
 }
 
-# document_type -> canonical candidacy
+# document_type -> canonical candidacy (organization-identity surfaces only).
+# FAQ/pricing/service pages remain important via purpose/role scoring, but must
+# not inherit the global "canonical" authority flag used for overview answers.
 CANONICAL_DOCUMENT_TYPES = frozenset({
     "homepage",
     "about_page",
     "company_page",
-    "contact_page",
-    "service_page",
-    "documentation_page",
-    "knowledge_base_page",
-    "pricing_page",
-    "faq_page",
 })
 
 # Re-export from single taxonomy owner (rag_planning.intent_taxonomy).
@@ -100,7 +96,8 @@ from app.services.rag_planning.intent_taxonomy import (
     INCIDENTAL_PAGE_ROLES as LOW_OVERVIEW_PAGE_ROLES,
 )
 
-# Rule-based summary templates (no domain terms)
+# Legacy role boilerplate — not written by SI v3+ (content-derived summaries only).
+# Kept for reading older stored profiles / migrations.
 SUMMARY_TEMPLATES: dict[str, str] = {
     "organization_overview": "This page describes the organization and its main activity.",
     "service_overview": "This page describes services or product categories offered.",

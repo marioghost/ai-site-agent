@@ -58,11 +58,14 @@ Protect the architecture, engineering principles, and long-term vision — by **
 | Cognitive | `COGNITIVE_ARCHITECTURE.md`, `RFC-0002-ACTIVE-KNOWLEDGE-ACQUISITION.md` | Frozen v1 |
 | Product identity | `RFC-0001-KNOWLEDGE-OS-CORE.md`, `KNOWLEDGE_INTELLIGENCE_ENGINE.md` | Frozen |
 | Engineering | `KNOWLEDGE_OS_ARCHITECTURE_v1.md` | Frozen v1 |
+| **AI Platform foundation (merge gate)** | **`ARCHITECTURE_CONTRACT_1.0.md`** | **Frozen 1.0 — binding on every PR** |
 | Release workflow | `RELEASE_ENGINEERING_WORKFLOW.md` | Mandatory lifecycle (main / origin/main) |
 
 **Changes allowed only** when there is a **fundamental architectural reason**, documented in an **ADR**.
 
 Do not redesign existing concepts unless absolutely necessary.
+
+Every future PR must comply with `ARCHITECTURE_CONTRACT_1.0.md` (ownership, data flow, dependency rules, checklist §10).
 
 ---
 
@@ -344,18 +347,19 @@ Small implementation details inside an existing boundary do **not** require ADRs
 ```
 1. ENGINEERING_PRINCIPLES.md         ← how we think (constitution)
 2. ENGINEERING_MANIFEST.md         ← non-negotiables (constitution)
-3. DEVELOPMENT_CHARTER.md            ← how we work (this document)
-4. COGNITIVE_ARCHITECTURE.md          ← what the system knows (frozen)
-5. KNOWLEDGE_OS_ARCHITECTURE_v1.md   ← subsystems & boundaries (frozen)
-6. RFC-100-PRODUCTION-MIGRATION-STRATEGY.md ← what to build next
-7. RFC-PRODUCT-READINESS.md              ← product acceptance (parallel with 1.0)
-8. RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md ← Dashboard product SoT
-9. RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md ← Dashboard implementation SoT
-10. LIFECYCLE.md                        ← capability states (Draft → Removed)
-11. docs/adr/*.md                     ← rare boundary changes
-12. docs/FEATURE_FLAGS.md             ← runtime flags (when created)
-13. docs/tech-debt/*.md              ← visible shortcuts
-14. docs/releases/RELEASE-CHECKLIST.md ← ops gates
+3. ARCHITECTURE_CONTRACT_1.0.md      ← AI Platform merge-gate constitution (frozen)
+4. DEVELOPMENT_CHARTER.md            ← how we work (this document)
+5. COGNITIVE_ARCHITECTURE.md          ← what the system knows (frozen)
+6. KNOWLEDGE_OS_ARCHITECTURE_v1.md   ← subsystems & boundaries (frozen)
+7. RFC-100-PRODUCTION-MIGRATION-STRATEGY.md ← what to build next
+8. RFC-PRODUCT-READINESS.md              ← product acceptance (parallel with 1.0)
+9. RFC-101-DASHBOARD-PRODUCT-SPECIFICATION.md ← Dashboard product SoT
+10. RFC-102-DASHBOARD-IMPLEMENTATION-ARCHITECTURE.md ← Dashboard implementation SoT
+11. LIFECYCLE.md                        ← capability states (Draft → Removed)
+12. docs/adr/*.md                     ← rare boundary changes
+13. docs/FEATURE_FLAGS.md             ← runtime flags (when created)
+14. docs/tech-debt/*.md              ← visible shortcuts
+15. docs/releases/RELEASE-CHECKLIST.md ← ops gates
 ```
 
 ---

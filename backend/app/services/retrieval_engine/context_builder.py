@@ -268,6 +268,16 @@ class RetrievalContextBuilder:
     body = clean_context_text(body or base_text, max_chars=max_chars)
 
     summary_clean = strip_ui_junk(summary or "")
+    # Skip rule-based SI template summaries — they burn tokens without facts.
+    template_markers = (
+        "this page describes",
+        "this page contains",
+        "this page provides",
+        "this page is a",
+        "this page offers",
+    )
+    if summary_clean and any(summary_clean.lower().startswith(m) for m in template_markers):
+        summary_clean = ""
     if (
       summary_clean
       and body
@@ -284,9 +294,6 @@ class RetrievalContextBuilder:
     parts: list[str] = []
     for i, block in enumerate(blocks, start=1):
       header = f"Source {i}:\nTitle: {block.title}\nURL: {block.url}"
-      if block.document_type and block.document_type != "generic_page":
-        header += f"\nType: {block.document_type}"
-      if block.page_role and block.page_role != "generic":
-        header += f"\nRole: {block.page_role}"
+      # Type/Role stay in diagnostics; omit from prompt to free evidence tokens.
       parts.append(f"{header}\nEvidence excerpt:\n{block.text}")
     return "\n\n---\n\n".join(parts)

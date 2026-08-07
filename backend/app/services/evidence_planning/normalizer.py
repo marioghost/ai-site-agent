@@ -5,7 +5,11 @@ import hashlib
 import re
 
 from app.schemas.knowledge_profile import KnowledgeProfile
-from app.services.rag_planning.purpose_catalog import infer_knowledge_slots, purpose_from_metadata
+from app.services.rag_planning.purpose_catalog import (
+    infer_knowledge_slots,
+    normalize_content_hint_to_purpose,
+    purpose_from_metadata,
+)
 from app.services.evidence_planning.types import EvidenceCandidate
 from app.services.knowledge_profile_service import KnowledgeProfileService
 from app.services.llm_options_service import estimate_tokens
@@ -41,11 +45,15 @@ def _profile_flags(
     return preferred, deprioritized
 
 
-def _duplicate_group(url: str, text: str) -> str:
+def _duplicate_group(url: str, text: str, content_hash: str = "") -> str:
+    """Prefer source content_hash so republished URLs collapse to one evidence group."""
+    digest = (content_hash or "").strip().lower()
+    if digest:
+        return f"hash:{digest[:32]}"
     norm = re.sub(r"\s+", " ", (text or "")[:500].lower()).strip()
-    digest = hashlib.sha1(norm.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    text_digest = hashlib.sha1(norm.encode("utf-8", errors="ignore")).hexdigest()[:12]
     host = (url or "").split("/")[2] if "://" in (url or "") else url
-    return f"{host}:{digest}"
+    return f"{host}:{text_digest}"
 
 
 def normalize_hits(
@@ -78,7 +86,12 @@ def normalize_hits(
         kp_pref, kp_depr = _profile_flags(profile, intent, doc)
         text = (hit.text or "").strip()
         heading = (hit.heading or "").strip()
-        purpose = getattr(hit, "content_type_hint", "") or ""
+        # Prefer SI document_purpose; map chunk hints into purpose vocabulary.
+        purpose = (getattr(hit, "document_purpose", "") or "").strip()
+        if not purpose:
+            purpose = normalize_content_hint_to_purpose(
+                getattr(hit, "content_type_hint", "") or ""
+            )
         if purpose in {"", "generic"}:
             purpose = purpose_from_metadata(page_role=role, document_type=doc)
         aspects = infer_knowledge_slots(
@@ -92,6 +105,13 @@ def normalize_hits(
         if document_scores and hit.source_id in document_scores:
             rerank = max(rerank, document_scores[hit.source_id])
         injected = is_broad_injected(hit)
+        breakdown = getattr(hit, "score_breakdown", None) or {}
+        seeded_label = str(breakdown.get("compatibility_label") or "ambiguous")
+        seeded_focus = float(breakdown.get("focus_match_score") or 0.0)
+        quality = max(0.0, min(1.0, 1.0 - float(hit.boilerplate_ratio or 0.0)))
+        cq = float(getattr(hit, "content_quality", 0) or 0)
+        if cq > 0:
+            quality = max(0.0, min(1.0, 0.55 * quality + 0.45 * (cq / 100.0)))
         candidates.append(
             EvidenceCandidate(
                 candidate_id=f"{hit.source_id}:{hit.chunk_index}",
@@ -114,10 +134,16 @@ def normalize_hits(
                 canonical=bool(hit.source_canonical or hit.is_canonical),
                 kp_preferred=kp_pref,
                 kp_deprioritized=kp_depr,
-                quality_score=max(0.0, min(1.0, 1.0 - float(hit.boilerplate_ratio or 0.0))),
+                quality_score=quality,
                 answerability=0.5,
                 intent_compatibility=0.5,
-                duplicate_group=_duplicate_group(hit.url or "", text),
+                focus_match_score=seeded_focus,
+                compatibility_label=seeded_label,
+                duplicate_group=_duplicate_group(
+                    hit.url or "",
+                    text,
+                    getattr(hit, "content_hash", "") or "",
+                ),
                 available_aspects=aspects,
                 section_text=text,
                 section_heading=heading,

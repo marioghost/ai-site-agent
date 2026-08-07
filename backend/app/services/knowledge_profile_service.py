@@ -5,6 +5,7 @@ import json
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import (
@@ -85,7 +86,7 @@ def _generic_document_type_rules() -> list[DocumentTypeRule]:
             document_type="news_page",
             url_patterns=["/news", "news/", "novyny", "новини", "press", "/press"],
             title_patterns=["News", "Новини", "Press"],
-            priority=60,
+            priority=88,
         ),
         DocumentTypeRule(
             document_type="blog_page",
@@ -96,13 +97,15 @@ def _generic_document_type_rules() -> list[DocumentTypeRule]:
         DocumentTypeRule(
             document_type="about_page",
             url_patterns=[
-                "about-us", "about_us", "/about", "about/", "about-bank", "about_bank",
-                "pro-kompaniyu", "pro-nas", "про-нас", "pro-bank", "history", "istoriya",
-                "історія", "company", "corporate", "who-we-are",
+                "about-us", "about_us", "/about", "about/",
+                "pro-kompaniyu", "pro-nas", "про-нас", "who-we-are",
+                "/corporate/", "corporate-info",
+                # Path-bounded company/history — avoid matching news slugs containing those words.
+                "/company", "company/", "company-info", "our-company",
+                "/history", "history/", "our-history", "istoriya", "історія",
             ],
             title_patterns=[
                 "About", "Про компанію", "Про нас", "About us", "History", "Історія",
-                "Про банк",
             ],
             heading_patterns=["About us", "Про нас", "History", "Історія"],
             priority=90,
@@ -164,7 +167,6 @@ def _generic_content_hint_rules() -> list[ContentHintRule]:
         ContentHintRule(content_type_hint="contacts", patterns=["контакт", "contact", "телефон", "phone", "email", "адреса"], priority=85),
         ContentHintRule(content_type_hint="faq", patterns=["faq", "поширені запитання", "часті запитання"], priority=80),
         ContentHintRule(content_type_hint="pricing", patterns=["pricing", "price list", "тариф", "ціни", "вартість"], priority=75),
-        ContentHintRule(content_type_hint="rates", patterns=["exchange rate", "currency", "курс валют", "курси валют", "usd", "eur", "купівля", "продаж"], priority=72),
         ContentHintRule(content_type_hint="products", patterns=["product", "catalog", "каталог", "товар", "послуг"], priority=70),
         ContentHintRule(content_type_hint="docs", patterns=["documentation", "docs", "api reference", "документація"], priority=68),
         ContentHintRule(content_type_hint="support", patterns=["support", "help center", "підтримка"], priority=65),
@@ -179,10 +181,10 @@ def _generic_source_priority_rules() -> list[SourcePriorityRule]:
     return [
         SourcePriorityRule(
             query_intent="entity_overview",
-            boost_document_types=["about_page", "homepage", "documentation_page", "contact_page"],
+            boost_document_types=["about_page", "homepage", "company_page"],
             deprioritize_document_types=[
                 "news_page", "blog_page", "promotion_page", "action_page", "offer_page",
-                "media_page",
+                "media_page", "contact_page", "documentation_page",
             ],
             boost_content_hints=["about", "overview"],
             deprioritize_content_hints=["news", "career", "employee_stories", "jobs", "recruitment"],
@@ -973,6 +975,24 @@ class KnowledgeProfileService:
         return [{"id": k, "label": labels.get(k, k)} for k in PRESETS]
 
     @staticmethod
+    def _pattern_matches(pattern: str, *, url: str, haystack: str) -> bool:
+        """Match document-type patterns with path-segment safety for `/…` URL rules."""
+        p = (pattern or "").lower().strip()
+        if not p:
+            return False
+        # Slash-prefixed URL rules: match path segments, not substring-in-slug.
+        if p.startswith("/") and url:
+            path = (urlparse(url.lower()).path or "/").rstrip("/") or "/"
+            needle = p.strip("/")
+            if not needle:
+                return path == "/"
+            segments = [s for s in path.split("/") if s]
+            if "/" in needle:
+                return needle in "/".join(segments) or path.endswith("/" + needle)
+            return needle in segments
+        return p in haystack
+
+    @staticmethod
     def match_document_type(
         profile: KnowledgeProfile,
         *,
@@ -992,7 +1012,11 @@ class KnowledgeProfileService:
         rules = sorted(profile.document_type_rules, key=lambda r: -r.priority)
         for rule in rules:
             patterns = rule.url_patterns + rule.title_patterns + rule.heading_patterns
-            if any(p.lower() in haystack for p in patterns if p):
+            if any(
+                KnowledgeProfileService._pattern_matches(p, url=url, haystack=haystack)
+                for p in patterns
+                if p
+            ):
                 return rule.document_type
         return "generic_page"
 

@@ -59,6 +59,13 @@ class DocumentScorer:
             if profile is None:
                 profile = SourceIntelligenceService.build_profile(source)
             self._enrich_hit_from_profile(hit, profile)
+        if source is not None:
+            ch = (getattr(source, "content_hash", None) or "").strip()
+            if ch:
+                hit.content_hash = ch
+                for chunk in doc.all_chunks:
+                    if not getattr(chunk, "content_hash", ""):
+                        chunk.content_hash = ch
 
         title_s, main_s, url_s, bp_pen, nav_pen, match_reason = score_content_match(
             query_tokens=tokens,
@@ -95,7 +102,13 @@ class DocumentScorer:
         quality_penalty = self._quality.ranking_penalty(quality_metrics)
         quality_score = max(0.0, compat.source_quality_score - quality_penalty * 0.3)
 
-        freshness_boost = self._freshness_boost(indexed_at or getattr(source, "updated_at", None))
+        freshness_boost = self._freshness_boost(
+            indexed_at or getattr(source, "updated_at", None),
+            page_role=(hit.page_role or getattr(profile, "page_role", "") or ""),
+            document_type=(hit.document_type or ""),
+            semantic_focus=getattr(understanding, "semantic_focus", "") or "",
+            legacy_intent=getattr(understanding, "legacy_intent", "") or "",
+        )
 
         # Normalized final score — always populated when any signal exists
         final = (
@@ -107,7 +120,14 @@ class DocumentScorer:
             + min(0.10, max(0.0, metadata_boost))
         )
         signal_present = dense > 0 or lexical > 0 or compat.compatibility_score > 0
-        if signal_present:
+        # Floor only for non-negative compatibility — avoid keeping junk alive.
+        if signal_present and compat.compatibility_label not in {
+            "news_only",
+            "marketing_only",
+            "historical",
+            "irrelevant",
+            "adjacent_incompatible",
+        }:
             final = max(
                 final,
                 min(
@@ -201,10 +221,38 @@ class DocumentScorer:
         hit.source_language = profile.source_language
         hit.document_type = profile.document_type or hit.document_type
         hit.boilerplate_ratio = profile.boilerplate_ratio or hit.boilerplate_ratio
+        purpose = ""
+        if profile.semantic and isinstance(profile.semantic, dict):
+            purpose = str(profile.semantic.get("document_purpose") or "").strip()
+        hit.document_purpose = purpose
 
-    def _freshness_boost(self, indexed_at: datetime | None) -> float:
+    def _freshness_boost(
+        self,
+        indexed_at: datetime | None,
+        *,
+        page_role: str = "",
+        document_type: str = "",
+        semantic_focus: str = "",
+        legacy_intent: str = "",
+    ) -> float:
         weight = float(getattr(self.settings, "ranking_freshness_weight", 0.05) or 0.05)
         if weight <= 0 or indexed_at is None:
+            return 0.0
+        # Recently reindexed news/campaign must not outrank stable canonical pages
+        # on non-news information needs.
+        incidental = page_role in {"news", "campaign", "marketing"} or document_type in {
+            "news_page",
+            "blog_page",
+            "blog_post",
+            "promotion_page",
+            "offer_page",
+            "action_page",
+        }
+        news_need = semantic_focus in {"news", "promotion"} or legacy_intent in {
+            "news_query",
+            "promotion",
+        }
+        if incidental and not news_need:
             return 0.0
         now = datetime.now(timezone.utc)
         if indexed_at.tzinfo is None:

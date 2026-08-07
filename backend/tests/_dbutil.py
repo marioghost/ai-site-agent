@@ -220,6 +220,9 @@ def make_engine(*, fresh: bool = True) -> Engine:
     assert_isolated_from_app_database(url)
     if fresh:
         assert_destructive_database_allowed(url)
+    # Ensure all ORM tables (including Knowledge Understanding) are registered.
+    from app import models as _models  # noqa: F401
+
     engine = create_engine(url, future=True)
     if fresh:
         Base.metadata.drop_all(bind=engine)

@@ -4,11 +4,26 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 
 from app.models.source import Source
+from app.services.retrieval_engine.focus_compatibility import is_negative_compatibility
 from app.services.retrieval_engine.explanation_builder import ExplanationBuilder
 from app.services.retrieval_engine.query_understanding import QueryUnderstanding
 from app.services.retrieval_engine.semantic_compatibility import SemanticCompatibilityResult
 from app.services.retrieval_engine.types import RankedDocument
 from app.services.source_intelligence_service import SourceIntelligenceService, SourceProfile
+
+
+_STRICT_FOCI = frozenset(
+    {
+        "organization_profile",
+        "product_specification",
+        "rates",
+        "eligibility",
+        "definition",
+        "locator",
+        "contact",
+    }
+)
+_ALLOW_NEWS_FOCI = frozenset({"comparison"})  # news/promotion intents handled via answer type
 
 
 class DocumentReranker:
@@ -28,15 +43,46 @@ class DocumentReranker:
 
         scored = sorted(documents, key=lambda d: d.score.final_score, reverse=True)
         is_broad = understanding.expected_answer_type == "overview" or understanding.ambiguity >= 0.6
+        focus = getattr(understanding, "semantic_focus", "") or "general"
+        allow_adjacent = (
+            understanding.expected_answer_type in {"comparison", "listing"}
+            or understanding.legacy_intent in {"news_query"}
+            or "promotion" in (understanding.legacy_intent or "")
+            or focus in _ALLOW_NEWS_FOCI
+        )
 
         selected: list[RankedDocument] = []
         rejected: list[RankedDocument] = []
         seen_purposes: set[str] = set()
         seen_topics: set[str] = set()
+        soft_negatives: list[RankedDocument] = []
 
         for doc in scored:
             compat = self._compat_from_doc(doc)
             profile = self._profile_for(doc, sources)
+            label = compat.compatibility_label
+
+            if (
+                not allow_adjacent
+                and focus in _STRICT_FOCI
+                and is_negative_compatibility(label)
+            ):
+                # Hard-drop news/marketing; keep adjacent as last-resort pool so we do not
+                # empty retrieval when the site lacks a perfect focus page.
+                if label in {"news_only", "marketing_only", "historical"}:
+                    doc.selected = False
+                    reason = f"negative evidence for focus ({focus}:{label})"
+                    doc.why_rejected = ExplanationBuilder.why_rejected(
+                        doc,
+                        understanding=understanding,
+                        compatibility=compat,
+                        profile=profile,
+                        reason_code=reason,
+                    )
+                    rejected.append(doc)
+                    continue
+                soft_negatives.append(doc)
+                continue
 
             if doc.score.final_score < minimum_score:
                 doc.selected = False
@@ -111,33 +157,66 @@ class DocumentReranker:
                 continue
 
             if len(selected) >= limit:
-                reason = "lower score than selected documents"
-                doc.selected = False
-                doc.why_rejected = ExplanationBuilder.why_rejected(
-                    doc,
-                    understanding=understanding,
-                    compatibility=compat,
-                    profile=profile,
-                    reason_code=reason,
-                )
-                rejected.append(doc)
-                continue
+                break
 
             doc.selected = True
-            doc.why_selected = doc.ranking_reason or ExplanationBuilder.why_selected(
-                doc,
-                understanding=understanding,
-                compatibility=compat,
-                profile=profile,
+            doc.why_selected = ExplanationBuilder.why_selected(
+                doc, understanding=understanding, compatibility=compat, profile=profile
             )
-            doc.why_rejected = ""
             selected.append(doc)
             if purpose:
                 seen_purposes.add(purpose)
             if topic_key:
                 seen_topics.add(topic_key)
 
-        for doc in rejected:
+        # Last resort: if strict focus wiped the pool, admit best adjacent (never news/marketing).
+        if not selected and soft_negatives and focus in _STRICT_FOCI:
+            for doc in soft_negatives:
+                if len(selected) >= max(1, min(limit, 2)):
+                    break
+                compat = self._compat_from_doc(doc)
+                profile = self._profile_for(doc, sources)
+                doc.selected = True
+                doc.why_selected = ExplanationBuilder.why_selected(
+                    doc, understanding=understanding, compatibility=compat, profile=profile
+                )
+                selected.append(doc)
+            soft_rejected = [d for d in soft_negatives if d not in selected]
+            for doc in soft_rejected:
+                doc.selected = False
+                compat = self._compat_from_doc(doc)
+                profile = self._profile_for(doc, sources)
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=f"negative evidence for focus ({focus}:adjacent_incompatible)",
+                )
+                rejected.append(doc)
+        else:
+            for doc in soft_negatives:
+                doc.selected = False
+                compat = self._compat_from_doc(doc)
+                profile = self._profile_for(doc, sources)
+                doc.why_rejected = ExplanationBuilder.why_rejected(
+                    doc,
+                    understanding=understanding,
+                    compatibility=compat,
+                    profile=profile,
+                    reason_code=f"negative evidence for focus ({focus}:adjacent_incompatible)",
+                )
+                rejected.append(doc)
+
+        # Reject remaining unscored tail.
+        selected_ids = {id(d) for d in selected}
+        rejected_ids = {id(d) for d in rejected}
+        for doc in scored:
+            if id(doc) in selected_ids or id(doc) in rejected_ids:
+                continue
+            if len(selected) < limit and doc.score.final_score >= minimum_score:
+                continue
+            doc.selected = False
             if not doc.why_rejected:
                 compat = self._compat_from_doc(doc)
                 profile = self._profile_for(doc, sources)
@@ -146,8 +225,9 @@ class DocumentReranker:
                     understanding=understanding,
                     compatibility=compat,
                     profile=profile,
-                    reason_code="not in top document limit",
+                    reason_code="not selected in top documents",
                 )
+            rejected.append(doc)
 
         return selected, rejected
 

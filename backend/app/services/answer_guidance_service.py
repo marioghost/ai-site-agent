@@ -58,21 +58,32 @@ def build_answer_guidance(
         for term in getattr(planner_decision.understanding, "focus_terms", []) or []
     }
     exact = sum(
-        label in {"exact_match", "organization_support", "navigation_support"}
+        label
+        in {
+            "exact_match",
+            "same_product",
+            "organization_support",
+            "navigation_support",
+            "definition_support",
+            "procedure_support",
+        }
         for label in labels
     )
-    category = sum(label == "category_support" for label in labels)
+    category = sum(label in {"category_support", "same_category", "supporting_evidence"} for label in labels)
+    historical = sum(label == "historical" for label in labels)
     ambiguous = sum(label == "ambiguous" for label in labels)
     adjacent_rejected = [
         item.to_dict()
         for item in evidence_plan.rejected
-        if item.candidate.compatibility_label == "adjacent_incompatible"
+        if item.candidate.compatibility_label
+        in {"adjacent_incompatible", "news_only", "marketing_only", "historical"}
     ][:8]
 
+    understanding = planner_decision.understanding
     scope = "direct"
     guidance_lines: list[str] = []
     if answer_plan.answer_type in {"fact", "definition", "general", "listing", "comparison"}:
-        if exact == 0 and category > 0:
+        if exact == 0 and (category > 0 or historical > 0):
             scope = "qualified"
             guidance_lines.append(
                 "State the exact scope supported by the evidence. If the evidence applies "
@@ -91,7 +102,7 @@ def build_answer_guidance(
                 "The evidence appears scoped to a narrower segment or variant. Name that "
                 "scope explicitly and do not present it as universal."
             )
-    if answer_plan.answer_type == "contact":
+    if answer_plan.answer_type == "contact" or getattr(understanding, "semantic_focus", "") == "locator":
         guidance_lines.append(
             "Give actionable navigation or steps from the evidence, not a generic referral to the site."
         )
@@ -99,6 +110,23 @@ def build_answer_guidance(
         guidance_lines.append(
             "Ignore adjacent but different products, categories, or incidental pages that do not answer the same question."
         )
+
+    sufficiency = getattr(evidence_plan, "sufficiency", None)
+    if sufficiency is not None:
+        level = getattr(sufficiency, "level", "") or ""
+        goal = float(getattr(sufficiency, "goal_satisfaction", 1.0) or 0.0)
+        matched = bool(getattr(sufficiency, "expected_evidence_matched", True))
+        if (
+            level in {"weak", "no_evidence"}
+            or (not matched and goal < 0.35)
+            or not evidence_plan.selected
+        ):
+            scope = "refuse"
+            guidance_lines = [
+                "The selected evidence does not answer this question. Clearly say you cannot "
+                "answer from the available site materials. Do not invent facts, contacts, "
+                "rates, or procedures."
+            ] + guidance_lines
 
     return {
         "answer_scope": scope,
@@ -113,4 +141,10 @@ def build_answer_guidance(
         "required_slots": list(answer_plan.required_slot_order),
         "output_budget_words": answer_plan.target_words,
         "output_budget_sentences": answer_plan.target_sentences,
+        "semantic_focus": getattr(understanding, "semantic_focus", None),
+        "expected_evidence_type": getattr(understanding, "expected_evidence_type", None),
+        "goal_satisfaction": getattr(sufficiency, "goal_satisfaction", None) if sufficiency else None,
+        "expected_evidence_matched": getattr(sufficiency, "expected_evidence_matched", None)
+        if sufficiency
+        else None,
     }

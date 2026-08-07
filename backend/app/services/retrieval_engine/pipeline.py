@@ -130,8 +130,14 @@ class DocumentFirstRetrievalPipeline:
         sources = self._load_sources([d.source_id for d in documents])
         query_tokens = token_set(normalized)
         filtered_by_quality = 0
+        scored_docs = []
         for doc in documents:
             src = sources.get(doc.source_id)
+            # Propagate content fingerprint for downstream evidence diversity.
+            if src is not None and doc.representative_chunk is not None:
+                ch = (getattr(src, "content_hash", None) or "").strip()
+                if ch:
+                    doc.representative_chunk.content_hash = ch
             scorer.score_document(
                 doc,
                 query=query,
@@ -141,8 +147,17 @@ class DocumentFirstRetrievalPipeline:
                 query_language=query_language,
                 indexed_at=getattr(src, "updated_at", None) if src else None,
             )
-            if doc.score.quality_boost <= 0 and doc.representative_chunk.boilerplate_ratio > 0.7:
+            bp = float(doc.representative_chunk.boilerplate_ratio or 0.0)
+            # Soft-reject extreme boilerplate: keep for diagnostics, crush rank score.
+            if bp > 0.7 and doc.score.quality_boost <= 0.15:
                 filtered_by_quality += 1
+                doc.selected = False
+                doc.why_rejected = "high_boilerplate_ratio"
+                doc.score.final_score = min(doc.score.final_score, 0.01)
+                if doc.representative_chunk is not None:
+                    doc.representative_chunk.final_score = doc.score.final_score
+            scored_docs.append(doc)
+        documents = scored_docs
         documents.sort(key=lambda d: d.score.final_score, reverse=True)
         state.complete("document_scoring", detail=f"{len(documents)} scored")
 

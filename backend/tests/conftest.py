@@ -63,6 +63,7 @@ def pytest_collection_modifyitems(config, items):
                     "test_epistemic_",
                     "test_tension_",
                     "test_understanding_tensions",
+                    "test_understanding_builder",
                     "test_operational_metrics.py",
                 )
             ):

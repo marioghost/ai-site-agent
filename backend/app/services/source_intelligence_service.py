@@ -22,10 +22,75 @@ from app.services.source_intelligence_constants import (
     GENERIC_DOCUMENT_TYPES,
     LOW_OVERVIEW_DOCUMENT_TYPES,
     SOURCE_INTELLIGENCE_VERSION,
-    SUMMARY_TEMPLATES,
 )
+from app.services.rag_planning.purpose_catalog import role_from_purpose
 
 from app.services.source_intelligence_perf import detect_source_language
+
+_LANG_PATH_SEGMENTS = frozenset(
+    {
+        "en",
+        "uk",
+        "ua",
+        "ru",
+        "de",
+        "fr",
+        "es",
+        "pl",
+        "it",
+        "pt",
+        "en-us",
+        "uk-ua",
+        "ru-ru",
+    }
+)
+
+_KEYWORD_STOP = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "this",
+        "that",
+        "are",
+        "was",
+        "were",
+        "have",
+        "has",
+        "will",
+        "can",
+        "not",
+        "you",
+        "your",
+        "our",
+        "all",
+        "any",
+        "page",
+        "home",
+        "site",
+        "http",
+        "https",
+        "www",
+        "com",
+        "html",
+        "про",
+        "для",
+        "або",
+        "також",
+        "цього",
+        "який",
+        "яка",
+        "які",
+        "що",
+        "як",
+        "це",
+        "на",
+        "від",
+        "при",
+    }
+)
 
 
 @dataclass
@@ -67,16 +132,35 @@ def _url_depth(url: str) -> int:
 def _site_section(url: str, document_type: str) -> str:
     path = (urlparse(url or "").path or "").lower()
     for segment in path.strip("/").split("/"):
-        if segment:
-            return segment[:64]
+        if not segment or segment in _LANG_PATH_SEGMENTS:
+            continue
+        if len(segment) <= 1:
+            continue
+        return segment[:64]
     return document_type.replace("_page", "")[:64] or "general"
 
 
 def _extract_keywords(title: str, main_text: str, limit: int = 12) -> list[str]:
-    tokens = re.findall(r"[\w\u0400-\u04FF]{3,}", f"{title} {main_text[:600]}".lower())
-    seen: set[str] = set()
+    """Prefer title tokens, then frequent content tokens; drop stopwords."""
+    title_tokens = re.findall(r"[\w\u0400-\u04FF]{3,}", (title or "").lower())
+    body_tokens = re.findall(r"[\w\u0400-\u04FF]{3,}", (main_text or "")[:1200].lower())
+    freq: dict[str, int] = {}
+    for tok in body_tokens:
+        if tok in _KEYWORD_STOP:
+            continue
+        freq[tok] = freq.get(tok, 0) + 1
+
     out: list[str] = []
-    for tok in tokens:
+    seen: set[str] = set()
+    for tok in title_tokens:
+        if tok in _KEYWORD_STOP or tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+        if len(out) >= max(4, limit // 2):
+            break
+
+    for tok, _count in sorted(freq.items(), key=lambda kv: (-kv[1], -len(kv[0]), kv[0])):
         if tok in seen:
             continue
         seen.add(tok)
@@ -84,6 +168,42 @@ def _extract_keywords(title: str, main_text: str, limit: int = 12) -> list[str]:
         if len(out) >= limit:
             break
     return out
+
+
+def _content_summary(title: str, main_text: str, *, max_chars: int = 280) -> str:
+    """Page-specific lede summary — never role boilerplate."""
+    text = (main_text or "").strip()
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", text) if p.strip()]
+    pick = ""
+    skip_prefixes = (
+        "cookie",
+        "©",
+        "copyright",
+        "all rights",
+        "javascript",
+        "enable cookies",
+        "privacy policy",
+    )
+    for para in paragraphs:
+        clean = re.sub(r"\s+", " ", para).strip()
+        if len(clean) < 40:
+            continue
+        low = clean.lower()
+        if any(low.startswith(p) or p in low[:40] for p in skip_prefixes):
+            continue
+        pick = clean
+        break
+    if not pick:
+        pick = re.sub(r"\s+", " ", text)[:max_chars].strip()
+    title_clean = (title or "").strip()
+    if title_clean and pick:
+        if title_clean.lower() not in pick.lower()[:120]:
+            combined = f"{title_clean}. {pick}"
+        else:
+            combined = pick
+    else:
+        combined = pick or title_clean
+    return combined[:max_chars].strip()
 
 
 class SourceIntelligenceService:
@@ -127,30 +247,10 @@ class SourceIntelligenceService:
             title=title,
             main_text=main_text,
         )
-        canonical = SourceIntelligenceService._is_canonical(
-            url=url,
-            title=title,
-            document_type=document_type,
-            is_homepage=is_home,
-            profile=profile,
-        )
-        importance = SourceIntelligenceService._importance(
-            document_type=document_type,
-            page_role=page_role,
-            canonical=canonical,
-            is_homepage=is_home,
-            url_depth=url_depth,
-            content_quality=content_quality,
-            boilerplate_ratio=boilerplate_ratio,
-            main_chars=main_chars,
-            profile=profile,
-        )
         source_language = detect_source_language(title, main_text[:800])
         keywords = _extract_keywords(title, main_text)
-        summary = SUMMARY_TEMPLATES.get(page_role, SUMMARY_TEMPLATES["generic"])
-        confidence = min(0.98, 0.45 + content_quality / 200 + (0.15 if canonical else 0))
-
         site_section = _site_section(url, document_type)
+
         semantic_profile: SourceSemanticProfile | None = None
         llm_enabled = use_llm
         if llm_enabled is None and settings is not None:
@@ -184,6 +284,18 @@ class SourceIntelligenceService:
                 ),
             )
 
+        # Refine page_role from high-confidence purpose (keeps type as weak prior).
+        page_role = SourceIntelligenceService._refine_page_role(
+            page_role=page_role,
+            document_type=document_type,
+            semantic=semantic_profile,
+            is_homepage=is_home,
+        )
+
+        summary = _content_summary(title, main_text)
+        if not summary and semantic_profile.main_topic:
+            summary = semantic_profile.main_topic[:160]
+
         if semantic_profile.main_topic:
             topics = [semantic_profile.main_topic, *semantic_profile.subtopics[:6]]
         else:
@@ -195,15 +307,41 @@ class SourceIntelligenceService:
                 + semantic_profile.synonyms
             )
         )[:24]
+
+        confidence = min(0.98, 0.45 + content_quality / 200)
         if semantic_profile.confidence > confidence:
             confidence = semantic_profile.confidence
-        if semantic_profile.generator == "llm" and semantic_profile.main_topic:
-            summary = (
-                f"{semantic_profile.main_topic}: {semantic_profile.document_purpose.replace('_', ' ').title()}."
-            )
+
+        canonical = SourceIntelligenceService._is_canonical(
+            url=url,
+            title=title,
+            document_type=document_type,
+            is_homepage=is_home,
+            profile=profile,
+            content_quality=content_quality,
+            document_purpose=semantic_profile.document_purpose,
+        )
+        importance = SourceIntelligenceService._importance(
+            document_type=document_type,
+            page_role=page_role,
+            canonical=canonical,
+            is_homepage=is_home,
+            url_depth=url_depth,
+            content_quality=content_quality,
+            boilerplate_ratio=boilerplate_ratio,
+            main_chars=main_chars,
+            profile=profile,
+        )
+        if canonical:
+            confidence = min(0.98, confidence + 0.08)
 
         flags = SourceIntelligenceService._answer_flags(document_type, page_role)
         flags = SourceIntelligenceService._apply_semantic_flags(flags, semantic_profile)
+
+        # Prefer semantic entity; never fall back to KP industry entity_type labels.
+        entity_types = (
+            [semantic_profile.entity_type] if semantic_profile.entity_type else []
+        )
 
         return SourceProfile(
             source_id=source.id,
@@ -216,9 +354,7 @@ class SourceIntelligenceService:
             boilerplate_ratio=boilerplate_ratio,
             site_section=site_section,
             topics=topics,
-            entity_types=[semantic_profile.entity_type] if semantic_profile.entity_type else (
-                [profile.entity_type] if profile.entity_type else []
-            ),
+            entity_types=entity_types,
             should_answer_general=flags["general"],
             should_answer_product=flags["product"],
             should_answer_support=flags["support"],
@@ -245,6 +381,50 @@ class SourceIntelligenceService:
         return SourceSemanticProfile.model_validate(data)
 
     @staticmethod
+    def _refine_page_role(
+        *,
+        page_role: str,
+        document_type: str,
+        semantic: SourceSemanticProfile,
+        is_homepage: bool,
+    ) -> str:
+        """Allow high-confidence purpose to correct weak/generic roles."""
+        purpose = (semantic.document_purpose or "").lower().strip()
+        purpose_conf = float(semantic.document_purpose_confidence or 0.0)
+        if purpose_conf < 0.62 or not purpose:
+            return page_role
+        refined = role_from_purpose(purpose, fallback_role=page_role)
+        # Homepage identity stays organization_overview even if purpose is landing page.
+        if is_homepage or document_type == "homepage":
+            if purpose in {"news", "promotion"}:
+                return refined
+            return "organization_overview"
+        # Strong typed pages: only override when purpose clearly conflicts.
+        strong_types = {
+            "news_page",
+            "blog_page",
+            "blog_post",
+            "promotion_page",
+            "campaign_page",
+            "offer_page",
+            "action_page",
+            "contact_page",
+            "faq_page",
+            "legal_page",
+            "product_page",
+            "pricing_page",
+        }
+        if document_type in strong_types:
+            type_role = DOCUMENT_TYPE_TO_ROLE.get(document_type, page_role)
+            incidental_purposes = {"news", "promotion", "contact information", "faq", "legal information"}
+            if purpose in incidental_purposes:
+                return refined
+            return type_role
+        if page_role in {"generic", "marketing"} or refined != page_role:
+            return refined
+        return page_role
+
+    @staticmethod
     def _apply_semantic_flags(
         flags: dict[str, bool],
         semantic: SourceSemanticProfile,
@@ -253,17 +433,34 @@ class SourceIntelligenceService:
         intents = {i.lower() for i in semantic.supported_intents}
         if purpose in {"product listing", "product details", "service description", "pricing"}:
             flags["product"] = True
-        if purpose in {"about company", "landing page", "general information"}:
+        if purpose == "about company":
             flags["general"] = True
-            flags["company"] = purpose == "about company"
+            flags["company"] = True
+        if purpose == "landing page":
+            # Landing pages are overview-capable only when suitable_for says so.
+            suitable = " ".join(semantic.suitable_for).lower()
+            if "overview" in suitable or "about" in suitable or "organization" in suitable:
+                flags["general"] = True
+                flags["company"] = True
         if purpose in {"faq", "support", "documentation"}:
             flags["support"] = True
+        if purpose == "contact information":
+            # Contact is not support documentation — keep company/general off.
+            flags["support"] = False
+            flags["general"] = False
+            flags["company"] = False
+        if purpose in {"news", "promotion"}:
+            flags["general"] = False
+            flags["company"] = False
         if "product_query" in intents or "listing" in intents:
             flags["product"] = True
-        if "entity_overview" in intents or "overview" in intents:
+        if "entity_overview" in intents or (
+            "overview" in intents and purpose in {"about company", "landing page", "service description"}
+        ):
             flags["general"] = True
         if "contacts_query" in intents or "contacts" in intents:
-            flags["support"] = True
+            # Contacts intent must not mark the page as support-answerable.
+            flags["support"] = False
         return flags
 
     @staticmethod
@@ -286,6 +483,14 @@ class SourceIntelligenceService:
         score -= boilerplate_ratio * 35
         if main_chars < 80:
             score -= 20
+        # Penalize repetitive/nav-like token distributions.
+        tokens = re.findall(r"[\w\u0400-\u04FF]{3,}", (main_text or "")[:2000].lower())
+        if len(tokens) >= 40:
+            unique_ratio = len(set(tokens)) / max(len(tokens), 1)
+            if unique_ratio < 0.35:
+                score -= 15
+            elif unique_ratio < 0.5:
+                score -= 8
         return max(5, min(100, int(score)))
 
     @staticmethod
@@ -296,11 +501,21 @@ class SourceIntelligenceService:
         document_type: str,
         is_homepage: bool,
         profile: KnowledgeProfile,
+        content_quality: int = 0,
+        document_purpose: str = "",
     ) -> bool:
-        if is_homepage or document_type in CANONICAL_DOCUMENT_TYPES:
+        purpose = (document_purpose or "").lower().strip()
+        if purpose in {"news", "promotion", "contact information"}:
+            return False
+        quality = int(content_quality or 0)
+        # Thin marketing homepages should not become default authority.
+        if is_homepage:
+            return quality >= 35
+        if document_type in CANONICAL_DOCUMENT_TYPES:
             if document_type in LOW_OVERVIEW_DOCUMENT_TYPES:
                 return False
-            return True
+            # About/company also need enough substance.
+            return quality >= 35
         matched = KnowledgeProfileService.match_document_type(
             profile,
             url=url,
@@ -308,7 +523,9 @@ class SourceIntelligenceService:
             headings="",
             is_homepage=is_homepage,
         )
-        return matched in CANONICAL_DOCUMENT_TYPES
+        if matched in CANONICAL_DOCUMENT_TYPES:
+            return quality >= 35
+        return False
 
     @staticmethod
     def _importance(
@@ -350,14 +567,17 @@ class SourceIntelligenceService:
             if document_type in rule.deprioritize_document_types:
                 score -= 22
 
-        if page_role == "campaign":
+        if page_role in {"campaign", "news", "marketing"}:
             score -= 12
+        if page_role == "contact":
+            score -= 6
         return max(1, min(100, int(score)))
 
     @staticmethod
     def _answer_flags(document_type: str, page_role: str) -> dict[str, bool]:
         return {
-            "general": page_role in {"organization_overview", "service_overview", "generic"}
+            # generic alone is not overview-answerable — purpose flags may promote it.
+            "general": page_role in {"organization_overview", "service_overview"}
             or document_type in {"homepage", "about_page", "company_page", "category_page"},
             "company": page_role == "organization_overview"
             or document_type in {"homepage", "about_page", "company_page"},

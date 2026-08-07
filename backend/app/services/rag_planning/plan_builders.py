@@ -109,6 +109,14 @@ def build_knowledge_plan(
             preferred_doc_types = OVERVIEW_DOCUMENT_TYPES
             deprioritized_doc_types = INCIDENTAL_DOCUMENT_TYPES
 
+    semantic_focus = understanding.semantic_focus if understanding else "general"
+    expected_evidence_type = (
+        understanding.expected_evidence_type if understanding else "general"
+    )
+    if understanding:
+        reasons.append(f"semantic_focus={semantic_focus}")
+        reasons.append(f"expected_evidence_type={expected_evidence_type}")
+
     return KnowledgePlan(
         information_need=information_need,
         answer_type=answer_type,
@@ -119,6 +127,8 @@ def build_knowledge_plan(
         unsuitable_purposes=unsuitable_purposes,
         preferred_document_types=preferred_doc_types,
         deprioritized_document_types=deprioritized_doc_types,
+        semantic_focus=semantic_focus,
+        expected_evidence_type=expected_evidence_type,
         plan_reasons=tuple(reasons),
     )
 
