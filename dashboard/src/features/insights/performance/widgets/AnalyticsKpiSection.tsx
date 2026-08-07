@@ -19,9 +19,14 @@ function formatTrend(trend: MetricTrend | undefined): {
   direction: "up" | "down" | "neutral";
 } {
   if (!trend || trend.change_pct == null) return { direction: "neutral" };
-  const sign = trend.change_pct > 0 ? "+" : "";
+  const raw = trend.change_pct;
+  const capped = Math.max(-999, Math.min(999, raw));
+  const sign = capped > 0 ? "+" : "";
+  // Backend already caps at ±999; keep a hard UI bound for older payloads.
+  const label =
+    Math.abs(raw) > 999 ? `${sign}999%+` : `${sign}${capped}%`;
   return {
-    label: `${sign}${trend.change_pct}%`,
+    label,
     direction: trend.direction as "up" | "down" | "neutral",
   };
 }

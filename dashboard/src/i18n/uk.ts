@@ -530,6 +530,7 @@ export const uk: TranslationDict = {
   "indexing.intelligence.warn_many_workers":
     "Більше 2 паралельних потоків рідко допомагає — швидкість обмежує паралелізм LLM (Ollama), а не база даних.",
   "indexing.intelligence.action_missing": "Обробити потрібні",
+  "indexing.intelligence.action_stop": "Зупинити",
   "indexing.intelligence.action_reprocess_all": "Переобробити всі",
   "indexing.intelligence.action_estimate": "Оцінити без змін",
   "indexing.intelligence.action_dry_run": "Оцінити без змін",

@@ -79,11 +79,68 @@ def test_intent_from_trace_json(db_session):
 
 
 def test_conversations_count(db_session):
-    db_session.add(ChatSession(session_id="s1", title="Test"))
+    now = datetime.now(timezone.utc)
+    db_session.add(ChatSession(session_id="s1", title="Test", last_message_at=now))
     db_session.add(
-        ChatMessage(session_id="s1", role="user", content="hi")
+        ChatMessage(session_id="s1", role="user", content="hi", created_at=now)
     )
     db_session.commit()
     data = AnalyticsService(db_session).product_summary("", period_days=7)
     assert data["total_conversations"] == 1
     assert data["total_messages"] == 1
+
+
+def test_product_summary_scopes_kpis_to_period(db_session):
+    now = datetime.now(timezone.utc)
+    old = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    db_session.add(ChatSession(session_id="old", title="Old", created_at=old, updated_at=old, last_message_at=old))
+    db_session.add(ChatMessage(session_id="old", role="user", content="ancient", created_at=old))
+    db_session.add(ChatSession(session_id="new", title="New", last_message_at=now))
+    db_session.add(ChatMessage(session_id="new", role="user", content="fresh", created_at=now))
+    db_session.add(
+        AnswerTrace(
+            request_id="req-new",
+            original_query="hi",
+            answer_text="ok",
+            used_context=True,
+            user_ip="1.1.1.1",
+            created_at=now,
+        )
+    )
+    db_session.commit()
+    data = AnalyticsService(db_session).product_summary("", period_days=7)
+    assert data["total_conversations"] == 1
+    assert data["total_messages"] == 1
+    assert data["unique_users"] == 1
+
+
+def test_trend_caps_extreme_relative_change():
+    from app.services.analytics_service import _trend
+
+    spiked = _trend(43065, 151)
+    assert spiked["change_pct"] == 999.0
+    assert spiked["direction"] == "up"
+    empty_prev = _trend(100, 0)
+    assert empty_prev["change_pct"] == 100.0
+
+
+def test_retrieval_quality_uses_sources_when_chunks_missing(db_session):
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        AnswerTrace(
+            request_id="req-cache",
+            original_query="about",
+            answer_text="ok",
+            used_context=True,
+            cache_hit=True,
+            selected_chunks_json="[]",
+            sources_json=json.dumps(
+                [{"url": "https://example.com/a", "title": "A", "score": 0.9}]
+            ),
+            created_at=now,
+        )
+    )
+    db_session.commit()
+    metrics = AnalyticsService(db_session).retrieval_quality(period_days=7)
+    assert metrics["avg_chunk_count"] == 1.0
+    assert metrics["context_usage_rate"] == 1.0

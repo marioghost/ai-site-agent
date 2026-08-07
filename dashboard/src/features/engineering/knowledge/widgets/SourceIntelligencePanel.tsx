@@ -32,6 +32,7 @@ type Props = {
   onGenerateMissing: () => void;
   onReprocessAll: () => void;
   onDryRun: () => void;
+  onStop?: () => void;
   busy: boolean;
   errorMessage?: string | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -43,6 +44,7 @@ export default function SourceIntelligencePanel({
   onGenerateMissing,
   onReprocessAll,
   onDryRun,
+  onStop,
   busy,
   errorMessage,
   t,
@@ -206,6 +208,11 @@ export default function SourceIntelligencePanel({
               ? t("indexing.intelligence.action_running")
               : t("indexing.intelligence.action_missing")}
           </Button>
+          {onStop ? (
+            <Button variant="danger" disabled={!isRunning} onClick={onStop}>
+              {t("indexing.intelligence.action_stop")}
+            </Button>
+          ) : null}
           <Button variant="secondary" disabled={busy || isRunning} onClick={onReprocessAll}>
             <RefreshCw size={16} aria-hidden />
             {t("indexing.intelligence.action_reprocess_all")}

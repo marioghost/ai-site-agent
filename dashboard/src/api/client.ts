@@ -466,11 +466,12 @@ export const getRetrievalQuality = async (
 
 export const getSourceAnalytics = async (
   topLimit = 15,
-  unusedLimit = 15
+  unusedLimit = 15,
+  periodDays = 30
 ): Promise<SourceAnalyticsPayload> =>
   (
     await api.get("/api/analytics/sources", {
-      params: { top_limit: topLimit, unused_limit: unusedLimit },
+      params: { top_limit: topLimit, unused_limit: unusedLimit, period_days: periodDays },
     })
   ).data;
 

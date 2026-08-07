@@ -84,7 +84,7 @@ export default function PerformanceScreen() {
           getPopularQueries(20, search, 30),
           getProblematicQueries(20, 30),
           getRetrievalQuality(PERIOD_DAYS),
-          getSourceAnalytics(15, 15),
+          getSourceAnalytics(15, 15, 30),
           getIntentDistribution(30),
           getTopicDistribution(30, 12),
           getAnalyticsInsights(PERIOD_DAYS),

@@ -524,6 +524,7 @@ export const en: TranslationDict = {
   "indexing.intelligence.warn_many_workers":
     "More than 2 parallel threads rarely helps — throughput is limited by the LLM (Ollama) concurrency, not the database.",
   "indexing.intelligence.action_missing": "Process needed",
+  "indexing.intelligence.action_stop": "Stop",
   "indexing.intelligence.action_reprocess_all": "Reprocess all",
   "indexing.intelligence.action_estimate": "Estimate only",
   "indexing.intelligence.action_dry_run": "Estimate only",

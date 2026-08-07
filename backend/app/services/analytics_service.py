@@ -21,9 +21,15 @@ def _utcnow() -> datetime:
 
 def _trend(current: float, previous: float) -> dict:
     if previous == 0:
+        # Avoid absurd "+∞%" spikes when the prior window was empty.
         change = None if current == 0 else 100.0
     else:
         change = round(((current - previous) / previous) * 100, 1)
+        # Cap extreme relative swings so the UI stays readable under load-test spikes.
+        if change > 999.0:
+            change = 999.0
+        elif change < -999.0:
+            change = -999.0
     if change is None or abs(change) < 0.05:
         direction = "neutral"
     elif change > 0:
@@ -168,18 +174,31 @@ class AnalyticsService:
         period_start = now - timedelta(days=period_days)
         prev_start = period_start - timedelta(days=period_days)
 
+        # KPI counts must match the selected period (UI labels "7 days"), not all-time.
         total_conversations = self.db.execute(
-            select(func.count()).select_from(ChatSession)
+            select(func.count())
+            .select_from(ChatSession)
+            .where(
+                func.coalesce(ChatSession.last_message_at, ChatSession.updated_at, ChatSession.created_at)
+                >= period_start
+            )
         ).scalar_one()
         total_messages = self.db.execute(
             select(func.count())
             .select_from(ChatMessage)
-            .where(ChatMessage.role.in_(("user", "assistant")))
+            .where(
+                ChatMessage.role.in_(("user", "assistant")),
+                ChatMessage.created_at >= period_start,
+            )
         ).scalar_one()
         unique_users = self.db.execute(
             select(func.count(func.distinct(AnswerTrace.user_ip)))
             .select_from(AnswerTrace)
-            .where(AnswerTrace.user_ip.isnot(None))
+            .where(
+                AnswerTrace.user_ip.isnot(None),
+                AnswerTrace.created_at >= period_start,
+                AnswerTrace.created_at < now,
+            )
         ).scalar_one()
 
         current = self._trace_metrics(period_start, now, fallback_answer)
@@ -210,14 +229,18 @@ class AnalyticsService:
     def _trace_metrics(
         self, start: datetime, end: datetime, fallback_answer: str
     ) -> dict:
-        rows = list(
-            self.db.execute(
-                select(AnswerTrace).where(
-                    AnswerTrace.created_at >= start,
-                    AnswerTrace.created_at < end,
-                )
-            ).scalars()
-        )
+        # Column projection — avoid hydrating full ORM rows for tens of thousands of traces.
+        rows = self.db.execute(
+            select(
+                AnswerTrace.used_context,
+                AnswerTrace.cache_hit,
+                AnswerTrace.answer_text,
+                AnswerTrace.total_ms,
+            ).where(
+                AnswerTrace.created_at >= start,
+                AnswerTrace.created_at < end,
+            )
+        ).all()
         total = len(rows)
         if total == 0:
             return {
@@ -229,11 +252,24 @@ class AnalyticsService:
                 "fallback_rate": 0.0,
                 "avg_latency": 0.0,
             }
-        successful = sum(1 for r in rows if not _is_fallback(r, fallback_answer))
-        with_ctx = sum(1 for r in rows if r.used_context)
-        cache_hits = sum(1 for r in rows if r.cache_hit)
-        fallbacks = sum(1 for r in rows if _is_fallback(r, fallback_answer))
-        avg_latency = sum(r.total_ms or 0 for r in rows) / total
+        successful = 0
+        with_ctx = 0
+        cache_hits = 0
+        fallbacks = 0
+        latency_sum = 0
+        for used_context, cache_hit, answer_text, total_ms in rows:
+            is_fallback = bool(
+                (fallback_answer and answer_text == fallback_answer) or (not used_context)
+            )
+            if is_fallback:
+                fallbacks += 1
+            else:
+                successful += 1
+            if used_context:
+                with_ctx += 1
+            if cache_hit:
+                cache_hits += 1
+            latency_sum += total_ms or 0
         return {
             "total": total,
             "successful": successful,
@@ -241,7 +277,7 @@ class AnalyticsService:
             "context_rate": with_ctx / total,
             "cache_rate": cache_hits / total,
             "fallback_rate": fallbacks / total,
-            "avg_latency": avg_latency,
+            "avg_latency": latency_sum / total,
         }
 
     def timeseries(self, hours: int = 24) -> list[dict]:
@@ -452,13 +488,20 @@ class AnalyticsService:
         with_ctx = 0
         for row in rows:
             chunks = _chunks_from_row(row)
-            chunk_counts.append(len(chunks))
+            sources = _sources_from_row(row)
+            # Cache hits often omit selected_chunks_json while still using context —
+            # fall back to cited sources so avg_chunk_count is not diluted toward ~0.
+            evidence_n = len(chunks) if chunks else len(sources)
+            chunk_counts.append(evidence_n)
             if chunks:
                 score_sum += _avg_score(chunks)
                 score_n += 1
                 context_chars.append(
                     sum(len(str(c.get("text_preview") or "")) for c in chunks)
                 )
+            elif sources and row.used_context:
+                score_sum += sum(float(s.get("score") or 0) for s in sources) / len(sources)
+                score_n += 1
             if row.used_context:
                 with_ctx += 1
             else:
@@ -482,8 +525,15 @@ class AnalyticsService:
             "avg_generation_ms": round(generation_ms_sum / total, 1),
         }
 
-    def source_analytics(self, *, top_limit: int = 15, unused_limit: int = 15) -> dict:
-        rows = list(self.db.execute(select(AnswerTrace)).scalars())
+    def source_analytics(
+        self, *, top_limit: int = 15, unused_limit: int = 15, period_days: int = 30
+    ) -> dict:
+        since = _utcnow() - timedelta(days=period_days)
+        rows = list(
+            self.db.execute(
+                select(AnswerTrace).where(AnswerTrace.created_at >= since)
+            ).scalars()
+        )
         usage: dict[str, dict] = {}
         for row in rows:
             for src in _sources_from_row(row):
@@ -599,7 +649,9 @@ class AnalyticsService:
         summary = self.product_summary(fallback_answer, period_days=period_days)
         topics = self.topic_distribution(period_days=period_days, limit=5)
         intents = self.intent_distribution(period_days=period_days)
-        sources = self.source_analytics(top_limit=20, unused_limit=50)
+        sources = self.source_analytics(
+            top_limit=20, unused_limit=50, period_days=period_days
+        )
         retrieval = self.retrieval_quality(period_days=period_days)
         timeseries = self.timeseries(hours=period_days * 24)
 

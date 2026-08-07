@@ -475,7 +475,9 @@ class SourceIntelligenceGenerationService:
                     run_stats.processed_sources += 1
                     report_progress(source, source_id)
             else:
-                with ThreadPoolExecutor(max_workers=worker_count) as pool:
+                pool = ThreadPoolExecutor(max_workers=worker_count)
+                stop_requested = False
+                try:
                     futures = {
                         pool.submit(
                             self._process_source_in_worker,
@@ -487,9 +489,20 @@ class SourceIntelligenceGenerationService:
                     }
                     for future in as_completed(futures):
                         if should_stop and should_stop():
+                            stop_requested = True
+                            for pending in futures:
+                                pending.cancel()
                             break
                         source_id = futures[future]
-                        outcome = future.result()
+                        try:
+                            outcome = future.result()
+                        except Exception as exc:  # noqa: BLE001
+                            logger.exception(
+                                "Source intelligence future failed for %s: %s",
+                                source_id,
+                                exc,
+                            )
+                            continue
                         source = self.repo.get(source_id)
                         run_stats.processed_sources += 1
                         run_stats.llm_cache_hits += outcome.llm_cache_hits
@@ -504,6 +517,12 @@ class SourceIntelligenceGenerationService:
                             continue
                         apply_update(source, outcome.profile)
                         report_progress(source, source_id)
+                finally:
+                    # Default `with ThreadPoolExecutor` waits for ALL submitted futures on
+                    # exit — that made Stop appear broken during multi-worker SI runs.
+                    pool.shutdown(wait=not stop_requested, cancel_futures=True)
+                if stop_requested:
+                    break
 
         flush_batch()
         if should_stop and should_stop():

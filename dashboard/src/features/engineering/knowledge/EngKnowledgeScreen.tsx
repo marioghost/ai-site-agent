@@ -3,6 +3,7 @@ import {
   generateSourceIntelligence,
   getIndexStatus,
   getSettings,
+  stopIndexing,
 } from "../../../api/client";
 import { useTranslation } from "../../../i18n";
 import type { IndexJobStatus, Settings, SourceSemanticProfile } from "../../../types";
@@ -136,6 +137,21 @@ export default function EngKnowledgeScreen() {
     setIntelligenceTask(null);
   }, [status, intelligenceTask, t]);
 
+  const onStopIntelligence = async () => {
+    setMessage(null);
+    setIntelligenceError(null);
+    try {
+      const res = await stopIndexing();
+      setMessage(res.message || t("indexing.actions.intelligence_stopped"));
+      await refresh();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      const detail = err?.response?.data?.detail || t("indexing.error.stop");
+      setMessage(detail);
+      setIntelligenceError(detail);
+    }
+  };
+
   const onGenerateIntelligence = async (
     dryRun = false,
     scope: "needs_intelligence" | "all" = "needs_intelligence"
@@ -200,6 +216,7 @@ export default function EngKnowledgeScreen() {
         onGenerateMissing={() => void onGenerateIntelligence(false, "needs_intelligence")}
         onReprocessAll={() => void onGenerateIntelligence(false, "all")}
         onDryRun={() => void onGenerateIntelligence(true, "needs_intelligence")}
+        onStop={() => void onStopIntelligence()}
         t={t}
       />
 

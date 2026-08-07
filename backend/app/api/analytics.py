@@ -123,11 +123,12 @@ def retrieval_quality(
 def source_analytics(
     top_limit: int = Query(15, ge=1, le=50),
     unused_limit: int = Query(15, ge=1, le=100),
+    period_days: int = Query(30, ge=1, le=365),
     db: Session = Depends(get_db),
     _user=Depends(require_authenticated),
 ) -> SourceAnalyticsPayload:
     data = AnalyticsService(db).source_analytics(
-        top_limit=top_limit, unused_limit=unused_limit
+        top_limit=top_limit, unused_limit=unused_limit, period_days=period_days
     )
     return SourceAnalyticsPayload(**data)
 
