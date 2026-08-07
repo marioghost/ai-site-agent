@@ -12,6 +12,7 @@ export const uk: TranslationDict = {
   "common.saving": "Збереження…",
   "common.send": "Надіслати",
   "common.close": "Закрити",
+  "common.delete": "Видалити",
   "common.previous": "Попередня",
   "common.next": "Наступна",
   "common.page_of": "Сторінка {page} / {total}",
@@ -228,8 +229,11 @@ export const uk: TranslationDict = {
   "knowledge_profile.advanced_json": "Розширений JSON-редактор",
   "knowledge_profile.presets.title": "Пресети",
   "knowledge_profile.presets.load": "Завантажити пресет",
+  "knowledge_profile.presets.actions_title": "Дії з профілем",
+  "knowledge_profile.presets.actions_subtitle":
+    "Експорт, імпорт або генерація профілю. Галузеві шаблони-пресети лишаються вимкненими, доки їх явно не увімкнуть для відкату.",
   "knowledge_profile.presets.disabled_banner":
-    "Застарілі шаблони профілів знань вимкнено. Наявні профілі залишаються активними. Профіль можна відредагувати або імпортувати вручну.",
+    "Застарілі шаблони профілів знань вимкнено. Наявні профілі залишаються активними. Редагуйте поля нижче, імпортуйте JSON або скористайтесь «Згенерувати профіль знань».",
   "knowledge_profile.identity.title": "Ідентичність сайту",
   "knowledge_profile.identity.display_name": "Назва сайту",
   "knowledge_profile.identity.organization": "Назва організації",

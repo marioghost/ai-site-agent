@@ -28,6 +28,7 @@ import {
 } from "../../../ui";
 import KnowledgeProfileGenerateWizard from "./widgets/KnowledgeProfileGenerateWizard";
 import KnowledgeProfileLegacyBanner from "./widgets/KnowledgeProfileLegacyBanner";
+import { ANSWER_STRATEGIES } from "../../../lib/answerStrategies";
 
 function lines(text: string): string[] {
   return text
@@ -163,7 +164,16 @@ export default function SiteScreen() {
       {showReindexWarn ? <Alert variant="warning">{t("knowledge_profile.reindex_warning")}</Alert> : null}
       {message ? <Alert variant={messageVariant}>{message}</Alert> : null}
 
-      <SectionCard title={t("knowledge_profile.presets.title")}>
+      <SectionCard
+        title={
+          presetsUnavailable
+            ? t("knowledge_profile.presets.actions_title")
+            : t("knowledge_profile.presets.title")
+        }
+        subtitle={
+          presetsUnavailable ? t("knowledge_profile.presets.actions_subtitle") : undefined
+        }
+      >
         {!presetsUnavailable ? (
           <FormGrid columns={2}>
             <Field label={t("knowledge_profile.presets.load")}>
@@ -321,13 +331,11 @@ export default function SiteScreen() {
                       update({ ...profile, important_topics: topics });
                     }}
                   >
-                    {["overview", "fact", "list", "table", "contact", "pricing", "generic"].map(
-                      (s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      )
-                    )}
+                    {ANSWER_STRATEGIES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
               </FormGrid>

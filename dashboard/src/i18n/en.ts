@@ -11,6 +11,7 @@ export const en: TranslationDict = {
   "common.saving": "Saving…",
   "common.send": "Send",
   "common.close": "Close",
+  "common.delete": "Delete",
   "common.previous": "Previous",
   "common.next": "Next",
   "common.page_of": "Page {page} / {total}",
@@ -225,8 +226,11 @@ export const en: TranslationDict = {
   "knowledge_profile.advanced_json": "Advanced JSON editor",
   "knowledge_profile.presets.title": "Presets",
   "knowledge_profile.presets.load": "Load preset",
+  "knowledge_profile.presets.actions_title": "Profile actions",
+  "knowledge_profile.presets.actions_subtitle":
+    "Export, import, or generate a profile. Industry preset templates stay off unless explicitly re-enabled for rollback.",
   "knowledge_profile.presets.disabled_banner":
-    "Legacy Knowledge Profile presets are disabled. Existing profiles remain active. You can edit or import a profile manually.",
+    "Legacy Knowledge Profile presets are disabled. Existing profiles remain active. Edit fields below, import a JSON profile, or use Generate Knowledge Profile.",
   "knowledge_profile.identity.title": "Site identity",
   "knowledge_profile.identity.display_name": "Site display name",
   "knowledge_profile.identity.organization": "Organization name",
