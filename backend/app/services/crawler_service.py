@@ -28,6 +28,7 @@ class CrawlFrontier:
         self.deny_patterns = deny_patterns
         self.max_depth = max_depth
         self._queue: deque[CrawlItem] = deque()
+        self._queued: set[str] = set()
         self._visited: set[str] = set()
 
     def seen(self, url: str) -> bool:
@@ -52,16 +53,16 @@ class CrawlFrontier:
         url = normalize_url(url)
         if depth > self.max_depth:
             return
-        if self.can_visit(url) and not self._is_queued(url):
+        if self.can_visit(url) and url not in self._queued:
             self._queue.append(CrawlItem(url=url, depth=depth))
-
-    def _is_queued(self, url: str) -> bool:
-        return any(item.url == url for item in self._queue)
+            self._queued.add(url)
 
     def pop(self) -> CrawlItem | None:
         if not self._queue:
             return None
-        return self._queue.popleft()
+        item = self._queue.popleft()
+        self._queued.discard(item.url)
+        return item
 
     def has_next(self) -> bool:
         return bool(self._queue)

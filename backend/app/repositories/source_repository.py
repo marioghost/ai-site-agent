@@ -4,13 +4,41 @@ from __future__ import annotations
 from datetime import datetime
 from math import ceil
 
-from sqlalchemy import delete, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import Text, delete, func, or_, select, update
+from sqlalchemy.orm import Session, load_only
+from sqlalchemy import inspect as sa_inspect
 
 from app.models.chunk import Chunk
 from app.models.source import Source
 from app.services.indexing_planner_service import IndexingPlannerService
 from app.utils.time_utils import to_naive_utc, utcnow
+
+# Columns needed by IndexingPlannerService.classify / queue planning.
+# Omitting Text blobs (extracted_text, intelligence_json, …) keeps long runs
+# from retaining multi-GB of page bodies in the SQLAlchemy identity map.
+_PLANNER_SOURCE_COLUMNS = (
+    Source.id,
+    Source.url,
+    Source.source_type,
+    Source.status,
+    Source.next_refresh_at,
+    Source.indexed_at,
+    Source.first_seen_at,
+    Source.last_seen_at,
+    Source.last_checked_at,
+    Source.index_attempts,
+    Source.content_hash,
+    Source.title,
+)
+
+
+def _source_text_attr_names() -> tuple[str, ...]:
+    """ORM Text columns on Source — derived from the model, not a manual map."""
+    return tuple(
+        col.key
+        for col in sa_inspect(Source).columns
+        if isinstance(col.type, Text)
+    )
 
 
 class SourceRepository:
@@ -42,21 +70,21 @@ class SourceRepository:
         items = list(self.db.execute(stmt).scalars().all())
         return items, total
 
-    def list_by_urls(self, urls: list[str]) -> list[Source]:
+    def list_by_urls(self, urls: list[str], *, lean: bool = False) -> list[Source]:
         if not urls:
             return []
-        return list(
-            self.db.scalars(select(Source).where(Source.url.in_(urls))).all()
-        )
+        stmt = select(Source).where(Source.url.in_(urls))
+        if lean:
+            stmt = stmt.options(load_only(*_PLANNER_SOURCE_COLUMNS))
+        return list(self.db.scalars(stmt).all())
 
-    def list_by_source_types(self, source_types: set[str]) -> list[Source]:
+    def list_by_source_types(self, source_types: set[str], *, lean: bool = False) -> list[Source]:
         if not source_types:
             return []
-        return list(
-            self.db.scalars(
-                select(Source).where(Source.source_type.in_(sorted(source_types)))
-            ).all()
-        )
+        stmt = select(Source).where(Source.source_type.in_(sorted(source_types)))
+        if lean:
+            stmt = stmt.options(load_only(*_PLANNER_SOURCE_COLUMNS))
+        return list(self.db.scalars(stmt).all())
 
     def record_discovery(
         self,
@@ -99,35 +127,44 @@ class SourceRepository:
         source, _created = self.record_discovery(url, source_type)
         return source
 
-    def list_page_sources(self) -> list[Source]:
+    def list_page_sources(self, *, lean: bool = True) -> list[Source]:
         page_types = {"page", "html"}
         stmt = select(Source).where(Source.source_type.in_(sorted(page_types)))
+        if lean:
+            stmt = stmt.options(load_only(*_PLANNER_SOURCE_COLUMNS))
         return list(self.db.scalars(stmt).all())
 
-    def list_waiting_page_sources(self) -> list[Source]:
+    def list_waiting_page_sources(self, *, lean: bool = True) -> list[Source]:
         """Pages not yet ready for RAG (pending / not indexed / indexed without chunks)."""
         page_types = {"page", "html"}
-        sources = list(
-            self.db.scalars(
-                select(Source).where(Source.source_type.in_(sorted(page_types)))
-            ).all()
+        has_chunks = select(Chunk.source_id).distinct()
+        stmt = (
+            select(Source)
+            .where(Source.source_type.in_(sorted(page_types)))
+            .where(~Source.status.in_(("error", "skipped")))
+            .where(
+                or_(
+                    Source.status != "indexed",
+                    ~Source.id.in_(has_chunks),
+                )
+            )
         )
-        if not sources:
-            return []
-        chunk_counts: dict[int, int] = dict(
-            self.db.execute(
-                select(Chunk.source_id, func.count()).group_by(Chunk.source_id)
-            ).all()
-        )
-        waiting: list[Source] = []
-        for source in sources:
-            status = (source.status or "pending").lower()
-            if status in {"error", "skipped"}:
-                continue
-            if status == "indexed" and int(chunk_counts.get(source.id, 0)) > 0:
-                continue
-            waiting.append(source)
-        return waiting
+        if lean:
+            stmt = stmt.options(load_only(*_PLANNER_SOURCE_COLUMNS))
+        return list(self.db.scalars(stmt).all())
+
+    def release_source(self, source: Source) -> None:
+        """Drop Text payloads and remove the row from the session identity map."""
+        for attr in _source_text_attr_names():
+            if attr in source.__dict__:
+                setattr(source, attr, None)
+        try:
+            self.db.expunge(source)
+        except Exception:  # noqa: BLE001
+            try:
+                self.db.expire(source)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _count_pages_by_class(
         self,

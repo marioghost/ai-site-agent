@@ -267,8 +267,8 @@ class IndexingWorker:
 
             # --- Phase 2: prioritized page processing ---
             if cfg["index_pages"]:
-                page_sources = source_repo.list_page_sources()
-                self._process_page_queue(
+                page_sources = source_repo.list_page_sources(lean=True)
+                if self._process_page_queue(
                     job_repo,
                     job,
                     log,
@@ -278,17 +278,28 @@ class IndexingWorker:
                     source_repo,
                     indexer,
                     page_sources,
-                )
+                ):
+                    return
+                # Drop planner rows from the session before file phase.
+                for src in page_sources:
+                    source_repo.release_source(src)
+                page_sources = []
 
             # --- Phase 3: prioritized file processing ---
             if cfg["index_files"] and discovered_file_urls:
+                if self._stop_event.is_set():
+                    log.add("info", "Stop requested before file processing")
+                    self._finalize(job_repo, job, log, "stopped", progress)
+                    return
                 progress.set_stage(
                     STAGE_CHECKING_FILE,
                     phase="processing_files",
                     action="Processing files",
                     message="Processing discovered files",
                 )
-                file_sources = source_repo.list_by_urls(sorted(discovered_file_urls))
+                file_sources = source_repo.list_by_urls(
+                    sorted(discovered_file_urls), lean=True
+                )
                 file_queue = [
                     c
                     for c in planner.select_candidates_for_run(
@@ -301,7 +312,9 @@ class IndexingWorker:
 
                 for candidate in file_queue:
                     if self._stop_event.is_set():
-                        break
+                        log.add("info", "Stop requested during file processing")
+                        self._finalize(job_repo, job, log, "stopped", progress)
+                        return
                     if self._reached(cfg["max_files"], progress.files.processed_files):
                         log.add(
                             "info",
@@ -319,6 +332,7 @@ class IndexingWorker:
                         log,
                         was_never_indexed=was_never_indexed,
                     )
+                    source_repo.release_source(candidate.source)
                     self._persist_progress(job_repo, job, log, "running", progress)
 
             self._finalize(job_repo, job, log, "completed", progress)
@@ -357,7 +371,7 @@ class IndexingWorker:
         )
         self._persist_progress(job_repo, job, log, "running", progress)
 
-        waiting_pages = source_repo.list_waiting_page_sources()
+        waiting_pages = source_repo.list_waiting_page_sources(lean=True)
         log.add("info", f"Found {len(waiting_pages)} waiting page(s)")
 
         if not waiting_pages:
@@ -365,7 +379,7 @@ class IndexingWorker:
             self._finalize(job_repo, job, log, "completed", progress)
             return
 
-        self._process_page_queue(
+        if self._process_page_queue(
             job_repo,
             job,
             log,
@@ -375,7 +389,8 @@ class IndexingWorker:
             source_repo,
             indexer,
             waiting_pages,
-        )
+        ):
+            return
         self._finalize(job_repo, job, log, "completed", progress)
 
     def _process_page_queue(
@@ -389,7 +404,8 @@ class IndexingWorker:
         source_repo: SourceRepository,
         indexer: IndexingService,
         page_sources: list,
-    ) -> None:
+    ) -> bool:
+        """Process prioritized pages. Returns True if the run was stopped."""
         progress.set_stage(
             STAGE_PLANNING_QUEUE,
             phase="planning",
@@ -425,7 +441,7 @@ class IndexingWorker:
             if self._stop_event.is_set():
                 log.add("info", "Stop requested during processing")
                 self._finalize(job_repo, job, log, "stopped", progress)
-                return
+                return True
             if self._reached(cfg["max_pages"], progress.pages.processed_pages):
                 if not remaining_logged:
                     remaining = len(queue) - idx
@@ -459,10 +475,18 @@ class IndexingWorker:
                 source,
                 force=cfg["force_reindex"],
                 on_progress=self._index_progress_callback(progress),
+                should_stop=self._stop_event.is_set,
             )
+            if outcome.status == "stopped":
+                log.add("info", f"Stop requested while indexing {source.url}")
+                self._finalize(job_repo, job, log, "stopped", progress)
+                source_repo.release_source(source)
+                return True
             self._apply_page_outcome(
                 outcome, progress, was_never_indexed=was_never_indexed
             )
+            # Drop large parse trees / text blobs from the live outcome ASAP.
+            outcome.parsed_page = None
             log.add(
                 "info" if outcome.status != "error" else "error",
                 f"[page/{outcome.status}] {source.url} ({outcome.detail})",
@@ -476,7 +500,9 @@ class IndexingWorker:
                     f"unchanged={progress.pages.unchanged_pages} "
                     f"failed={progress.pages.failed_pages}",
                 )
+            source_repo.release_source(source)
             self._persist_progress(job_repo, job, log, "running", progress)
+        return False
 
     @staticmethod
     def _refresh_run_queue(
@@ -488,7 +514,7 @@ class IndexingWorker:
     ) -> None:
         if not discovered_page_urls:
             return
-        page_sources = source_repo.list_by_urls(sorted(discovered_page_urls))
+        page_sources = source_repo.list_by_urls(sorted(discovered_page_urls), lean=True)
         preview = planner.build_queue_preview(
             page_sources, max_pages_per_run=cfg["max_pages"]
         )

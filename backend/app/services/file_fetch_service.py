@@ -34,6 +34,7 @@ class FileFetchService:
             resp = client.get(url)
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "").lower()
+            raw = resp.content
             text = ""
             # Only decode as text for textual content types.
             if any(
@@ -41,10 +42,12 @@ class FileFetchService:
                 for t in ("text", "html", "xml", "json", "javascript")
             ) or not content_type:
                 text = resp.text
+                # Avoid holding decoded text and raw bytes at once for HTML/pages.
+                raw = b""
             return FetchResult(
                 url=str(resp.url),
                 status_code=resp.status_code,
-                content=resp.content,
+                content=raw,
                 text=text,
                 content_type=content_type,
             )

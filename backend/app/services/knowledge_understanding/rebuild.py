@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, load_only
 from app.core.logging import get_logger
 from app.models.settings import Settings
 from app.models.source import Source
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EMBED_BATCH, EmbeddingService
 from app.services.knowledge_understanding.builder import UnderstandingBuilder
 from app.services.knowledge_understanding.normalizer import ConceptNormalizeStopped
 from app.services.knowledge_understanding.store import UnderstandingStore
@@ -18,7 +18,6 @@ from app.services.knowledge_version_service import KnowledgeVersionService
 
 logger = get_logger(__name__)
 
-EMBED_BATCH = 48
 # Process-wide advisory lock key for understanding rebuild (Postgres).
 # Prevents concurrent finalize/rebuild workers from interleaved persist+prune.
 UNDERSTANDING_REBUILD_LOCK_KEY = 0x4B554C30  # 'KUL0'

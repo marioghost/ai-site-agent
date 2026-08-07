@@ -22,7 +22,7 @@ from app.services.content_extraction_constants import (
     EXTRACTION_VERSION,
 )
 from app.services.docx_parser_service import DocxParserService
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EmbeddingInterrupted, EmbeddingService
 from app.services.file_fetch_service import FileFetchService
 from app.services.html_parser_service import HtmlParserService, ParsedPage
 from app.services.indexing_planner_service import IndexingPlannerService
@@ -87,12 +87,19 @@ class IndexingService:
         *,
         force: bool = False,
         on_progress: Callable[[str, str], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> IndexOutcome:
         """Fetch, extract, dedup and (re)embed a single source."""
 
         def tick(stage: str, message: str) -> None:
             if on_progress:
                 on_progress(stage, message)
+
+        def stopped() -> bool:
+            return bool(should_stop and should_stop())
+
+        if stopped():
+            return IndexOutcome(status="stopped", detail="stop requested")
 
         if force:
             planner = IndexingPlannerService(
@@ -112,12 +119,18 @@ class IndexingService:
         except Exception as exc:  # noqa: BLE001
             return self._mark_error(source, f"Fetch failed: {exc}")
 
+        if stopped():
+            return IndexOutcome(status="stopped", detail="stop requested after fetch")
+
         parsed_page: ParsedPage | None = None
         tick("extracting_text", f"Extracting text: {source.url}")
         try:
             text, title, parsed_page = self._extract(source, result)
         except Exception as exc:  # noqa: BLE001
             return self._mark_error(source, f"Extraction failed: {exc}")
+        # Release fetch buffers early (HTML keeps text only; files keep bytes).
+        result.content = b""
+        result.text = ""
 
         text = self.cleaner.clean(text)
         if parsed_page is not None:
@@ -164,6 +177,10 @@ class IndexingService:
             self.repo.save(source)
             return IndexOutcome(status="skipped", detail="unchanged", parsed_page=parsed_page)
 
+        # Do not wipe vectors if the operator already asked to stop.
+        if stopped():
+            return IndexOutcome(status="stopped", detail="stop requested before embed")
+
         # Content changed (or new): remove old vectors/chunks then re-embed.
         self._reset_source_vectors(source)
 
@@ -201,7 +218,17 @@ class IndexingService:
 
         try:
             tick("embedding", f"Creating embeddings for {len(chunks)} chunks")
-            vectors = self.embedding_service.embed_texts([c.text for c in chunks])
+            vectors = self.embedding_service.embed_texts(
+                [c.text for c in chunks],
+                should_stop=should_stop,
+            )
+        except EmbeddingInterrupted:
+            # Vectors were already cleared — leave page waiting for a retry.
+            source.status = "pending"
+            source.error_message = "Interrupted by stop; queued for retry"
+            source.next_refresh_at = utcnow()
+            self.repo.save(source)
+            return IndexOutcome(status="stopped", detail="stop during embedding")
         except Exception as exc:  # noqa: BLE001
             return self._mark_error(source, f"Embedding failed: {exc}")
 
