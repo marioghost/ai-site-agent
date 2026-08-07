@@ -136,6 +136,26 @@ def test_get_settings_omits_boost_fields(settings_api_client):
 
 
 @pytest.mark.unit
+def test_put_partial_preserves_unsent_fields(settings_api_client):
+    """Models/General send a subset — must not reset the rest to schema defaults."""
+    client, state = settings_api_client
+    state.temperature = 0.55
+    state.fallback_answer = "custom fallback"
+    state.llm_model = "qwen2.5:3b"
+    state.dashboard_language = "uk"
+
+    res = client.put(
+        "/api/settings",
+        json={"dashboard_language": "en", "llm_model": "llama3.2:3b"},
+    )
+    assert res.status_code == 200, res.text
+    assert state.dashboard_language == "en"
+    assert state.llm_model == "llama3.2:3b"
+    assert state.temperature == 0.55
+    assert state.fallback_answer == "custom fallback"
+
+
+@pytest.mark.unit
 def test_put_legacy_boost_fields_ignored_orm_unchanged(settings_api_client):
     client, state = settings_api_client
     before = {

@@ -49,11 +49,143 @@ def _snapshot_retrieval_settings(settings: Settings) -> dict:
 
 
 def _retrieval_settings_changed(before: dict, after: SettingsUpdate) -> bool:
-    payload = after.model_dump()
+    # Only fields the client actually sent — partial PUTs must not look like
+    # "every default changed" when unset keys are filled by SettingsBase defaults.
+    payload = after.model_dump(exclude_unset=True)
     for name in _RETRIEVAL_SETTING_FIELDS:
         if name in payload and payload[name] != before.get(name):
             return True
     return False
+
+
+# API list fields ↔ ORM JSON columns (same mapping as full PUT historically).
+_SETTINGS_JSON_LIST_FIELDS = {
+    "allowed_domains": "allowed_domains_json",
+    "deny_url_patterns": "deny_url_patterns_json",
+    "allowed_file_types": "allowed_file_types_json",
+}
+
+# Direct ORM attributes writable via SettingsUpdate. Keep in sync with the
+# historical full-PUT assign list (do not auto-setattr every schema field —
+# some SettingsBase keys are not wired through this endpoint yet).
+_SETTINGS_DIRECT_FIELDS = (
+    "site_url",
+    "sitemap_url",
+    "crawl_depth",
+    "scan_mode",
+    "enable_file_indexing",
+    "scan_all_pages",
+    "scan_all_files",
+    "llm_model",
+    "embedding_model",
+    "qdrant_collection",
+    "chunk_size",
+    "chunk_overlap",
+    "top_k",
+    "similarity_threshold",
+    "temperature",
+    "max_tokens",
+    "system_prompt",
+    "fallback_answer",
+    "enable_sources",
+    "enable_chat_logs",
+    "request_timeout_seconds",
+    "max_pages_per_run",
+    "max_files_per_run",
+    "indexed_page_refresh_interval_hours",
+    "indexed_file_refresh_interval_hours",
+    "default_response_language",
+    "dashboard_language",
+    "enable_source_links",
+    "enable_reranking",
+    "enable_ukrainian_polish_pass",
+    "fast_mode_enabled",
+    "enable_retrieval_cache",
+    "enable_semantic_answer_cache",
+    "retrieval_cache_ttl_seconds",
+    "answer_cache_ttl_seconds",
+    "semantic_cache_similarity_threshold",
+    "max_cached_answers",
+    "retrieval_mode",
+    "enable_query_expansion",
+    "enable_retrieval_debug",
+    "enable_intent_aware_retrieval",
+    "enable_canonical_source_selection",
+    "enable_news_deprioritization_for_overview_queries",
+    "fallback_second_pass_enabled",
+    "enable_broad_question_mode",
+    "enable_context_builder",
+    "retrieval_candidate_count",
+    "max_pages_in_context",
+    "max_chunks_per_page",
+    "polish_mode",
+    "polish_min_answer_chars",
+    "polish_timeout_seconds",
+    "polish_model",
+    "polish_skip_if_generation_ms_over",
+    "llm_num_predict",
+    "llm_num_ctx_mode",
+    "llm_fixed_num_ctx",
+    "llm_max_prompt_chars",
+    "llm_keep_alive",
+    "llm_mode_profile",
+    "enable_llm_warmup",
+    "max_sources_in_prompt",
+    "max_chars_per_source",
+    "max_total_context_chars",
+    "max_semantic_expansions",
+    "context_builder_mode",
+    "max_context_tokens",
+    "chunk_merge_enabled",
+    "ranking_freshness_weight",
+    "enable_chat_streaming",
+    "llm_retry_max_attempts",
+    "llm_retry_on_timeout_only",
+    "prefer_user_language_sources",
+    "enable_source_intelligence",
+    "enable_llm_source_intelligence",
+    "enable_knowledge_understanding",
+    "source_intelligence_importance_threshold",
+    "penalize_campaigns_for_overview",
+    "source_intelligence_db_batch_size",
+    "source_intelligence_page_size",
+    "source_intelligence_worker_count",
+    "source_intelligence_progress_flush_every_sources",
+    "source_intelligence_progress_flush_interval_seconds",
+    "source_intelligence_cache_invalidation_mode",
+    "run_source_intelligence_inline_during_indexing",
+    "enable_tracing",
+    "enable_trace_storage",
+    "enable_request_metadata_logging",
+    "enable_chat_debug_payload",
+    "enable_semantic_diagnostics_v2",
+    "cache_namespace_v2_enabled",
+    "memory_shadow_write_enabled",
+    "memory_evidence_assist_enabled",
+    "memory_canonical_shadow_enabled",
+    "allow_legacy_kp_presets",
+    "legacy_doc_type_canonical_enabled",
+    "max_trace_retention_days",
+    "max_concurrent_chat_requests",
+    "max_concurrent_llm_requests",
+    "max_concurrent_embedding_requests",
+    "max_concurrent_background_embedding_requests",
+    "chat_total_timeout_seconds",
+    "ollama_generation_timeout_seconds",
+    "ollama_embedding_timeout_seconds",
+    "qdrant_timeout_seconds",
+)
+
+
+def _apply_settings_update(settings: Settings, payload: SettingsUpdate) -> None:
+    """Apply only fields present in the request body (partial PUT safe)."""
+    data = payload.model_dump(exclude_unset=True)
+    for api_key, orm_key in _SETTINGS_JSON_LIST_FIELDS.items():
+        if api_key in data:
+            setattr(settings, orm_key, json.dumps(data[api_key]))
+    for key in _SETTINGS_DIRECT_FIELDS:
+        if key in data:
+            setattr(settings, key, data[key])
 
 
 def _to_read(model: Settings) -> SettingsRead:
@@ -210,131 +342,11 @@ def update_settings(
     settings = repo.get_or_create()
     before = _snapshot_retrieval_settings(settings)
 
-    settings.site_url = payload.site_url
-    settings.sitemap_url = payload.sitemap_url
-    settings.crawl_depth = payload.crawl_depth
-    settings.allowed_domains_json = json.dumps(payload.allowed_domains)
-    settings.deny_url_patterns_json = json.dumps(payload.deny_url_patterns)
-    settings.allowed_file_types_json = json.dumps(payload.allowed_file_types)
-    settings.scan_mode = payload.scan_mode
-    settings.enable_file_indexing = payload.enable_file_indexing
-    settings.scan_all_pages = payload.scan_all_pages
-    settings.scan_all_files = payload.scan_all_files
-    settings.llm_model = payload.llm_model
-    settings.embedding_model = payload.embedding_model
-    settings.qdrant_collection = payload.qdrant_collection
-    settings.chunk_size = payload.chunk_size
-    settings.chunk_overlap = payload.chunk_overlap
-    settings.top_k = payload.top_k
-    settings.similarity_threshold = payload.similarity_threshold
-    settings.temperature = payload.temperature
-    settings.max_tokens = payload.max_tokens
-    settings.system_prompt = payload.system_prompt
-    settings.fallback_answer = payload.fallback_answer
-    settings.enable_sources = payload.enable_sources
-    settings.enable_chat_logs = payload.enable_chat_logs
-    settings.request_timeout_seconds = payload.request_timeout_seconds
-    settings.max_pages_per_run = payload.max_pages_per_run
-    settings.max_files_per_run = payload.max_files_per_run
-    settings.indexed_page_refresh_interval_hours = payload.indexed_page_refresh_interval_hours
-    settings.indexed_file_refresh_interval_hours = payload.indexed_file_refresh_interval_hours
-    settings.default_response_language = payload.default_response_language
-    settings.dashboard_language = payload.dashboard_language
-    settings.enable_source_links = payload.enable_source_links
-    settings.enable_reranking = payload.enable_reranking
-    settings.enable_ukrainian_polish_pass = payload.enable_ukrainian_polish_pass
-    settings.fast_mode_enabled = payload.fast_mode_enabled
-    settings.enable_retrieval_cache = payload.enable_retrieval_cache
-    settings.enable_semantic_answer_cache = payload.enable_semantic_answer_cache
-    settings.retrieval_cache_ttl_seconds = payload.retrieval_cache_ttl_seconds
-    settings.answer_cache_ttl_seconds = payload.answer_cache_ttl_seconds
-    settings.semantic_cache_similarity_threshold = (
-        payload.semantic_cache_similarity_threshold
-    )
-    settings.max_cached_answers = payload.max_cached_answers
-    settings.retrieval_mode = payload.retrieval_mode
     # Step 052: do not map deprecated boost fields from SettingsUpdate.
     # Legacy clients may still send them; SettingsUpdate(extra="ignore") drops them
     # so ORM homepage/title/heading/short_query boost columns stay unchanged.
-    settings.enable_query_expansion = payload.enable_query_expansion
-    settings.enable_retrieval_debug = payload.enable_retrieval_debug
-    settings.enable_intent_aware_retrieval = payload.enable_intent_aware_retrieval
-    settings.enable_canonical_source_selection = payload.enable_canonical_source_selection
-    settings.enable_news_deprioritization_for_overview_queries = (
-        payload.enable_news_deprioritization_for_overview_queries
-    )
-    settings.fallback_second_pass_enabled = payload.fallback_second_pass_enabled
-    settings.enable_broad_question_mode = payload.enable_broad_question_mode
-    settings.enable_context_builder = payload.enable_context_builder
-    settings.retrieval_candidate_count = payload.retrieval_candidate_count
-    settings.max_pages_in_context = payload.max_pages_in_context
-    settings.max_chunks_per_page = payload.max_chunks_per_page
-    settings.polish_mode = payload.polish_mode
-    settings.polish_min_answer_chars = payload.polish_min_answer_chars
-    settings.polish_timeout_seconds = payload.polish_timeout_seconds
-    settings.polish_model = payload.polish_model
-    settings.polish_skip_if_generation_ms_over = payload.polish_skip_if_generation_ms_over
-    settings.llm_num_predict = payload.llm_num_predict
-    settings.llm_num_ctx_mode = payload.llm_num_ctx_mode
-    settings.llm_fixed_num_ctx = payload.llm_fixed_num_ctx
-    settings.llm_max_prompt_chars = payload.llm_max_prompt_chars
-    settings.llm_keep_alive = payload.llm_keep_alive
-    settings.llm_mode_profile = payload.llm_mode_profile
-    settings.enable_llm_warmup = payload.enable_llm_warmup
-    settings.max_sources_in_prompt = payload.max_sources_in_prompt
-    settings.max_chars_per_source = payload.max_chars_per_source
-    settings.max_total_context_chars = payload.max_total_context_chars
-    settings.max_semantic_expansions = payload.max_semantic_expansions
-    settings.context_builder_mode = payload.context_builder_mode
-    settings.max_context_tokens = payload.max_context_tokens
-    settings.chunk_merge_enabled = payload.chunk_merge_enabled
-    settings.ranking_freshness_weight = payload.ranking_freshness_weight
-    settings.enable_chat_streaming = payload.enable_chat_streaming
-    settings.llm_retry_max_attempts = payload.llm_retry_max_attempts
-    settings.llm_retry_on_timeout_only = payload.llm_retry_on_timeout_only
-    settings.prefer_user_language_sources = payload.prefer_user_language_sources
-    settings.enable_source_intelligence = payload.enable_source_intelligence
-    settings.enable_llm_source_intelligence = payload.enable_llm_source_intelligence
-    settings.enable_knowledge_understanding = payload.enable_knowledge_understanding
-    settings.source_intelligence_importance_threshold = payload.source_intelligence_importance_threshold
-    settings.penalize_campaigns_for_overview = payload.penalize_campaigns_for_overview
-    settings.source_intelligence_db_batch_size = payload.source_intelligence_db_batch_size
-    settings.source_intelligence_page_size = payload.source_intelligence_page_size
-    settings.source_intelligence_worker_count = payload.source_intelligence_worker_count
-    settings.source_intelligence_progress_flush_every_sources = (
-        payload.source_intelligence_progress_flush_every_sources
-    )
-    settings.source_intelligence_progress_flush_interval_seconds = (
-        payload.source_intelligence_progress_flush_interval_seconds
-    )
-    settings.source_intelligence_cache_invalidation_mode = (
-        payload.source_intelligence_cache_invalidation_mode
-    )
-    settings.run_source_intelligence_inline_during_indexing = (
-        payload.run_source_intelligence_inline_during_indexing
-    )
-    settings.enable_tracing = payload.enable_tracing
-    settings.enable_trace_storage = payload.enable_trace_storage
-    settings.enable_request_metadata_logging = payload.enable_request_metadata_logging
-    settings.enable_chat_debug_payload = payload.enable_chat_debug_payload
-    settings.enable_semantic_diagnostics_v2 = payload.enable_semantic_diagnostics_v2
-    settings.cache_namespace_v2_enabled = payload.cache_namespace_v2_enabled
-    settings.memory_shadow_write_enabled = payload.memory_shadow_write_enabled
-    settings.memory_evidence_assist_enabled = payload.memory_evidence_assist_enabled
-    settings.memory_canonical_shadow_enabled = payload.memory_canonical_shadow_enabled
-    settings.allow_legacy_kp_presets = payload.allow_legacy_kp_presets
-    settings.legacy_doc_type_canonical_enabled = payload.legacy_doc_type_canonical_enabled
-    settings.max_trace_retention_days = payload.max_trace_retention_days
-    settings.max_concurrent_chat_requests = payload.max_concurrent_chat_requests
-    settings.max_concurrent_llm_requests = payload.max_concurrent_llm_requests
-    settings.max_concurrent_embedding_requests = payload.max_concurrent_embedding_requests
-    settings.max_concurrent_background_embedding_requests = (
-        payload.max_concurrent_background_embedding_requests
-    )
-    settings.chat_total_timeout_seconds = payload.chat_total_timeout_seconds
-    settings.ollama_generation_timeout_seconds = payload.ollama_generation_timeout_seconds
-    settings.ollama_embedding_timeout_seconds = payload.ollama_embedding_timeout_seconds
-    settings.qdrant_timeout_seconds = payload.qdrant_timeout_seconds
+    # Partial PUTs (Models / General) must only write fields actually sent.
+    _apply_settings_update(settings, payload)
 
     settings = repo.save(settings)
     if _retrieval_settings_changed(before, payload):

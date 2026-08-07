@@ -161,7 +161,12 @@ class SettingsBase(BaseModel):
 
 
 class SettingsUpdate(SettingsBase):
-    """All fields optional on update."""
+    """Partial update body.
+
+    Clients may send any subset of SettingsBase fields. Unset keys keep their
+    schema defaults for validation only; the API applies ``exclude_unset`` so
+    omitted fields are not written to the ORM.
+    """
 
     model_config = ConfigDict(extra="ignore")
 

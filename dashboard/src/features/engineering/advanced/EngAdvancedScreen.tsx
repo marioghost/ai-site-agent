@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   clearAllCaches,
+  clearAnswerCache,
   clearRetrievalCache,
   getSettings,
   updateSettings,
@@ -53,6 +54,7 @@ export default function EngAdvancedScreen() {
     setMessage(null);
     try {
       if (kind === "all") await clearAllCaches();
+      else if (kind === "answer") await clearAnswerCache();
       else await clearRetrievalCache();
       setMessage(t("settings.cache.clear_success"));
     } catch {
@@ -69,7 +71,7 @@ export default function EngAdvancedScreen() {
         subtitle={t("eng.advanced.subtitle")}
         actions={
           <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? t("common.saving") : t("settings.save")}
+            {saving ? t("common.saving") : t("common.save")}
           </Button>
         }
       />

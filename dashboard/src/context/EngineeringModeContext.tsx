@@ -22,16 +22,19 @@ interface EngineeringModeContextValue {
 const EngineeringModeContext = createContext<EngineeringModeContextValue | null>(null);
 
 export function EngineeringModeProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [enabled, setEnabledState] = useState(() => readEngineeringModeEnabled());
 
-  // Q5 — logout / no user → Mode OFF (no cross-user leak)
+  // Q5 — logout / no session → Mode OFF (no cross-user leak).
+  // Wait until auth finished bootstrapping so a brief null user on reload
+  // does not wipe the localStorage preference.
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       resetEngineeringModeOff();
       setEnabledState(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const setEnabled = useCallback((next: boolean) => {
     writeEngineeringModeEnabled(next);

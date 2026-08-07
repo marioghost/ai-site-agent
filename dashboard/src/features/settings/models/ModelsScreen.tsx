@@ -43,6 +43,14 @@ export default function ModelsScreen() {
     setSettings({ ...settings, [key]: value });
 
   const modelNames = models.map((m) => m.name);
+  const embeddingKey = (settings.embedding_model || "").split(":")[0].toLowerCase();
+  const answerModelNames = modelNames.filter((n) => {
+    const base = n.split(":")[0].toLowerCase();
+    if (embeddingKey && (base === embeddingKey || n === settings.embedding_model)) return false;
+    const model = models.find((m) => m.name === n);
+    if (model?.in_use_as === "embedding" || model?.family === "bert") return false;
+    return true;
+  });
 
   async function onSave() {
     if (!settings) return;
@@ -85,15 +93,15 @@ export default function ModelsScreen() {
       >
         <FormGrid columns={2}>
           <Field label={t("settings.models.llm")}>
-            {modelNames.length > 0 ? (
+            {answerModelNames.length > 0 || modelNames.length > 0 ? (
               <Select
                 value={settings.llm_model}
                 onChange={(e) => update("llm_model", e.target.value)}
               >
-                {!modelNames.includes(settings.llm_model) && (
+                {!answerModelNames.includes(settings.llm_model) && (
                   <option value={settings.llm_model}>{settings.llm_model}</option>
                 )}
-                {modelNames.map((n) => (
+                {answerModelNames.map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
