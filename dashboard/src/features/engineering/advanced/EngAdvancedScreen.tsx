@@ -19,7 +19,6 @@ import SettingsAdvancedSection from "./widgets/SettingsAdvancedSection";
 export default function EngAdvancedScreen() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [cacheBusy, setCacheBusy] = useState<string | null>(null);
@@ -79,8 +78,6 @@ export default function EngAdvancedScreen() {
       {message && <Alert variant={message === t("settings.saved") ? "success" : "info"}>{message}</Alert>}
 
       <SettingsAdvancedSection
-        open={advancedOpen}
-        onToggle={() => setAdvancedOpen((v) => !v)}
         settings={settings}
         onChange={update}
         t={t}

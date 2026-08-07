@@ -81,6 +81,11 @@ export const en: TranslationDict = {
   "eng.ask_details.session_title": "Active session",
   "eng.knowledge.subtitle": "Generate and preview Source Intelligence profiles for indexed sources.",
   "eng.advanced.subtitle": "Chunking, retrieval, cache, tracing, and limit knobs. Not shown on product Settings.",
+  "eng.advanced.profile_owned_by_answers":
+    "Answer quality mode is set under Settings → Answers. Shown here read-only; optional numeric overrides below.",
+  "eng.advanced.active_profile": "Active mode",
+  "eng.advanced.generation_owned_by_answers":
+    "Temperature and output length follow Settings → Answers (generation mode). Change them there, not here.",
   "eng.build.subtitle": "Deployed capability and migration flag catalog for this release.",
   "eng.tensions.subtitle": "Knowledge tension summary and the full understanding-tensions explorer.",
   "eng.tensions.explorer_title": "Full tension explorer",

@@ -1,30 +1,20 @@
+/**
+ * Eng-only retrieval overrides. Answer quality modes live on Settings → Answers
+ * (retrieval_profile). This panel shows the active mode read-only and optional
+ * numeric overrides — no second preset picker (RFC-101 dual-preset warning).
+ */
 import type { Settings } from "../../../../types";
 import {
   RETRIEVAL_PROFILES,
   type RetrievalProfileName,
 } from "../../../../lib/retrievalEngineDefaults";
-import {
-  Alert,
-  Field,
-  FormGrid,
-  HelpText,
-  Input,
-  SectionCard,
-  Select,
-} from "../../../../ui";
+import { Alert, Field, FormGrid, HelpText, Input, SectionCard } from "../../../../ui";
 
 type Props = {
   settings: Settings;
   onChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 };
-
-const PROFILE_OPTIONS: RetrievalProfileName[] = [
-  "automatic",
-  "fast",
-  "balanced",
-  "high_precision",
-];
 
 function numOrEmpty(v: number | null | undefined): string {
   return v == null || Number.isNaN(v) ? "" : String(v);
@@ -47,29 +37,19 @@ function parseOptionalFloat(raw: string): number | null {
 export default function RetrievalEnginePanel({ settings, onChange, t }: Props) {
   const profile = (settings.retrieval_profile ?? "automatic") as RetrievalProfileName;
   const profileLimits = RETRIEVAL_PROFILES[profile] ?? RETRIEVAL_PROFILES.automatic;
+  const profileLabel = t(`settings.retrieval_engine.profile.${profile}`);
 
   return (
     <SectionCard
       title={t("settings.retrieval_engine.title")}
       subtitle={t("settings.retrieval_engine.subtitle_simple")}
     >
-      <Alert variant="info">{t("settings.retrieval_engine.automatic_note")}</Alert>
-
-      <FormGrid columns={1}>
-        <Field label={t("settings.retrieval_engine.profile")}>
-          <Select
-            value={profile}
-            onChange={(e) => onChange("retrieval_profile", e.target.value)}
-          >
-            {PROFILE_OPTIONS.map((name) => (
-              <option key={name} value={name}>
-                {t(`settings.retrieval_engine.profile.${name}`)}
-              </option>
-            ))}
-          </Select>
-          <HelpText>{t(`settings.retrieval_engine.profile_hint.${profile}`)}</HelpText>
-        </Field>
-      </FormGrid>
+      <Alert variant="info">{t("eng.advanced.profile_owned_by_answers")}</Alert>
+      <HelpText>
+        {t("eng.advanced.active_profile")}: <strong>{profileLabel}</strong>
+        {" — "}
+        {t(`settings.retrieval_engine.profile_hint.${profile}`)}
+      </HelpText>
 
       <FormGrid columns={3}>
         <Field label={t("settings.retrieval_engine.top_k_dense")}>

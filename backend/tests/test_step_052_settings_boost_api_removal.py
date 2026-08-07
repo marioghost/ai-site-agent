@@ -156,6 +156,45 @@ def test_put_partial_preserves_unsent_fields(settings_api_client):
 
 
 @pytest.mark.unit
+def test_retrieval_engine_fields_round_trip(settings_api_client):
+    """Eng Advanced / Answers profile + overrides must persist and appear on GET."""
+    client, state = settings_api_client
+    res = client.put(
+        "/api/settings",
+        json={
+            "retrieval_profile": "high_precision",
+            "top_k_dense": 40,
+            "top_k_lexical": 25,
+            "document_limit": 4,
+            "minimum_retrieval_score": 0.42,
+            "retrieval_candidate_count": 55,
+            "max_pages_in_context": 5,
+            "max_chunks_per_page": 3,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert state.retrieval_profile == "high_precision"
+    assert state.top_k_dense == 40
+    assert state.document_limit == 4
+    assert state.retrieval_candidate_count == 55
+    assert body["retrieval_profile"] == "high_precision"
+    assert body["top_k_dense"] == 40
+    assert body["top_k_lexical"] == 25
+    assert body["document_limit"] == 4
+    assert body["minimum_retrieval_score"] == pytest.approx(0.42)
+    assert body["retrieval_candidate_count"] == 55
+    assert body["max_pages_in_context"] == 5
+    assert body["max_chunks_per_page"] == 3
+
+    got = client.get("/api/settings")
+    assert got.status_code == 200
+    again = got.json()
+    assert again["retrieval_profile"] == "high_precision"
+    assert again["retrieval_candidate_count"] == 55
+
+
+@pytest.mark.unit
 def test_put_legacy_boost_fields_ignored_orm_unchanged(settings_api_client):
     client, state = settings_api_client
     before = {
