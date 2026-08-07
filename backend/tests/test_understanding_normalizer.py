@@ -79,9 +79,33 @@ def test_short_labels_without_shared_tokens_do_not_merge():
     assert should_merge_labels("Privacy policy", "Privacy policy", 0.5) is True
 
 
-def test_cosine_identical_vectors():
-    assert cosine([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
-    assert cosine([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
+def test_exact_label_preunion_scales_without_quadratic_cosine_calls():
+    """Exact duplicates must not pay full pairwise cosine cost."""
+    calls = {"n": 0}
+
+    def counting_embed(texts: list[str]) -> list[list[float]]:
+        calls["n"] += 1
+        return _embed(texts)
+
+    raw = [
+        RawConcept(label="Privacy policy", confidence=0.9, source_id=i)
+        for i in range(40)
+    ] + [
+        RawConcept(label="Getting started", confidence=0.8, source_id=100),
+        RawConcept(label="Onboarding guide", confidence=0.7, source_id=101),
+    ]
+    concepts = ConceptNormalizer(embed_fn=counting_embed).normalize(raw)
+    assert len(concepts) == 2
+    # One embed batch for all labels — not N pairwise embeds.
+    assert calls["n"] == 1
+
+
+def test_normalize_respects_cooperative_stop():
+    from app.services.knowledge_understanding.normalizer import ConceptNormalizeStopped
+
+    raw = [RawConcept(label=f"Topic {i} guide", confidence=0.5, source_id=i) for i in range(20)]
+    with pytest.raises(ConceptNormalizeStopped):
+        ConceptNormalizer(embed_fn=_embed).normalize(raw, should_stop=lambda: True)
 
 
 def test_normalizer_module_has_no_domain_synonym_tables():

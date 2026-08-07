@@ -280,11 +280,22 @@ class SourceIntelligenceGenerationService:
         if commit:
             self.repo.commit()
 
-    def finalize_generation(self) -> None:
+    def finalize_generation(
+        self,
+        *,
+        on_progress: Callable[[str, str, dict], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> None:
         mode = (
             getattr(self.settings, "source_intelligence_cache_invalidation_mode", None)
             or "version_bump_only"
         )
+        if on_progress:
+            on_progress(
+                "invalidating_cache",
+                "Bumping knowledge version / clearing caches",
+                {"current_phase": "finalize"},
+            )
         KnowledgeVersionService(self.db).bump()
         if mode == "delete_all":
             CacheInvalidationService(self.db, self.settings).invalidate_all_caches(
@@ -294,12 +305,22 @@ class SourceIntelligenceGenerationService:
             CacheInvalidationService(self.db, self.settings).invalidate_retrieval_cache(
                 "source_intelligence_generated"
             )
+        if should_stop and should_stop():
+            from app.services.knowledge_understanding.rebuild import (
+                UnderstandingRebuildStopped,
+            )
+
+            raise UnderstandingRebuildStopped()
         # Knowledge Understanding Layer — rebuild site-wide model after SI batch.
+        # This embeds all SI concepts and can take minutes; progress must stay alive.
         from app.services.knowledge_understanding.rebuild import (
             UnderstandingRebuildService,
         )
 
-        UnderstandingRebuildService(self.db, self.settings).rebuild_after_si()
+        UnderstandingRebuildService(self.db, self.settings).rebuild_after_si(
+            on_progress=on_progress,
+            should_stop=should_stop,
+        )
 
     @staticmethod
     def _process_source_in_worker(
@@ -531,8 +552,22 @@ class SourceIntelligenceGenerationService:
             return result
 
         t0 = time.monotonic()
-        tick("invalidating_cache", "Finalizing", {"current_phase": "finalize"})
-        self.finalize_generation()
+        tick(
+            "invalidating_cache",
+            "Finalizing — rebuilding knowledge understanding",
+            {"current_phase": "finalize"},
+        )
+        from app.services.knowledge_understanding.rebuild import (
+            UnderstandingRebuildStopped,
+        )
+
+        try:
+            self.finalize_generation(on_progress=tick, should_stop=should_stop)
+        except UnderstandingRebuildStopped:
+            result = run_stats.to_dict()
+            result["stopped"] = True
+            result["stopped_during"] = "understanding_rebuild"
+            return result
         run_stats.record_ms("finalize_ms", (time.monotonic() - t0) * 1000)
         tick(
             "completed",

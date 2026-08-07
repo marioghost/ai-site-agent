@@ -160,13 +160,36 @@ class UnderstandingBuilder:
             kwargs["merge_threshold"] = merge_threshold
         self._normalizer = ConceptNormalizer(**kwargs)
 
-    def build(self, sources: Sequence[Source]) -> BuiltUnderstanding:
+    def build(
+        self,
+        sources: Sequence[Source],
+        *,
+        on_progress: Callable[[str, str, dict], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> BuiltUnderstanding:
         raw: list[RawConcept] = []
         sources_with_si = 0
         hash_to_sources: dict[str, list[int]] = defaultdict(list)
         need_types_by_source: dict[int, list[str]] = {}
 
-        for source in sources:
+        total_sources = len(sources)
+        for idx, source in enumerate(sources, start=1):
+            if should_stop and should_stop():
+                from app.services.knowledge_understanding.normalizer import (
+                    ConceptNormalizeStopped,
+                )
+
+                raise ConceptNormalizeStopped()
+            if on_progress and (idx == 1 or idx % 50 == 0 or idx == total_sources):
+                on_progress(
+                    "rebuilding_understanding",
+                    f"Extracting concepts from sources ({idx}/{total_sources})",
+                    {
+                        "current_phase": "rebuilding_understanding",
+                        "understanding_sources_done": idx,
+                        "understanding_sources": total_sources,
+                    },
+                )
             items = extract_raw_concepts(source)
             if items:
                 sources_with_si += 1
@@ -180,7 +203,9 @@ class UnderstandingBuilder:
                 if needs:
                     need_types_by_source[int(source.id)] = needs
 
-        concepts = self._normalizer.normalize(raw)
+        concepts = self._normalizer.normalize(
+            raw, on_progress=on_progress, should_stop=should_stop
+        )
         evidence: list[EvidenceLink] = []
         canonical_by_concept: dict[str, int] = {}
 

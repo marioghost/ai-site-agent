@@ -296,6 +296,16 @@ class IndexingProgress:
         )
         if url:
             self.set_current_url(url, url_type="page", message=message)
+        elif phase in {
+            "rebuilding_understanding",
+            "invalidating_cache",
+            "finalize",
+            "completed",
+            "failed",
+            "stopped",
+        }:
+            # Long post-SI phases are not page-bound — clear stale URL from last source.
+            self.current_url = None
         if selected is not None:
             self.queue.queued_pages_for_this_run = selected
         handled = processed + failed + skipped

@@ -30,6 +30,7 @@ PHASE_TO_STAGE: dict[str, str] = {
     "loading_source": STAGE_FETCHING_PAGE,
     "rebuilding_chunks": STAGE_CHUNKING,
     "invalidating_cache": STAGE_SAVING,
+    "rebuilding_understanding": "rebuilding_understanding",
     "complete": STAGE_COMPLETED,
     "completed": STAGE_COMPLETED,
     "stopped": STAGE_STOPPED,

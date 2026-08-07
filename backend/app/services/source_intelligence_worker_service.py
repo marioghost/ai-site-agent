@@ -122,7 +122,12 @@ class SourceIntelligenceWorker:
                 self._state.processed_sources = processed
                 if selected:
                     self._state.selected_sources = selected
-                force = phase in {"completed", "failed", "invalidating_cache"}
+                force = phase in {
+                    "completed",
+                    "failed",
+                    "invalidating_cache",
+                    "rebuilding_understanding",
+                }
                 tracker.tick(
                     phase=phase,
                     message=message,

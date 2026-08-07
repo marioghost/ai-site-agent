@@ -117,14 +117,24 @@ export default function IndexingLiveRunCard({
   const intelligenceDryRunDone =
     isIntelligence && live.jobStatus === "completed" && status?.dry_run === true;
 
+  const isUnderstandingPhase =
+    isIntelligence &&
+    live.jobStatus === "running" &&
+    (live.stage === "rebuilding_understanding" ||
+      live.rawPhase === "rebuilding_understanding" ||
+      live.rawPhase === "finalize" ||
+      live.stage === "saving");
+
   const heartbeatKey =
-    live.aliveState === "active"
-      ? "indexing.run.heartbeat_active"
-      : live.aliveState === "slow"
-        ? "indexing.run.heartbeat_slow"
-        : live.aliveState === "stuck"
-          ? "indexing.run.heartbeat_stuck"
-          : "indexing.run.heartbeat_unknown";
+    isUnderstandingPhase && (live.aliveState === "slow" || live.aliveState === "stuck")
+      ? "indexing.run.heartbeat_understanding"
+      : live.aliveState === "active"
+        ? "indexing.run.heartbeat_active"
+        : live.aliveState === "slow"
+          ? "indexing.run.heartbeat_slow"
+          : live.aliveState === "stuck"
+            ? "indexing.run.heartbeat_stuck"
+            : "indexing.run.heartbeat_unknown";
 
   const progressLabel = live.progress.isIndeterminate
     ? t("indexing.run.progress_indeterminate", { processed: live.progress.processedTotal })
