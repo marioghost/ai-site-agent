@@ -182,10 +182,14 @@ def test_assembler_uses_generic_base_not_industry_preset():
         extras={"hint_rules": [], "registered_hint_ids": set()},
     )
     assembled = ProfileAssembler().assemble(ctx)
-    assert assembled.profile.entity_type == "organization"
+    # No industry preset seed — type comes from site evidence (empty if none).
+    assert assembled.profile.entity_type != "bank"
     assert "банк" not in " ".join(assembled.profile.overview_query_patterns).lower()
     assert assembled.profile.site_subject.startswith("Acme")
+    assert "software" in assembled.profile.site_subject.lower()
     assert all(isinstance(t, ImportantTopic) for t in assembled.profile.important_topics)
+    assert ctx.extras.get("identity_subject_source")
+
 
 
 @pytest.mark.unit

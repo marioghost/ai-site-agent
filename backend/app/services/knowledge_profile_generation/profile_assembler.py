@@ -16,8 +16,9 @@ from app.services.knowledge_profile_generation.models import (
     AssembledProfile,
     PipelineContext,
 )
-from app.services.knowledge_profile_generation.structural_filters import (
-    derive_site_subject,
+from app.services.knowledge_profile_generation.site_identity import (
+    ground_topic_label,
+    infer_site_identity,
 )
 from app.services.knowledge_profile_service import generic_corporate_profile
 
@@ -40,16 +41,15 @@ class ProfileAssembler:
         doc_rules = self._document_rules(ctx, base)
         topics = self._important_topics(ctx)
 
-        homepage_texts: list[str] = []
-        for page in ctx.pages:
-            if page.is_homepage and page.texts:
-                homepage_texts = list(page.texts)
-                break
-
-        site_subject = derive_site_subject(
+        identity = infer_site_identity(
             organization_name=ctx.organization.name,
-            homepage_texts=homepage_texts,
+            pages=ctx.pages,
+            metadata=ctx.metadata,
+            hierarchy=ctx.hierarchy,
+            top_url_segments=list(ctx.statistics.top_url_segments or []),
         )
+        ctx.extras["identity_subject_source"] = identity.subject_source
+        ctx.extras["identity_entity_type_source"] = identity.entity_type_source
 
         overview_patterns = self._overview_patterns(ctx, base)
         expansions = self._expansions(ctx, topics, base)
@@ -59,8 +59,8 @@ class ProfileAssembler:
             site_display_name=ctx.organization.name,
             organization_name=ctx.organization.name,
             organization_aliases=list(ctx.organization.aliases),
-            site_subject=site_subject,
-            entity_type="organization",
+            site_subject=identity.site_subject,
+            entity_type=identity.entity_type,
             overview_query_patterns=overview_patterns,
             important_topics=topics,
             document_type_rules=doc_rules,
@@ -85,13 +85,27 @@ class ProfileAssembler:
 
     def _important_topics(self, ctx: PipelineContext) -> list[ImportantTopic]:
         hint_ids = ctx.extras.get("registered_hint_ids", set())
+        evidence_by_key = {
+            t.cluster_key: " ".join(
+                p.title + " " + " ".join(p.headings[:2])
+                for p in ctx.pages
+                if t.cluster_key and t.cluster_key in (p.path_segments or [])
+            )
+            for t in ctx.topics
+        }
         out: list[ImportantTopic] = []
         for t in ctx.topics:
+            evidence = evidence_by_key.get(t.cluster_key, "")
+            label = ground_topic_label(
+                t.title,
+                evidence_text=evidence or t.title,
+                fallback=t.cluster_key.replace("_", " ").replace("-", " ").title(),
+            )
             hints = [h for h in t.preferred_content_hints if h in hint_ids or not hint_ids]
             out.append(
                 ImportantTopic(
                     key=t.id,
-                    label=t.title,
+                    label=label,
                     aliases=t.aliases,
                     preferred_document_types=t.preferred_document_types,
                     preferred_content_hints=hints,

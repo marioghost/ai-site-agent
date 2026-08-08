@@ -13,6 +13,7 @@ from app.services.knowledge_profile_generation.models import (
     DiscoveredTopic,
     PipelineContext,
 )
+from app.services.knowledge_profile_generation.site_identity import ground_topic_label
 from app.services.ollama_service import OllamaError, OllamaService
 
 
@@ -33,7 +34,8 @@ class LlmRefiner:
             "organization_evidence": [
                 e.model_dump() for e in (ctx.organization.evidence if ctx.organization else [])
             ],
-            "website_type": ctx.hierarchy.preset_seed if ctx.hierarchy else "",
+            "site_subject": ctx.profile.site_subject,
+            "entity_type": ctx.profile.entity_type,
             "statistics": ctx.statistics.model_dump() if ctx.statistics else {},
             "entities": [e.model_dump() for e in ctx.entities[:30]],
             "topic_candidates": [
@@ -55,11 +57,12 @@ class LlmRefiner:
             "You refine a KnowledgeProfile JSON for a website RAG agent. "
             "Return ONLY valid JSON with the same top-level schema as current_profile. "
             "RULES: "
-            "1) Do NOT change organization_name to anything not supported by organization_evidence. "
+            "1) Do NOT change organization_name, site_subject, or entity_type. "
             "2) Do NOT invent new important_topics keys — only use allowed_topic_ids. "
             "3) Do NOT reference content hints outside allowed_content_hints. "
-            "4) You MAY improve labels, aliases, descriptions, and answer_strategy. "
-            "5) Do NOT invent URLs or document types not in the input."
+            "4) You MAY improve topic labels only using words that appear in topic_candidates. "
+            "5) Do NOT invent URLs or document types not in the input. "
+            "6) Do NOT replace labels with generic English like 'About the organization'."
         )
         user = json.dumps(summary, ensure_ascii=False)[:14000]
 
@@ -107,6 +110,11 @@ class LlmRefiner:
             profile.site_display_name = ctx.organization.name
             profile.organization_aliases = list(ctx.organization.aliases)
 
+        # Identity is inferred deterministically — never trust LLM rewrites.
+        if ctx.profile is not None:
+            profile.site_subject = ctx.profile.site_subject
+            profile.entity_type = ctx.profile.entity_type
+
         filtered_topics: list[ImportantTopic] = []
         topic_map = {t.id: t for t in ctx.topics}
         allowed_doc_types = {
@@ -128,9 +136,22 @@ class LlmRefiner:
                 ]
             if not doc_types:
                 doc_types = ["category_page"]
+            evidence = " ".join(
+                [
+                    src.title if src else "",
+                    " ".join(src.aliases) if src else "",
+                    topic.label,
+                ]
+            )
+            label = ground_topic_label(
+                topic.label,
+                evidence_text=evidence,
+                fallback=(src.title if src else topic.key.replace("_", " ")),
+            )
             filtered_topics.append(
                 topic.model_copy(
                     update={
+                        "label": label,
                         "preferred_content_hints": hints,
                         "preferred_document_types": doc_types,
                     }

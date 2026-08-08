@@ -156,9 +156,10 @@ class TopicDiscovery:
         return _slug(page.title[:30]) if page.title else "topic"
 
     def _humanize(self, key: str, fallback: str) -> str:
-        if fallback and key in ("general", "") and "|" not in fallback:
+        # Prefer a clean page title over the URL slug — labels must be site-grounded.
+        if fallback and "|" not in fallback:
             part = re.split(r"[|\-–—]", fallback)[0].strip()
-            if part and len(part) <= 60:
+            if part and 2 <= len(part) <= 60:
                 return part
         return key.replace("-", " ").replace("_", " ").title()
 

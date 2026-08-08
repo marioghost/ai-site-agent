@@ -8,10 +8,8 @@ from __future__ import annotations
 import re
 
 _LOCALE_SEGMENT = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2,3})?$")
-_SENTENCE_END = re.compile(r"[.!?…]")
 
 # Universal URL/section stems that must not be treated as organization names.
-# No vertical product vocabulary (rates/cards/loans/etc.).
 SECTION_NOISE_LABELS = frozenset(
     {
         "branch",
@@ -71,22 +69,36 @@ def derive_site_subject(
     homepage_texts: list[str],
     max_len: int = 160,
 ) -> str:
-    """Short subject phrase from homepage text, or empty if the extract looks polluted.
+    """Backward-compatible wrapper — prefer infer_site_identity in new code."""
+    from app.services.knowledge_profile_generation.site_identity import infer_site_identity
 
-    Rejects banner mashups (pipes), oversized blobs, and excerpts that do not
-    relate to the organization when long.
-    """
-    if not homepage_texts:
+    pages = []
+    if homepage_texts:
+        from app.services.knowledge_profile_generation.models import PageRecord
+
+        pages = [
+            PageRecord(
+                source_id=0,
+                url="/",
+                title="",
+                document_type="generic_page",
+                path_segments=[],
+                headings=[],
+                texts=list(homepage_texts),
+                content_hints=[],
+                is_homepage=True,
+            )
+        ]
+    identity = infer_site_identity(
+        organization_name=organization_name,
+        pages=pages,
+        metadata=None,
+        hierarchy=None,
+        top_url_segments=[],
+        max_subject_len=max_len,
+    )
+    # Wrapper API: only return an extracted sentence from homepage text.
+    # Org-name / URL fallbacks belong to infer_site_identity (assembler path).
+    if identity.subject_source in {"organization_name", "empty", "url_structure"}:
         return ""
-    raw = " ".join((homepage_texts[0] or "").split())
-    if not raw:
-        return ""
-    match = _SENTENCE_END.search(raw)
-    if match:
-        raw = raw[: match.start()].strip()
-    if "|" in raw or len(raw) > max_len:
-        return ""
-    org = (organization_name or "").strip()
-    if org and org.lower() not in raw.lower() and len(raw) > 80:
-        return ""
-    return raw[:max_len]
+    return identity.site_subject
