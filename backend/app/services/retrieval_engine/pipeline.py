@@ -38,6 +38,8 @@ class DocumentRetrievalResult:
     chunk_debug: dict | None = None
     retrieval_ms: int = 0
     evidence_assembly_path: str | None = None
+    # Phase 1 Understanding shadow diagnostics only — never feeds ranking.
+    understanding_shadow: dict | None = None
 
 
 class DocumentFirstRetrievalPipeline:

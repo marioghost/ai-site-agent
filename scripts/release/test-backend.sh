@@ -56,6 +56,7 @@ echo "==> Backend unit tests (RFC migration suite)"
   tests/test_understanding_retrieval.py \
   tests/test_understanding_builder.py \
   tests/test_settings_singleton_site_url.py \
+  tests/test_understanding_phase1_shadow.py \
   tests/test_step_065_canonical_flag_registry.py \
   tests/test_caching.py \
   -m "unit and not benchmark" -q "$@"

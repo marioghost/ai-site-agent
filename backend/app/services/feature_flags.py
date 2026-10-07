@@ -198,10 +198,14 @@ FLAG_DEFINITIONS: tuple[FlagDefinition, ...] = (
         classification="permanent_settings",
         friendly_name="Knowledge Understanding",
         effect=(
-            "Expose understanding diagnostics / Phase 1+ evidence routing; "
-            "site-wide concept index still rebuilds after SI"
+            "Phase 1: Understanding shadow compare after DFP (diagnostics only; "
+            "zero ranking/evidence effect). Rebuild after SI always runs. "
+            "Phase 2 assist/ranking not enabled by this flag."
         ),
-        rollout="SEMANTIC_UNDERSTANDING_MVP Phase 0 — default OFF until shadow assist",
+        rollout=(
+            "SEMANTIC_UNDERSTANDING_MVP Phase 1 shadow — default OFF; "
+            "safe to enable for observation only"
+        ),
         runtime_owner="feature_flags.knowledge_understanding_enabled",
         settings_attr="enable_knowledge_understanding",
         product_visibility=False,

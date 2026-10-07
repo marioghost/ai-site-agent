@@ -54,6 +54,18 @@ class UnderstandingRebuildService:
         try:
             return self.rebuild(on_progress=on_progress, should_stop=should_stop)
         except UnderstandingRebuildStopped:
+            try:
+                self.db.rollback()
+                kv = KnowledgeVersionService(self.db).get()
+                UnderstandingStore(self.db).persist_error(
+                    knowledge_version=kv,
+                    build_duration_ms=0,
+                    error_message="rebuild_after_si stopped",
+                )
+                self.db.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to persist understanding stopped snapshot")
+                self.db.rollback()
             raise
         except Exception:  # noqa: BLE001
             logger.exception("Knowledge understanding rebuild failed after SI")

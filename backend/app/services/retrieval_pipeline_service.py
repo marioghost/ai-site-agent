@@ -137,6 +137,7 @@ class RetrievalDiagnostics:
     coverage_snapshot: dict | None = None
     decision_chain: list[dict] = field(default_factory=list)
     quality_statistics: dict | None = None
+    understanding_shadow: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -189,6 +190,7 @@ class RetrievalDiagnostics:
             "decision_chain": self.decision_chain,
             "quality_statistics": self.quality_statistics,
             "polish_skip_reason": self.polish_skip_reason,
+            "understanding_shadow": self.understanding_shadow,
         }
 
 
@@ -400,13 +402,24 @@ class RetrievalPipelineService:
             diag.evidence_assembly_path = (
                 doc_result.evidence_assembly_path or EVIDENCE_ASSEMBLY_PATH_LEGACY
             )
-            return doc_result
+        else:
+            doc_pipeline = DocumentFirstRetrievalPipeline(
+                self.db, s, self.embedding, self.qdrant
+            )
+            doc_result = doc_pipeline.run(**dfp_kwargs)
+            diag.evidence_assembly_path = EVIDENCE_ASSEMBLY_PATH_LEGACY
 
-        doc_pipeline = DocumentFirstRetrievalPipeline(
-            self.db, s, self.embedding, self.qdrant
+        # Phase 1 §6.1: after DFP candidates, Understanding shadow (diagnostics only).
+        from app.services.knowledge_understanding.shadow import run_understanding_shadow
+
+        doc_result.understanding_shadow = run_understanding_shadow(
+            self.db,
+            s,
+            doc_result=doc_result,
+            planner_decision=prepared.planner_decision,
+            query=prepared.message,
+            query_vector=prepared.query_vector,
         )
-        doc_result = doc_pipeline.run(**dfp_kwargs)
-        diag.evidence_assembly_path = EVIDENCE_ASSEMBLY_PATH_LEGACY
         return doc_result
 
     def finalize_pipeline(
@@ -432,6 +445,7 @@ class RetrievalPipelineService:
         diag.retrieval_pipeline_stages = doc_result.pipeline_stages
         diag.quality_metrics = doc_result.quality_metrics.to_dict()
         diag.retrieval_debug = doc_result.chunk_debug
+        diag.understanding_shadow = getattr(doc_result, "understanding_shadow", None)
         diag.source_profile_routing = SourceIntelligenceRouter.route_intent(legacy_intent)
         diag.rejected_candidates = DiagnosticsBuilder.rejected_candidates(
             doc_result.rejected_documents
