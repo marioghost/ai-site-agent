@@ -45,6 +45,17 @@ _LANG_PATH_SEGMENTS = frozenset(
     }
 )
 
+# Generic URL structure (any site) — corrects KP/LLM mistypes before authority flags.
+_URL_NEWS_TYPE = re.compile(
+    r"(?:/news(?:[-_]?post)?(?:/|$)|/blog(?:/|$)|/press(?:[-_]?release)?(?:/|$)"
+    r"|/новост|/блог)",
+    re.I,
+)
+_URL_CAMPAIGN_TYPE = re.compile(
+    r"(?:/campaign|/promo(?:tion)?s?(?:/|$)|/offers?(?:/|$)|/акці)",
+    re.I,
+)
+
 _KEYWORD_STOP = frozenset(
     {
         "the",
@@ -235,6 +246,10 @@ class SourceIntelligenceService:
             document_type = "generic_page"
         if is_home:
             document_type = "homepage"
+        # URL structure wins over KP mistypes (e.g. news URL classified as about_page).
+        url_type = SourceIntelligenceService._url_structural_document_type(url)
+        if url_type and not is_home:
+            document_type = url_type
 
         page_role = DOCUMENT_TYPE_TO_ROLE.get(document_type, "generic")
         boilerplate_ratio = float(source.boilerplate_ratio or 0.0)
@@ -283,6 +298,9 @@ class SourceIntelligenceService:
                     site_section=site_section,
                 ),
             )
+        semantic_profile = SourceIntelligenceService._coerce_purpose_for_document_type(
+            semantic_profile, document_type=document_type
+        )
 
         # Refine page_role from high-confidence purpose (keeps type as weak prior).
         page_role = SourceIntelligenceService._refine_page_role(
@@ -365,6 +383,52 @@ class SourceIntelligenceService:
             source_language=source_language,
             semantic=semantic_profile.to_storage_dict(),
         )
+
+    @staticmethod
+    def _url_structural_document_type(url: str) -> str | None:
+        """Map generic path shapes to document types (no tenant vocabulary)."""
+        path = urlparse(url or "").path or ""
+        if _URL_NEWS_TYPE.search(path):
+            return "news_page"
+        if _URL_CAMPAIGN_TYPE.search(path):
+            return "campaign_page"
+        return None
+
+    @staticmethod
+    def _coerce_purpose_for_document_type(
+        semantic: SourceSemanticProfile,
+        *,
+        document_type: str,
+    ) -> SourceSemanticProfile:
+        """Keep incidental types from inheriting overview purpose via LLM drift."""
+        purpose = (semantic.document_purpose or "").lower().strip()
+        if document_type in {"news_page", "blog_page", "blog_post"} and purpose not in {
+            "news",
+            "article",
+        }:
+            return semantic.model_copy(
+                update={
+                    "document_purpose": "news",
+                    "document_purpose_confidence": max(
+                        float(semantic.document_purpose_confidence or 0.0), 0.9
+                    ),
+                }
+            )
+        if document_type in {
+            "campaign_page",
+            "promotion_page",
+            "offer_page",
+            "action_page",
+        } and purpose not in {"promotion", "campaign", "offer"}:
+            return semantic.model_copy(
+                update={
+                    "document_purpose": "promotion",
+                    "document_purpose_confidence": max(
+                        float(semantic.document_purpose_confidence or 0.0), 0.9
+                    ),
+                }
+            )
+        return semantic
 
     @staticmethod
     def _merge_semantic(
