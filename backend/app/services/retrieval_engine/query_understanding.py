@@ -4,7 +4,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.services.rag_planning.purpose_catalog import purpose_expectations_for_answer_type
+from app.services.rag_planning.purpose_catalog import (
+    purpose_expectations_for_answer_type,
+    refine_purpose_expectations_for_focus,
+)
 from app.services.rag_planning.intent_taxonomy import (
     CONTACT_INTENTS,
     FAQ_INTENTS,
@@ -22,7 +25,15 @@ _LISTING_MARKERS = re.compile(
 _COMPARISON_MARKERS = re.compile(r"\b(vs|versus|compare|порівня|difference|краще|better)\b", re.I)
 _DEFINITION_MARKERS = re.compile(r"\b(what is|what are|що таке|що це|define|визнач)\b", re.I)
 _OVERVIEW_DEFINITION_EXCEPTIONS = re.compile(
-    r"\b(what is|what are)\s+(this|the)\s+(site|organization|organisation|company|org|portal|bank|university|clinic)\b",
+    r"("
+    r"(?:what is|what are)\s+(?:this|the)\s+"
+    r"(?:site|organization|organisation|company|org|portal|bank|university|clinic)"
+    r"|"
+    r"(?:що таке|що це)\s+(?:цей|ця|це|той|та)\s+"
+    r"(?:сайт|організац\w*|компані\w*|банк\w*|портал|університет\w*|клінік\w*)"
+    r"|"
+    r"(?:що таке|що це)\s+(?:організац\w*|компані\w*|банк)\b"
+    r")",
     re.I,
 )
 _BENEFITS_MARKERS = re.compile(
@@ -161,6 +172,11 @@ class QueryUnderstandingService:
                 answer_type = "documentation"
         scope_type = cls._scope_type(answer_type, semantic_focus, intent_result)
         preferred_purposes, unsuitable_purposes = purpose_expectations_for_answer_type(answer_type)
+        preferred_purposes, unsuitable_purposes = refine_purpose_expectations_for_focus(
+            preferred_purposes,
+            unsuitable_purposes,
+            semantic_focus=semantic_focus,
+        )
         preferred_evidence, unsuitable_evidence = cls._evidence_expectations(
             q, answer_type, semantic_focus, topic, topic_key, intent_result
         )
@@ -428,6 +444,23 @@ class QueryUnderstandingService:
         elif semantic_focus in {"product_specification", "rates", "eligibility"}:
             preferred.extend(["product terms", "conditions", "pricing", "eligibility"])
             unsuitable.extend(["adjacent product", "news story", "career page"])
+        elif answer_type == "documentation" or (
+            semantic_focus == "faq" and _POLICY_MARKERS.search(query or "")
+        ):
+            # Structural privacy/policy vocabulary (not tenant-specific).
+            preferred.extend(
+                [
+                    "privacy policy",
+                    "personal data",
+                    "data protection",
+                    "cookie policy",
+                    "legal information",
+                    "захист персональних даних",
+                    "персональних даних",
+                    "конфіденційності",
+                ]
+            )
+            unsuitable.extend(["news story", "marketing campaign", "product listing"])
         elif answer_type == "listing":
             preferred.extend(
                 [

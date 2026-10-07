@@ -114,6 +114,7 @@ class DocumentFirstRetrievalPipeline:
             expansion_terms=expansion_terms,
             profile=profile,
             query_intent=legacy_intent,
+            unsuitable_purposes=getattr(understanding, "unsuitable_purposes", None) or (),
         )
         state.complete(
             "chunk_retrieval",

@@ -18,8 +18,12 @@ from app.services.knowledge_profile_service import KnowledgeProfileService
 from app.services.lexical_index_service import LexicalIndexService
 from app.services.qdrant_service import QdrantService, SearchHit
 from app.services.query_expansion_service import QueryExpansionService
+from app.services.rag_planning.purpose_catalog import document_types_for_unsuitable_purposes
 
 logger = get_logger(__name__)
+
+# Cap how much of the lexical pool may be dominated by excluded families before refill.
+_UNSUITABLE_FLOOD_RATIO = 0.55
 
 
 def _chunk_key(source_id: int, chunk_index: int) -> str:
@@ -94,6 +98,7 @@ class LexicalRetriever:
         profile: KnowledgeProfile | None = None,
         query_intent: str = "unknown",
         enable_expansion: bool = True,
+        exclude_document_types: list[str] | tuple[str, ...] | None = None,
     ) -> tuple[list[SearchHit], str, list[str]]:
         if not self.enabled:
             return [], "", []
@@ -104,8 +109,41 @@ class LexicalRetriever:
             terms = expander.expanded_terms(query, intent=query_intent)
         else:
             terms = list(token_set(query))
+        # Structural privacy/policy synonyms (language-agnostic intent family).
+        q_low = (query or "").lower()
+        if any(
+            m in q_low
+            for m in (
+                "privacy",
+                "конфіденц",
+                "персональн",
+                "personal data",
+                "data protection",
+                "cookie",
+            )
+        ):
+            terms = list(
+                dict.fromkeys(
+                    [
+                        *terms,
+                        "privacy",
+                        "personal",
+                        "data",
+                        "protection",
+                        "cookie",
+                        "персональних",
+                        "персональних даних",
+                        "захист",
+                        "конфіденційності",
+                    ]
+                )
+            )
         match_query = LexicalIndexService.build_match_query(terms, phrase=query)
-        rows = self.lexical.search(match_query, top_k=top_k)
+        rows = self.lexical.search(
+            match_query,
+            top_k=top_k,
+            exclude_document_types=exclude_document_types,
+        )
         hits = self._rows_to_hits(rows)
         lex_count = len(hits)
         for i, hit in enumerate(hits):
@@ -181,6 +219,7 @@ class HybridChunkRetriever:
         expansion_terms: list[str] | None = None,
         profile: KnowledgeProfile | None = None,
         query_intent: str = "unknown",
+        unsuitable_purposes: list[str] | tuple[str, ...] | None = None,
     ) -> tuple[list[SearchHit], ChunkRetrievalDebug]:
         s = self.settings
         profile = profile or KnowledgeProfileService.from_settings(s)
@@ -210,9 +249,73 @@ class HybridChunkRetriever:
 
         merged = self._merge(dense_hits, lexical_hits)
         self._attach_source_metadata(merged.values())
+
+        # When unsuitable families (news/promo) flood the pool, refill with a
+        # purpose-aware lexical pass that excludes those document types.
+        excluded_types = document_types_for_unsuitable_purposes(unsuitable_purposes or ())
+        if (
+            excluded_types
+            and mode in ("lexical", "hybrid")
+            and self.lexical.enabled
+            and self._unsuitable_flood_ratio(merged.values(), excluded_types)
+            >= _UNSUITABLE_FLOOD_RATIO
+        ):
+            refill_k = max(12, top_k_lexical)
+            refill_hits, _, _ = self.lexical.retrieve(
+                normalized_query,
+                top_k=refill_k * 3,
+                expansion_terms=expansion_terms,
+                profile=profile,
+                query_intent=query_intent,
+                enable_expansion=s.enable_query_expansion,
+                exclude_document_types=excluded_types,
+            )
+            # Cap per-source chunks so one FX/rates page cannot consume the refill.
+            refill_hits = self._diversify_by_source(refill_hits, per_source=2, limit=refill_k)
+            if refill_hits:
+                merged = self._merge(list(merged.values()), refill_hits)
+                self._attach_source_metadata(merged.values())
+                dbg.lexical_count = max(dbg.lexical_count, len(lexical_hits) + len(refill_hits))
+
         kept = self._filter_grounding(merged, similarity_threshold)
         dbg.merged_count = len(kept)
         return kept, dbg
+
+    @staticmethod
+    def _unsuitable_flood_ratio(
+        hits, excluded_types: tuple[str, ...] | list[str]
+    ) -> float:
+        excluded = {str(t).lower() for t in excluded_types}
+        docs: dict[int, str] = {}
+        for hit in hits:
+            sid = int(getattr(hit, "source_id", 0) or 0)
+            if sid <= 0:
+                continue
+            dtype = (getattr(hit, "document_type", None) or "generic_page").lower()
+            docs[sid] = dtype
+        if not docs:
+            return 0.0
+        flooded = sum(1 for dtype in docs.values() if dtype in excluded)
+        return flooded / len(docs)
+
+    @staticmethod
+    def _diversify_by_source(
+        hits: list[SearchHit], *, per_source: int, limit: int
+    ) -> list[SearchHit]:
+        if not hits:
+            return []
+        counts: dict[int, int] = {}
+        out: list[SearchHit] = []
+        for hit in hits:
+            sid = int(hit.source_id or 0)
+            used = counts.get(sid, 0)
+            if used >= per_source:
+                continue
+            counts[sid] = used + 1
+            out.append(hit)
+            if len(out) >= limit:
+                break
+        return out
 
     def _merge(
         self, dense_hits: list[SearchHit], lexical_hits: list[SearchHit]
@@ -245,8 +348,10 @@ class HybridChunkRetriever:
         for hit in hits:
             m = meta.get(hit.source_id, {})
             hit.boilerplate_ratio = m.get("boilerplate_ratio", 0.0)
-            if not hit.document_type or hit.document_type == "generic_page":
-                hit.document_type = m.get("document_type", hit.document_type)
+            # Always prefer Postgres document_type — Qdrant payloads can lag SI fixes.
+            db_type = m.get("document_type")
+            if db_type:
+                hit.document_type = db_type
 
     @staticmethod
     def _filter_grounding(

@@ -950,6 +950,12 @@ class RagService:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to store answer trace: %s", exc)
+            # UniqueViolation / flush errors abort the session transaction; clear so
+            # subsequent asks on the same Session can proceed.
+            try:
+                self.db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
 
     def answer_legacy(self, message: str, session_id: str | None) -> RagResult:
         """Backward-compatible entry without metadata (tests)."""

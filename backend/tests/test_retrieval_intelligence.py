@@ -283,3 +283,94 @@ def test_focus_compatibility_marks_historical_rate_page():
         text="In 2014 the promotional deposit rate reached 15%.",
     )
     assert result.label in {"historical", "news_only"}
+
+
+def test_uk_org_definition_uses_overview_not_product_definition():
+    u = QueryUnderstandingService.analyze(
+        "Що таке цей банк?",
+        intent_result=RetrievalIntentResult(
+            intent="entity_overview",
+            legacy_intent="entity_overview",
+            is_broad=True,
+            answer_strategy="overview",
+            confidence=0.8,
+        ),
+        query_language="uk",
+    )
+    assert u.semantic_focus == "overview"
+    assert u.expected_answer_type == "overview"
+    assert "about company" in u.preferred_purposes
+
+
+def test_rates_focus_prefers_pricing_purpose():
+    u = QueryUnderstandingService.analyze(
+        "What are the subscription rates?",
+        intent_result=RetrievalIntentResult(
+            intent="product_query",
+            legacy_intent="product_query",
+            answer_strategy="fact",
+            confidence=0.8,
+        ),
+        query_language="en",
+    )
+    assert u.semantic_focus == "rates"
+    assert "pricing" in u.preferred_purposes
+    assert "news" in u.unsuitable_purposes
+
+
+def test_locator_prefers_branch_hub_over_product_city_seo_title():
+    u = QueryUnderstandingService.analyze(
+        "Where can I find a branch in Kyiv?",
+        intent_result=RetrievalIntentResult(
+            intent="specific_fact",
+            legacy_intent="specific_fact",
+            answer_strategy="fact",
+            confidence=0.8,
+        ),
+        query_language="en",
+    )
+    assert u.semantic_focus == "locator"
+    hub = evaluate_focus_compatibility(
+        u,
+        title="Branches and ATMs",
+        purpose="general information",
+        page_role="generic",
+        document_type="generic_page",
+        text="Branch directory. Opening hours (Робота відділення) 09:00–18:00.",
+        url="https://example.org/branches-atms",
+    )
+    product = evaluate_focus_compatibility(
+        u,
+        title="Corporate cards — banking services in Kyiv",
+        purpose="contact information",
+        page_role="contact",
+        document_type="contact_page",
+        text="Apply for a corporate card.",
+        url="https://example.org/products/middle-and-small-business/corporate-cards",
+    )
+    assert hub.label == "navigation_support"
+    assert product.label == "adjacent_incompatible"
+    assert hub.score > product.score
+
+
+def test_career_detector_ignores_branch_opening_hours_label():
+    u = QueryUnderstandingService.analyze(
+        "Where are your offices?",
+        intent_result=RetrievalIntentResult(
+            intent="specific_fact",
+            legacy_intent="specific_fact",
+            answer_strategy="fact",
+            confidence=0.8,
+        ),
+        query_language="en",
+    )
+    result = evaluate_focus_compatibility(
+        u,
+        title="Offices and ATMs",
+        purpose="general information",
+        document_type="generic_page",
+        text="Address list. Робота відділення 09:00–18:00.",
+        url="https://example.org/branches",
+    )
+    assert result.label == "navigation_support"
+    assert "news_vs_navigation" not in result.reasons

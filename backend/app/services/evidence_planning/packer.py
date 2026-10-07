@@ -40,6 +40,8 @@ def pack_selected_evidence(
     for item in sorted(
         selected,
         key=lambda s: (
+            0 if _protect_from_budget_trade(s) else 1,
+            -float(s.candidate.focus_match_score or 0.0),
             -float(s.candidate.authority_fitness or 0.0),
             -float(s.marginal_value or 0.0),
             s.final_order,
@@ -60,7 +62,22 @@ def pack_selected_evidence(
         if total + piece > max_chars and kept:
             if _is_critical(item):
                 while kept and total + piece > max_chars:
-                    dropped = kept.pop()
+                    # Never evict a stronger exact-focus hit for a weaker "critical" fill.
+                    victim_idx = None
+                    for i in range(len(kept) - 1, -1, -1):
+                        if _protect_from_budget_trade(kept[i]) and not _protect_from_budget_trade(
+                            item
+                        ):
+                            continue
+                        if _protect_from_budget_trade(kept[i]) and float(
+                            kept[i].candidate.focus_match_score or 0.0
+                        ) >= float(item.candidate.focus_match_score or 0.0):
+                            continue
+                        victim_idx = i
+                        break
+                    if victim_idx is None:
+                        break
+                    dropped = kept.pop(victim_idx)
                     total -= _piece_len(dropped, per_source_cap)
                     decisions.append(
                         {
@@ -97,3 +114,11 @@ def _piece_len(item: SelectedEvidence, cap: int) -> int:
 
 def _is_critical(item: SelectedEvidence) -> bool:
     return bool(item.aspects_new) and item.candidate.authority_fitness >= 0.55
+
+
+def _protect_from_budget_trade(item: SelectedEvidence) -> bool:
+    """Keep strong exact-focus product/locator pages ahead of opportunistic fills."""
+    label = (item.candidate.compatibility_label or "").strip()
+    if label in {"exact_match", "same_product", "navigation_support"}:
+        return float(item.candidate.focus_match_score or 0.0) >= 0.7
+    return False

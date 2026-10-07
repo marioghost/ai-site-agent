@@ -90,8 +90,11 @@ _NEWS_TITLE_HINTS = re.compile(
     r"(новин|/news|news-post|\bnews\b|\bblog\b|press release|прес-?реліз)",
     re.I,
 )
+# Avoid bare «робота» — common for opening hours («Робота відділення»).
 _CAREER_HINTS = re.compile(
-    r"(career|vacanc|job\b|jobs\b|ваканс|робот[ауи]|internship|студент)",
+    r"(career|careers|vacanc|job\s*opening|jobs\b|we'?re hiring|hiring now|"
+    r"ваканс\w*|кар.?єр\w*|шукаємо\s+(?:спеціаліст|кандидат|співробіт)|"
+    r"internship|internships|студентськ\w*\s+програм)",
     re.I,
 )
 _GENERIC_STOP = frozenset(
@@ -224,6 +227,7 @@ def evaluate_focus_compatibility(
         purpose,
         page_role,
         document_type,
+        url,
         text[:280],
         *phrases,
     )
@@ -272,12 +276,20 @@ def evaluate_focus_compatibility(
             return FocusCompatibilityResult(
                 0.12, "news_only" if is_news else "adjacent_incompatible", reasons + ["news_vs_navigation"]
             )
+        # Product/catalog paths are not store locators even if mistyped as contact_page
+        # (e.g. SEO titles that mention a city).
+        product_path = bool(_PRODUCT_PATH_HINTS.search(f"{url} {title}"))
         locator_hit = _has_any(source_terms, _LOCATOR_HINTS) or "locator" in purpose_l
-        if focus == "locator" and (locator_hit or role in _NAV_ROLES or "contact" in purpose_l):
+        if product_path and not locator_hit:
             return FocusCompatibilityResult(
-                max(0.82, overlap), "navigation_support", reasons + ["locator_or_contact"]
+                0.16, "adjacent_incompatible", reasons + ["product_path_vs_navigation"]
             )
-        if focus == "contact" and (role in _NAV_ROLES or "contact" in purpose_l):
+        if focus == "locator" and (locator_hit or role in _NAV_ROLES or "contact" in purpose_l):
+            score = max(0.82, overlap)
+            if locator_hit and not product_path:
+                score = max(score, 0.92)
+            return FocusCompatibilityResult(score, "navigation_support", reasons + ["locator_or_contact"])
+        if focus == "contact" and (role in _NAV_ROLES or "contact" in purpose_l) and not product_path:
             return FocusCompatibilityResult(
                 max(0.8, overlap), "navigation_support", reasons + ["contact_role"]
             )

@@ -19,6 +19,103 @@ from app.services.content_signals import tokenize
 
 logger = get_logger(__name__)
 
+# Light morphological variants for FTS ``simple`` (no language stemmer).
+# Longest suffixes first. Domain-agnostic — helps any inflected language site.
+_LEXICAL_SUFFIXES: tuple[str, ...] = (
+    "ями",
+    "ами",
+    "ові",
+    "еві",
+    "ах",
+    "ях",
+    "ом",
+    "ем",
+    "ів",
+    "ев",
+    "ов",
+    "ам",
+    "ям",
+    "ою",
+    "ею",
+    "ию",
+    "ий",
+    "ій",
+    "ый",
+    "ая",
+    "ое",
+    "ие",
+    "іе",
+    "ing",
+    "ers",
+    "ies",
+    "es",
+    "ed",
+    "s",
+    "и",
+    "і",
+    "ы",
+    "у",
+    "ю",
+    "а",
+    "я",
+    "е",
+    "о",
+)
+
+_LEXICAL_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "what",
+        "which",
+        "how",
+        "are",
+        "was",
+        "were",
+        "по",
+        "на",
+        "у",
+        "в",
+        "і",
+        "та",
+        "або",
+        "для",
+        "про",
+        "як",
+        "які",
+        "який",
+        "яка",
+        "що",
+        "це",
+        "чи",
+        "з",
+        "із",
+        "до",
+        "від",
+        "за",
+    }
+)
+
+
+def lexical_term_variants(term: str) -> list[str]:
+    """Return base token plus one light morphological reduction when safe."""
+    tok = (term or "").strip().lower()
+    if len(tok) < 4 or tok in _LEXICAL_STOPWORDS:
+        return [tok] if tok and tok not in _LEXICAL_STOPWORDS else []
+    out = [tok]
+    for suf in _LEXICAL_SUFFIXES:
+        if tok.endswith(suf) and len(tok) - len(suf) >= 4:
+            stem = tok[: -len(suf)]
+            if stem and stem not in out:
+                out.append(stem)
+            break
+    return out
+
 
 class LexicalIndexService:
     def __init__(self, db: Session) -> None:
@@ -55,39 +152,75 @@ class LexicalIndexService:
         Each lexeme is single-quoted (and internal quotes escaped) so that user
         input cannot inject tsquery operators. Tokens are OR-ed (``|``) for
         recall; the full phrase is added as an adjacency group (``<->``) to
-        reward exact ordering.
+        reward exact ordering. Inflected tokens also contribute a light stem
+        variant so ``депозитах`` can match ``депозит`` under ``simple`` FTS.
         """
         parts: list[str] = []
         seen: set[str] = set()
         for term in terms:
             for tok in tokenize(term):
-                if tok in seen:
-                    continue
-                seen.add(tok)
-                parts.append("'" + tok.replace("'", "''") + "'")
+                for variant in lexical_term_variants(tok):
+                    if variant in seen:
+                        continue
+                    seen.add(variant)
+                    parts.append("'" + variant.replace("'", "''") + "'")
         expr = " | ".join(parts)
 
-        phrase_tokens = tokenize(phrase)
+        phrase_tokens = [
+            t for t in tokenize(phrase) if t not in _LEXICAL_STOPWORDS
+        ]
         if len(phrase_tokens) > 1:
             adj = " <-> ".join("'" + t.replace("'", "''") + "'" for t in phrase_tokens)
             expr = f"({expr}) | ({adj})" if expr else f"({adj})"
         return expr
 
-    def search(self, match_query: str, top_k: int) -> list[tuple[int, int, float]]:
-        """Return [(chunk_id, source_id, rank)] best-first (higher rank=better)."""
+    def search(
+        self,
+        match_query: str,
+        top_k: int,
+        *,
+        exclude_document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> list[tuple[int, int, float]]:
+        """Return [(chunk_id, source_id, rank)] best-first (higher rank=better).
+
+        When ``exclude_document_types`` is set, join ``sources`` and skip those
+        structural types. Used to refill candidate pools when news/promo FTS
+        flood would otherwise starve preferred evidence families.
+        """
         if not self.enabled or not match_query.strip():
             return []
+        excluded = [
+            str(t).strip()
+            for t in (exclude_document_types or ())
+            if str(t).strip()
+        ]
         try:
-            rows = self.db.execute(
-                text(
-                    "SELECT c.id, c.source_id, "
-                    "ts_rank(c.search_vector, q) AS rank "
-                    "FROM chunks c, to_tsquery('simple', :q) AS q "
-                    "WHERE c.search_vector @@ q "
-                    "ORDER BY rank DESC LIMIT :k"
-                ),
-                {"q": match_query, "k": top_k},
-            ).all()
+            if excluded:
+                rows = self.db.execute(
+                    text(
+                        "SELECT c.id, c.source_id, "
+                        "ts_rank(c.search_vector, q) AS rank "
+                        "FROM chunks c "
+                        "JOIN sources s ON s.id = c.source_id "
+                        ", to_tsquery('simple', :q) AS q "
+                        "WHERE c.search_vector @@ q "
+                        "AND s.status = 'indexed' "
+                        "AND s.document_type <> ALL(:excluded) "
+                        "ORDER BY rank DESC LIMIT :k"
+                    ),
+                    {"q": match_query, "k": top_k, "excluded": excluded},
+                ).all()
+            else:
+                rows = self.db.execute(
+                    text(
+                        "SELECT c.id, c.source_id, "
+                        "ts_rank(c.search_vector, q) AS rank "
+                        "FROM chunks c, to_tsquery('simple', :q) AS q "
+                        "WHERE c.search_vector @@ q "
+                        "ORDER BY rank DESC LIMIT :k"
+                    ),
+                    {"q": match_query, "k": top_k},
+                ).all()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Lexical search failed: %s", exc)
             return []

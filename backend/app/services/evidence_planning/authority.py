@@ -98,6 +98,34 @@ def evaluate_authority_fitness(
     }:
         score -= 0.10
         factors["org_vs_product_penalty"] = -0.10
+    if semantic_focus in {"product_specification", "rates", "eligibility"}:
+        if candidate.page_role in {"organization_overview", "news", "campaign"} or (
+            candidate.source_purpose or ""
+        ).lower() in {"about company", "news", "promotion"}:
+            score -= 0.16
+            factors["org_page_vs_product_fact"] = -0.16
+    if semantic_focus in {"locator", "contact"}:
+        url_l = (candidate.url or "").lower()
+        title_l = (candidate.title or "").lower()
+        locator_blob = f"{url_l} {title_l}"
+        if any(
+            h in locator_blob
+            for h in (
+                "branch",
+                "branches",
+                "atm",
+                "locator",
+                "відділен",
+                "банкомат",
+                "/contact",
+                "contacts",
+            )
+        ):
+            score += 0.12
+            factors["locator_url_boost"] = 0.12
+        if "/products/" in url_l or "/cards/" in url_l or "/pricing" in url_l:
+            score -= 0.14
+            factors["product_path_vs_locator"] = -0.14
 
     if candidate.canonical:
         score += 0.08

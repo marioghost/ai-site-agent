@@ -264,6 +264,7 @@ def purpose_expectations_for_answer_type(
     elif answer_type in {"definition", "fact"}:
         preferred = [
             "product details",
+            "pricing",
             "service description",
             "documentation",
             "faq",
@@ -275,3 +276,57 @@ def purpose_expectations_for_answer_type(
         unsuitable = []
 
     return filter_valid_purposes(preferred), filter_valid_purposes(unsuitable)
+
+
+# Purpose → document_type families used to diversify lexical recall when news/promo
+# floods the unfiltered FTS pool. Generic structural types only — not tenant vocabulary.
+_PURPOSE_TO_DOCUMENT_TYPES: dict[str, tuple[str, ...]] = {
+    "news": ("news_page", "blog_page", "blog_post"),
+    "promotion": (
+        "promotion_page",
+        "campaign_page",
+        "offer_page",
+        "action_page",
+    ),
+}
+
+
+def document_types_for_unsuitable_purposes(purposes: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    """Map unsuitable purposes to document_type values safe to exclude from refill search."""
+    out: list[str] = []
+    for purpose in purposes or ():
+        key = (purpose or "").lower().strip()
+        for dtype in _PURPOSE_TO_DOCUMENT_TYPES.get(key, ()):
+            if dtype not in out:
+                out.append(dtype)
+    return tuple(out)
+
+
+def refine_purpose_expectations_for_focus(
+    preferred: list[str] | tuple[str, ...],
+    unsuitable: list[str] | tuple[str, ...],
+    *,
+    semantic_focus: str,
+) -> tuple[list[str], list[str]]:
+    """Adjust purpose expectations from semantic focus without tenant rules."""
+    pref = list(preferred)
+    unsuit = list(unsuitable)
+    focus = (semantic_focus or "").lower().strip()
+    if focus == "rates":
+        if "pricing" not in pref:
+            pref.insert(0, "pricing")
+        if "product details" not in pref:
+            pref.insert(1, "product details")
+    elif focus in {"organization_profile", "overview"}:
+        for p in ("about company", "landing page", "service description"):
+            if p not in pref:
+                pref.append(p)
+        unsuit = [u for u in unsuit if u not in {"landing page", "about company"}]
+    elif focus in {"locator", "contact"}:
+        if "contact information" not in pref:
+            pref.insert(0, "contact information")
+        # Locator hubs are often typed as generic until SI page_role is refined.
+        if "general information" not in pref:
+            pref.append("general information")
+        unsuit = [u for u in unsuit if u != "general information"]
+    return list(filter_valid_purposes(pref)), list(filter_valid_purposes(unsuit))
