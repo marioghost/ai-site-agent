@@ -1,159 +1,100 @@
-# RELEASE 1.1 LIVE ACCEPTANCE & PRODUCT QUALITY COMPLETION
+# RELEASE 1.1 LIVE ACCEPTANCE — FINAL (CLOSED)
 
 **Date:** 2026-10-07  
-**Prior production tip:** `6bbe2f9`  
-**Code tip for this wave (pre-deploy):** workspace `main` ahead of `a2ad863` with quality fixes  
-**Expected deploy SHA after push:** tip of `origin/main` after product-quality commits  
+**Release status:** **CLOSED / ACCEPTED**  
+**Accepted runtime SHA:** `bc51669f6b8cb7622f497a93ae316e8178fd80ae`  
+**Deploy:** `20261007_161405-bc51669` · manifest `2026-10-07T16:14:06Z` · outcome **success**  
 **Validation tenant:** current production corpus (not architecture target)
 
 ---
 
-## 1. Deployment / identity
+## 1. Ship identity chain
 
 | Check | Result |
 |-------|--------|
-| Prior deployed tip | `a2ad863` (Understanding entity-echo fix) |
-| Local / origin before this wave | `a2ad863` |
+| local HEAD | `bc51669` |
+| origin/main | `bc51669` |
+| deployed commit | `bc51669` |
+| `/api/build` backend/frontend | `bc51669` / `bc51669` |
+| `.build-info.json` | `bc51669` · build_time `2026-10-07T16:13:37Z` |
+| Alembic | `0022_settings_singleton_and_site_url` |
+| health | ok |
+| verify-release | **pass** |
+| smoke | **pass** |
+| partial_deploy | false |
+
+No second deploy required for docs-only closure commits.
+
+---
+
+## 2. Runtime state after deploy
+
+| Area | Result |
+|------|--------|
+| Settings singleton | 1 row · `site_url=https://ukrsibbank.com` |
 | KU flag | ON |
-| SI indexed | 4325 / 4325 `source-intelligence-v3` |
-| KU READY | **id=7**, KnowledgeVersion=**40**, concepts=**3522**, evidence=**9371** |
-| `article` / `document` concepts | **0** |
-
-Canonical deploy after push: `sudo bash deploy/manage_deploy.sh deploy full`
-
----
-
-## 2. Concept-quality audit (snap 7)
-
-| Signal | Observation |
-|--------|-------------|
-| Concept count | 9654 → **3522** after SI rules refresh + rebuild |
-| Head | Still includes org name + some news titles (SI main_topic = page title on news) |
-| Content-kind echoes | Removed |
-| Structural «Новини» as topic | Suppressed at SI rules + builder |
-
-Remaining org/news lexical head is **SI inference debt**, not Phase 1 ranking.
+| KnowledgeVersion | 40 (aligned with READY) |
+| SI indexed | 4325 with `document_purpose` profiles (`SOURCE_INTELLIGENCE_VERSION=source-intelligence-v3`) |
+| KU READY | id=**7** · concepts=**3522** · evidence=**9371** |
+| article/document concepts | **0** |
+| Phase 1 | observe-only · flag does not grant ranking authority |
 
 ---
 
-## 3. SI main_topic RCA
+## 3. Phase 1 final
 
-**Path:** page → SI rules/LLM → `main_topic` / keywords → UnderstandingBuilder → concepts  
+| Metric | Value |
+|--------|------:|
+| Shadow executes | yes (snap 7) |
+| Shadow failures | 0 |
+| Warm latency | p50≈25–59ms (cold first hit can be ~1–4s) |
+| Ranking authority | none |
 
-**Root causes addressed (generic):**
-
-1. Structural section/title labels used as topics → rejected in `source_semantic_rules`
-2. Content-kind `entity_type` (`article`/`document`) echoed as concepts → filtered in builder
-3. Single-token keyword crumbs as subtopics → skipped
-
-**Not done:** tenant blacklists; bank-specific vocabulary.
-
----
-
-## 4. Shadow latency RCA + optimization
-
-| Stage | Before | After (warm) |
-|-------|--------|--------------|
-| Dominant cost | Per-request READY load ~1.8s + Python resolve ~0.45s | Process-local immutable snapshot cache + numpy resolve |
-| p50 | ≈2406 ms | **≈24 ms** (acceptance harness) |
-| p95 | ≈2516 ms | **≈27 ms** |
-| Soft budget | 250 ms | **Met when warm** |
-| Cold | — | First load still ~1–1.5s (accepted) |
-
-No new vector DB / Redis / ANN.
+**Non-interference:** repeated OFF/ON comparisons show occasional source-id set differences that also appear **within OFF-only repeats** (retrieval nondeterminism). No evidence that Understanding mutates ranking/context/prompt/answer. Contract remains observe-only.
 
 ---
 
-## 5. Ask QA — before vs after (representative classes)
+## 4. Critical Ask smoke (post-deploy, /opt)
 
-| Case | Before | After | Owner |
-|------|--------|-------|-------|
-| Org overview UK | Homepage promo / weak | about-bank + homepage; coherent overview | RETRIEVAL fixed |
-| Org overview EN | Weak | Mixed (charity/service pages) | ACCEPTED DEBT |
-| Org benefits | Empty / no info | about-bank pages; award-leaning | P2 wording |
-| Deposit rates | Empty (news filtered) | Deposit product/pricing pages with rates | RETRIEVAL fixed |
-| Branch locator | Homepage / wrong | **branches-atms** selected | RETRIEVAL fixed |
-| Privacy | Cookie only | Personal-data notice + informational security | RETRIEVAL fixed |
-| Cash loan | Credit-card contamination | consumer-cash-loan retained | EVIDENCE/packer fixed |
-| Unsupported geo | Correct refuse | Correct refuse | — |
-| Life insurance | Limited | Still weak (mostly news/business insurance in corpus) | CORPUS GAP |
-| Truncation / degenerate | None | None (after trace-session fix) | — |
+8/8 cases returned non-degenerate answers (2026-10-07 close smoke):
 
-Harness note: duplicate `answer_traces.request_id` previously aborted the Session mid-suite — fixed in `RagService._store_trace` rollback + unique harness ids.
+| Case | Retrieval survivors | Notes |
+|------|---------------------|-------|
+| org overview UK | homepage + about-bank | usable |
+| org overview EN | charity/service pages | **accepted debt** (soft) |
+| org benefits | awards/compliance about | **accepted debt** (awards lean) |
+| deposit rates | deposit product/pricing | rates present |
+| branch locator | branches-atms + homepage | locator page selected |
+| privacy | personal-data notice + info-security | fixed class |
+| cash loan | consumer-cash-loan + compliance | product page retained |
+| unsupported geo | honest no-NY branches | safe refusal |
 
----
-
-## 6. Corpus operations
-
-| State | Count | Meaning |
-|-------|------:|---------|
-| indexed | 4325 | Active retrieval corpus |
-| pending | 669 | Discovered, not indexed (empty error_message) |
-| error | 21 | Mostly fetch timeout / embedding failures |
-| refresh_due | ~3397 | Indexed but past `next_refresh_at` — stale schedule, not “missing” |
-
-Do **not** mass-reprocess without ops prioritization. Prefer sources tied to Ask failures (done for rates/locator/privacy/cash-loan via retrieval, not re-crawl).
-
-Privacy: dedicated page `povidomlennia-pro-zakhyst-personalnykh-danykh` exists — was a retrieval miss, not absence.
+No truncation / degenerate completion in this subset. Soft P2 wording debt is **not** reopened.
 
 ---
 
-## 7. Phase 1 metrics before / after
-
-| Metric | Baseline (pre-cache) | After quality wave |
-|--------|---------------------|--------------------|
-| ranking_unchanged_all | true | **true** (fresh OFF vs ON, 12 queries, 0 mismatches) |
-| failure_rate | 0 | 0 |
-| concept_resolution_success | 1.0 | 1.0 |
-| snapshot_availability | 1.0 | 1.0 |
-| overlap mean / median | 0.22 / 0.10 | ~0.29 / ~0.29 (diagnostic only) |
-| latency p50 / p95 | 2406 / 2516 ms | **24 / 27 ms** warm |
-
-Higher overlap is **not** treated as better. Understanding remains observe-only.
-
----
-
-## 8. RAG non-interference proof
-
-Re-measured after all product fixes: KU OFF vs ON selected `source_id` lists **identical** for the 12 shadow queries.
-
----
-
-## 9. Tests
+## 5. Gates
 
 | Gate | Result |
 |------|--------|
-| `make test-backend` | PASS |
-| `make test-dashboard` | PASS |
-| `make release-check` | PASS |
-| Targeted retrieval / lexical / evidence | PASS |
+| `make test-backend` | PASS (pre-ship) |
+| `make test-dashboard` | PASS (pre-ship) |
+| `make release-check` | PASS (pre-ship) |
+| verify-release (deploy) | PASS |
+| smoke (deploy) | PASS |
 
 ---
 
-## 10. Independent reviews (summary)
+## 6. Accepted debt / next cycle
 
-**Staff Engineer:** Trace UniqueViolation session poison fixed; packer no longer evicts exact-match product evidence for opportunistic KP-boosted about pages; tests cover morphology + locator false career.
+**ACCEPTED 1.1 DEBT:** EN overview softness; benefits/awards bias; life-insurance corpus gap; cold KU load.
 
-**Software Architect:** Changes stay inside SI rules, QueryUnderstanding, lexical retrieval, focus/authority/packer, KU cache — no Phase 2, no second pipeline, no tenant hardcode.
+**CORPUS OPS:** 669 pending; 21 errors; ~3397 refresh-due.
 
-**AI Architect:** Main Ask empties were news-flood + FTS morphology + evidence packing — fixed at owners. Remaining life-insurance weakness is corpus (news-only life products).
-
-**Product/UX:** Overview/rates/locator/privacy/cash-loan materially improved; benefits/EN overview wording still soft — accepted debt for 1.1 close.
+**NEXT (not 1.1):** Phase 2 Understanding ranking-assist only with explicit go; corpus reliability; further Ask quality iteration.
 
 ---
 
-## 11. Phase 2 recommendation
+## 7. Recommendation for next milestone
 
-**Do not start Phase 2 by default.** Phase 1 is proven non-interfering and cheap when warm. Phase 2 needs an explicit product decision with ranking-assist evaluation gates.
-
----
-
-## 12. Release decision inputs
-
-- Infrastructure / SI / KU truthful  
-- Phase 1 non-interfering  
-- Major Ask empty-retrieval P1 classes fixed  
-- No remaining P0  
-- Remaining P1-quality soft misses classified as corpus/debt  
-
-**Recommend: close Release 1.1.**
+**B → then C, then A:** corpus operations / indexing reliability first; then Ask product-quality iteration on real gaps; Phase 2 ranking-assist only after explicit product decision.
