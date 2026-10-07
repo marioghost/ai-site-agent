@@ -86,6 +86,47 @@ _NOISE_TOPIC = frozenset(
     }
 )
 
+# Structural nav / hub labels (platform multilingual vocabulary — not tenants).
+# These describe site structure / page_role, not what a page is about.
+_STRUCTURAL_TOPIC_LABELS = frozenset(
+    {
+        "news",
+        "новини",
+        "blog",
+        "блог",
+        "press",
+        "media",
+        "actions",
+        "action",
+        "promo",
+        "promotion",
+        "акції",
+        "акция",
+        "campaign",
+        "products",
+        "product",
+        "продукти",
+        "services",
+        "service",
+        "послуги",
+        "about",
+        "contacts",
+        "contact",
+        "faq",
+        "support",
+        "docs",
+        "documentation",
+        "legal",
+        "career",
+        "careers",
+        "home",
+        "головна",
+        "главная",
+        "search",
+        "sitemap",
+    }
+)
+
 
 def _clean_title_topic(title: str) -> str:
     raw = (title or "").strip()
@@ -93,16 +134,41 @@ def _clean_title_topic(title: str) -> str:
         return ""
     parts = re.split(r"\s+[|\u2014\u2013\-]\s+", raw, maxsplit=1)
     head = parts[0].strip() if parts else raw
-    return head[:80]
+    head = head[:80].strip()
+    if not head:
+        return ""
+    if head.lower() in _STRUCTURAL_TOPIC_LABELS or head.lower() in _NOISE_TOPIC:
+        return ""
+    return head
 
 
 def _topic_from_section(site_section: str) -> str:
     seg = (site_section or "").strip().lower()
     if not seg or seg in _LANG_SEGMENTS or seg in _NOISE_TOPIC or seg == "general":
         return ""
+    if seg in _STRUCTURAL_TOPIC_LABELS:
+        return ""
     if len(seg) <= 2:
         return ""
     return seg.replace("-", " ").replace("_", " ").title()
+
+
+def _phrase_subtopics(keywords: list[str]) -> list[str]:
+    """Keep page-specific phrases; drop single-token keyword crumbs as topics."""
+    out: list[str] = []
+    for k in keywords:
+        text = (k or "").strip()
+        if not text:
+            continue
+        low = text.lower()
+        if low in _NOISE_TOPIC or low in _STRUCTURAL_TOPIC_LABELS:
+            continue
+        toks = text.split()
+        if len(toks) >= 2 or len(text) >= 16:
+            out.append(text)
+        if len(out) >= 6:
+            break
+    return out
 
 
 def build_rules_semantic(
@@ -148,7 +214,7 @@ def build_rules_semantic(
     if title_topic:
         conf += 0.05
 
-    subtopics = [k for k in keywords[:8] if k and k.lower() not in _NOISE_TOPIC][:6]
+    subtopics = _phrase_subtopics(keywords)
 
     return SourceSemanticProfile(
         main_topic=main_topic,
@@ -160,7 +226,7 @@ def build_rules_semantic(
         entity_type_confidence=min(0.75, conf),
         supported_intents=_ROLE_TO_INTENTS.get(page_role, ["overview"]),
         search_keywords=keywords[:16],
-        synonyms=keywords[:8],
+        synonyms=[k for k in keywords[:8] if k and len(k.split()) >= 2][:8],
         semantic_tags=(subtopics[:4] or [page_role.replace("_", "-")])[:6],
         suitable_for=suitable[:8],
         not_suitable_for=not_suitable[:8],

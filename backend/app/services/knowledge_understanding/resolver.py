@@ -22,6 +22,8 @@ class UnderstandingResolver:
         *,
         query_embedding: list[float] | None = None,
         concept_embeddings: Mapping[str, Sequence[float]] | None = None,
+        embedding_matrix: object | None = None,
+        embedding_keys: Sequence[str] | None = None,
     ) -> ResolvedNeed:
         if not concepts:
             return ResolvedNeed(
@@ -33,28 +35,42 @@ class UnderstandingResolver:
 
         query_terms = _query_terms(understanding)
         embeddings = concept_embeddings or {}
+        by_key = {c.concept_key: c for c in concepts}
         scored: list[tuple[float, Concept, str]] = []
 
+        # Lexical pass (cheap).
         for concept in concepts:
             lexical = _lexical_score(concept, query_terms, understanding)
-            embed = 0.0
-            concept_emb = embeddings.get(concept.concept_key)
-            if query_embedding and concept_emb:
-                embed = cosine(query_embedding, concept_emb)
-            score = max(lexical, embed)
-            if score <= 0.0:
-                continue
-            method = (
-                "embedding"
-                if embed >= lexical and embed >= EMBED_MATCH_THRESHOLD
-                else "lexical"
-            )
-            if embed >= EMBED_MATCH_THRESHOLD or lexical >= 0.35:
-                scored.append((score, concept, method))
+            if lexical >= 0.35:
+                scored.append((lexical, concept, "lexical"))
 
-        scored.sort(key=lambda t: t[0], reverse=True)
-        top = scored[:MAX_RESOLVED]
-        methods = {m for _, _, m in top}
+        # Embedding pass — vectorized when matrix is available.
+        embed_scores: dict[str, float] = {}
+        if query_embedding and embedding_matrix is not None and embedding_keys:
+            embed_scores = _vectorized_embed_scores(
+                query_embedding, embedding_matrix, embedding_keys
+            )
+        elif query_embedding and embeddings:
+            for key, concept_emb in embeddings.items():
+                embed_scores[key] = cosine(query_embedding, concept_emb)
+
+        for key, embed in embed_scores.items():
+            if embed < EMBED_MATCH_THRESHOLD:
+                continue
+            concept = by_key.get(key)
+            if concept is None:
+                continue
+            scored.append((embed, concept, "embedding"))
+
+        # Keep best score per concept.
+        best: dict[str, tuple[float, Concept, str]] = {}
+        for score, concept, method in scored:
+            prev = best.get(concept.concept_key)
+            if prev is None or score > prev[0]:
+                best[concept.concept_key] = (score, concept, method)
+
+        ranked = sorted(best.values(), key=lambda t: t[0], reverse=True)[:MAX_RESOLVED]
+        methods = {m for _, _, m in ranked}
         if "embedding" in methods and "lexical" in methods:
             resolution_method = "hybrid"
         elif "embedding" in methods:
@@ -65,11 +81,33 @@ class UnderstandingResolver:
             resolution_method = "none"
 
         return ResolvedNeed(
-            concepts=tuple(c for _, c, _ in top),
+            concepts=tuple(c for _, c, _ in ranked),
             need_type=_need_type(understanding),
             query_terms=query_terms,
             resolution_method=resolution_method,
         )
+
+
+def _vectorized_embed_scores(
+    query_embedding: Sequence[float],
+    embedding_matrix: object,
+    embedding_keys: Sequence[str],
+) -> dict[str, float]:
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        return {}
+    q = np.asarray(list(query_embedding), dtype=np.float32)
+    qn = float(np.linalg.norm(q))
+    if qn <= 0.0:
+        return {}
+    q = q / qn
+    mat = embedding_matrix
+    sims = mat @ q  # type: ignore[operator]
+    out: dict[str, float] = {}
+    for i, key in enumerate(embedding_keys):
+        out[key] = float(sims[i])
+    return out
 
 
 def _need_type(understanding: QueryNeedInput) -> str:

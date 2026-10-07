@@ -97,6 +97,12 @@ class UnderstandingStore:
 
         self.db.flush()
         self._prune_old_snapshots(keep=KEEP_SNAPSHOTS)
+        try:
+            from app.services.knowledge_understanding.runtime_cache import clear_cache
+
+            clear_cache()
+        except Exception:  # noqa: BLE001
+            pass
         return snapshot
 
     def persist_error(

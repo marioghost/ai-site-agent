@@ -22,12 +22,39 @@ from app.services.knowledge_understanding.models import (
     UnderstandingSummary,
 )
 from app.services.knowledge_understanding.resolver import UnderstandingResolver
+from app.services.knowledge_understanding.runtime_cache import (
+    SnapshotRuntime,
+    get_cached,
+    put_cached,
+)
 from app.services.knowledge_understanding.similarity import cosine
 from app.services.knowledge_understanding.store import UnderstandingStore
 
 WEAK_EVIDENCE = 1
 WEAK_CONFIDENCE = 0.45
 RELATED_MIN_SIM = 0.55
+
+
+def _build_embedding_matrix(
+    embeddings: dict[str, tuple[float, ...]],
+) -> tuple[object | None, tuple[str, ...], object | None]:
+    """Precompute row-normalized matrix for vectorized cosine (numpy)."""
+    if not embeddings:
+        return None, (), None
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        return None, (), None
+    keys = tuple(embeddings.keys())
+    rows = [list(embeddings[k]) for k in keys]
+    if not rows:
+        return None, (), None
+    mat = np.asarray(rows, dtype=np.float32)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms = np.maximum(norms, 1e-12)
+    mat = mat / norms
+    flat_norms = norms.reshape(-1)
+    return mat, keys, flat_norms
 
 
 class ConceptIndexUnderstandingLayer:
@@ -50,6 +77,8 @@ class ConceptIndexUnderstandingLayer:
         self._embeddings: dict[str, tuple[float, ...]] | None = None
         self._evidence: list[EvidenceLink] | None = None
         self._snapshot_id: int | None = None
+        self._embedding_matrix = None
+        self._embedding_keys: tuple[str, ...] = ()
 
     def _ensure_loaded(self) -> bool:
         if self._concepts is not None:
@@ -61,13 +90,42 @@ class ConceptIndexUnderstandingLayer:
             self._evidence = []
             self._snapshot_id = None
             return False
-        self._snapshot_id = snap.id
-        self._concepts = self._store.load_concepts(snap.id)
-        self._embeddings = self._store.load_embeddings(snap.id)
-        self._evidence = self._store.load_evidence(snap.id)
-        if not self._source_meta:
-            self._source_meta = self._load_source_meta()
+        cached = get_cached(int(snap.id))
+        if cached is not None:
+            self._apply_runtime(cached)
+            return True
+        concepts = self._store.load_concepts(snap.id)
+        embeddings = self._store.load_embeddings(snap.id)
+        evidence = self._store.load_evidence(snap.id)
+        # Temporary assign for source meta helper.
+        self._concepts = concepts
+        self._evidence = evidence
+        source_meta = dict(self._source_meta) if self._source_meta else self._load_source_meta()
+        matrix, keys, norms = _build_embedding_matrix(embeddings)
+        runtime = put_cached(
+            SnapshotRuntime(
+                snapshot_id=int(snap.id),
+                knowledge_version=int(snap.knowledge_version),
+                concepts=tuple(concepts),
+                embeddings=embeddings,
+                evidence=tuple(evidence),
+                source_meta=source_meta,
+                embedding_matrix=matrix,
+                embedding_keys=keys,
+                embedding_norms=norms,
+            )
+        )
+        self._apply_runtime(runtime)
         return True
+
+    def _apply_runtime(self, runtime: SnapshotRuntime) -> None:
+        self._snapshot_id = runtime.snapshot_id
+        self._concepts = list(runtime.concepts)
+        self._embeddings = dict(runtime.embeddings)
+        self._evidence = list(runtime.evidence)
+        self._source_meta = dict(runtime.source_meta)
+        self._embedding_matrix = runtime.embedding_matrix
+        self._embedding_keys = runtime.embedding_keys
 
     def _load_source_meta(self) -> dict[int, tuple[str, str]]:
         ids: set[int] = set()
@@ -93,6 +151,8 @@ class ConceptIndexUnderstandingLayer:
             self._concepts or [],
             query_embedding=query_embedding,
             concept_embeddings=self._embeddings or {},
+            embedding_matrix=self._embedding_matrix,
+            embedding_keys=self._embedding_keys,
         )
 
     def find_evidence(

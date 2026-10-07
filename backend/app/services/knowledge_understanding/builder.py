@@ -79,6 +79,9 @@ def extract_raw_concepts(source: Source) -> list[RawConcept]:
         label = (sub or "").strip()
         if not label or (main and label.lower() == main.lower()):
             continue
+        # Single-token keyword crumbs are not reusable concepts.
+        if len(label.split()) < 2 and len(label) < 16:
+            continue
         out.append(
             RawConcept(
                 label=label,
@@ -132,21 +135,28 @@ def _alias_pool(semantic: SourceSemanticProfile) -> list[str]:
 
     ``suitable_for`` / ``supported_intents`` are need-type associations, not
     concept aliases — stuffing them into aliases poisoned lexical resolution.
+    Prefer multi-word phrases; keep a few strong single tokens only.
     """
     seen: set[str] = set()
     out: list[str] = []
+    singles: list[str] = []
     for bucket in (
-        semantic.search_keywords,
         semantic.synonyms,
+        semantic.search_keywords,
         semantic.semantic_tags,
     ):
         for item in bucket or []:
             text = (item or "").strip()
             key = text.lower()
-            if not text or key in seen:
+            if not text or key in seen or len(text) < 3:
                 continue
             seen.add(key)
-            out.append(text)
+            if len(text.split()) >= 2 or len(text) >= 16:
+                out.append(text)
+            else:
+                singles.append(text)
+    for text in singles[:4]:
+        out.append(text)
     return out
 
 
