@@ -12,9 +12,9 @@
 
 | Wave | Goal | Status |
 |------|------|--------|
-| A Runtime Truth | tip deploy + Settings singleton + site_url + KP proof | **PARTIAL** — code on `main`; production still `7b5548d` until `deploy full` |
+| A Runtime Truth | tip deploy + Settings singleton + site_url + KP proof | **PARTIAL** — tip `8d859a3` pushed; production still `7b5548d` until `deploy full` |
 | B Corpus / SI / KU Phase 0 ops | SI v3 convergence + ready snapshot | **NOT STARTED** (blocked on Wave A deploy) |
-| C Phase 1 Understanding shadow | Observe-only after DFP | **CODE READY** on tip (flag default OFF) |
+| C Phase 1 Understanding shadow | Observe-only after DFP | **CODE READY** on tip `8d859a3` (flag default OFF) |
 
 ---
 
