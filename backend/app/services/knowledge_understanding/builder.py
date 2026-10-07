@@ -17,6 +17,24 @@ from app.services.knowledge_understanding.normalizer import (
 
 # Cap subtopics per source (SEMANTIC_UNDERSTANDING_MVP §8 / §15).
 _MAX_SUBTOPICS = 6
+# SI purpose / content-kind tokens (platform schema vocabulary — not industry).
+# When entity_type echoes these, they are not entities; do not elevate to concepts.
+_CONTENT_KIND_ENTITY_ECHO = frozenset(
+    {
+        "news",
+        "article",
+        "promotion",
+        "campaign",
+        "offer",
+        "document",
+        "faq",
+        "policy",
+        "category",
+        "support",
+        "legal",
+        "contact",
+    }
+)
 
 EmbedFn = Callable[[list[str]], list[list[float]]]
 
@@ -75,7 +93,18 @@ def extract_raw_concepts(source: Source) -> list[RawConcept]:
 
     entity_type = (semantic.entity_type or "").strip()
     entity_conf = float(semantic.entity_type_confidence or 0.0)
-    if entity_type and entity_conf > 0.4:
+    purpose = (semantic.document_purpose or "").strip().lower()
+    entity_l = entity_type.lower()
+    doc_type = (getattr(source, "document_type", None) or "").strip().lower()
+    doc_stem = doc_type[:-5] if doc_type.endswith("_page") else doc_type
+    # SI often echoes purpose/content-kind into entity_type ("article", "promotion").
+    # Elevating those floods Understanding and poisons KP topic discovery.
+    purpose_echo = bool(entity_l) and (
+        entity_l == purpose
+        or entity_l == doc_stem
+        or entity_l in _CONTENT_KIND_ENTITY_ECHO
+    )
+    if entity_type and entity_conf > 0.4 and not purpose_echo:
         # Label is the entity type from SI; page title is an alias only.
         # Using title as the concept label polluted the index with page chrome.
         title = (source.title or "").strip()

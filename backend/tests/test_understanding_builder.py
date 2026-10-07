@@ -144,6 +144,23 @@ def test_entity_uses_entity_type_not_page_title():
 
 
 @pytest.mark.unit
+def test_content_kind_entity_echo_is_not_a_concept():
+    """SI purpose/content-kind tokens must not become Understanding concepts."""
+    src = _make_source(
+        url="https://example.com/news/1",
+        title="Launch day",
+        main_topic="Product launch",
+        entity_type="article",
+        entity_conf=0.95,
+    )
+    src.id = 11
+    src.document_type = "news_page"
+    raw = extract_raw_concepts(src)
+    assert all(r.label.lower() != "article" for r in raw)
+    assert any(r.label == "Product launch" for r in raw)
+
+
+@pytest.mark.unit
 def test_concept_index_satisfies_protocol():
     from app.services.knowledge_understanding.adapters.concept_index import (
         ConceptIndexUnderstandingLayer,
