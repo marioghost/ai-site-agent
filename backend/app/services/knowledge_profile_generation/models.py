@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.source_intelligence import SourceSemanticProfile
 from app.schemas.knowledge_profile import (
     ContentHintRule,
     DocumentTypeRule,
@@ -174,6 +175,11 @@ class PageRecord:
     texts: list[str]
     content_hints: list[str]
     is_homepage: bool = False
+    main_text: str = ""
+    footer_text: str = ""
+    semantic_profile: SourceSemanticProfile | None = None
+    canonical: bool = False
+    importance: int = 0
 
 
 @dataclass

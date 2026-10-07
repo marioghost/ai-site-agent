@@ -44,12 +44,15 @@ class OrganizationDetector:
         hierarchy: WebsiteHierarchy,
     ) -> DetectedOrganization:
         candidates: dict[str, list[EvidenceItem]] = {}
+        display_names: dict[str, str] = {}
 
         def add(name: str, source: str, weight: float, detail: str = "") -> None:
             clean = self._clean_name(name)
             if not clean:
                 return
-            candidates.setdefault(clean, []).append(
+            key = clean.casefold()
+            display_names.setdefault(key, clean)
+            candidates.setdefault(key, []).append(
                 EvidenceItem(source=source, weight=weight, detail=detail)
             )
 
@@ -64,15 +67,12 @@ class OrganizationDetector:
                 add(name, "json_ld", 40, meta.url)
             if meta.og_site_name:
                 add(meta.og_site_name, "og_site_name", 25, meta.url)
-            if meta.h1 and len(meta.h1) <= 60:
-                add(meta.h1.split("|")[0].strip(), "header_h1", 15, meta.url)
             for line in meta.copyright_lines:
                 add(line, "footer_copyright", 20, meta.url)
             if meta.footer_text:
                 for m in re.findall(r"©\s*([^\n\r|]{3,60})", meta.footer_text, re.I):
                     add(m, "footer", 20, meta.url)
 
-        about_urls = {c.url for c in hierarchy.categories if c.category == "about"}
         contact_urls = {c.url for c in hierarchy.categories if c.category == "contacts"}
         homepage_urls = {c.url for c in hierarchy.categories if c.category == "homepage"}
 
@@ -80,10 +80,8 @@ class OrganizationDetector:
             title_part = re.split(r"[|\-–—]", page.title)[0].strip()
             if page.is_homepage or page.url in homepage_urls:
                 add(title_part, "homepage", 15, page.url)
-            if page.url in about_urls:
-                add(title_part, "about_page", 10, page.url)
                 for h in page.headings[:2]:
-                    add(h, "about_page", 8, page.url)
+                    add(h, "header_h1", 15, page.url)
             if page.url in contact_urls:
                 add(title_part, "contact_page", 8, page.url)
 
@@ -101,9 +99,11 @@ class OrganizationDetector:
             )
 
         scored: list[tuple[str, float, list[EvidenceItem]]] = []
-        for name, evidence in candidates.items():
+        for key, evidence in candidates.items():
+            name = display_names[key]
             score = self.confidence.organization_score(evidence)
             score = self._apply_consensus_boost(name, evidence, score, host_label)
+            score = self._apply_identity_gate(name, evidence, score, host_label)
             scored.append((name, score, evidence))
 
         scored.sort(key=lambda x: (-x[1], -self._structural_support(x[2]), len(x[0])))
@@ -125,6 +125,33 @@ class OrganizationDetector:
             evidence=self._dedupe_evidence(best_evidence),
             aliases=aliases,
         )
+
+    def _apply_identity_gate(
+        self,
+        name: str,
+        evidence: list[EvidenceItem],
+        score: float,
+        host_label: str,
+    ) -> float:
+        """Keep page-local labels below corpus-level identity evidence.
+
+        Titles and H1s explain individual pages. They become organization
+        evidence only when they agree with hostname or independent metadata.
+        """
+        sources = {e.source for e in evidence}
+        independent = sources & {
+            "schema.org",
+            "json_ld",
+            "og_site_name",
+            "footer_copyright",
+            "footer",
+            "hostname",
+        }
+        if independent:
+            return score
+        if host_label and not self._names_align(name, host_label):
+            return min(score * 0.5, 0.3)
+        return score
 
     def _apply_consensus_boost(
         self,

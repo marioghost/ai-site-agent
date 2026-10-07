@@ -378,6 +378,11 @@ class TestPipelineIntegration:
                 assert hint in hint_ids, f"Unknown hint {hint} on topic {topic.key}"
         assert preview.content_hints
         assert preview.analytics
+        assert preview.analytics["generation_seconds"] == analytics["generation_seconds"]
+        assert (
+            preview.analytics["confidence_distribution"]
+            == analytics["confidence_distribution"]
+        )
         # Organization should be evidence-based
         assert preview.organization.detail
         duplicate_warnings = [w for w in preview.warnings if "Duplicate alias" in w]

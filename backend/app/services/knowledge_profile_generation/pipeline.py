@@ -42,6 +42,8 @@ from app.services.knowledge_profile_generation.structure_analyzer import (
 from app.services.knowledge_profile_generation.topic_discovery import TopicDiscovery
 from app.services.knowledge_profile_generation.validator import KnowledgeProfileValidator
 from app.services.knowledge_profile_service import KnowledgeProfileService
+from app.services.knowledge_understanding.store import UnderstandingStore
+from app.services.knowledge_version_service import KnowledgeVersionService
 
 StageCallback = Callable[[str, int], None]
 
@@ -136,11 +138,34 @@ class KnowledgeProfilePipeline:
 
         # Stage 5: Topics
         stage("topic_discovery", 55)
+        understanding_store = UnderstandingStore(self.db)
+        understanding_snapshot = understanding_store.latest_ready()
+        understanding_concepts = []
+        understanding_evidence = []
+        knowledge_version = KnowledgeVersionService(self.db).get()
+        if (
+            understanding_snapshot is not None
+            and understanding_snapshot.knowledge_version == knowledge_version
+        ):
+            understanding_concepts = understanding_store.load_concepts(
+                understanding_snapshot.id
+            )
+            understanding_evidence = understanding_store.load_evidence(
+                understanding_snapshot.id
+            )
+            ctx.extras["understanding_snapshot_id"] = understanding_snapshot.id
+        elif understanding_snapshot is not None:
+            ctx.report.warnings.append(
+                "Knowledge Understanding snapshot is stale; topics use current "
+                "Source Intelligence evidence"
+            )
         ctx.topics = TopicDiscovery().discover(
             ctx.pages,
             ctx.hierarchy,
             ctx.entities,
             organization_name=ctx.organization.name,
+            understanding_concepts=understanding_concepts,
+            understanding_evidence=understanding_evidence,
         )
         ctx.report.topics_discovered = len(ctx.topics)
 
@@ -178,6 +203,10 @@ class KnowledgeProfilePipeline:
                 ctx.report.warnings.append(
                     f"LLM refinement skipped: {llm_stats['llm_error']}"
                 )
+            elif llm_stats.get("llm_parse_error"):
+                ctx.report.warnings.append(
+                    "LLM refinement skipped: response was not valid constrained JSON"
+                )
 
         if merge_identity:
             current = KnowledgeProfileService.from_settings(self.settings)
@@ -186,6 +215,7 @@ class KnowledgeProfilePipeline:
                 ctx.profile.site_display_name = (
                     current.site_display_name or current.organization_name
                 )
+                ctx.extras["identity_preserved_from_settings"] = True
             if current.organization_aliases:
                 ctx.profile.organization_aliases = list(
                     dict.fromkeys(
@@ -234,12 +264,12 @@ class KnowledgeProfilePipeline:
         ctx.profile = sanitize_profile_for_persist(ctx.profile)
 
         stage("preview", 99)
-        preview = self._build_preview(ctx, ctx.profile)
         ctx.report.generation_seconds = round(time.monotonic() - t0, 2)
         ctx.report.confidence_distribution = self.confidence.distribution(
             [t.confidence for t in ctx.topics]
             + ([ctx.organization.confidence] if ctx.organization else [])
         )
+        preview = self._build_preview(ctx, ctx.profile)
 
         analytics = ctx.report.model_dump()
         analytics["errors"] = [
@@ -262,6 +292,10 @@ class KnowledgeProfilePipeline:
             f"✓ {e.source}" + (f" ({e.detail})" if e.detail else "")
             for e in ctx.organization.evidence[:8]
         )
+        identity_preserved = bool(ctx.extras.get("identity_preserved_from_settings"))
+        preview_org_confidence = 1.0 if identity_preserved else ctx.organization.confidence
+        if identity_preserved:
+            org_evidence = "Preserved from the current Knowledge Profile"
 
         structure = WebsiteStructureSummary(
             indexed_page_count=ctx.statistics.indexed_page_count,
@@ -280,8 +314,8 @@ class KnowledgeProfilePipeline:
 
         return GenerationPreview(
             organization=ConfidenceItem(
-                value=ctx.organization.name,
-                confidence=ctx.organization.confidence,
+                value=profile.organization_name,
+                confidence=preview_org_confidence,
                 detail=org_evidence,
             ),
             website_type=ConfidenceItem(
@@ -297,18 +331,7 @@ class KnowledgeProfilePipeline:
                 if ctx.hierarchy.preset_secondary
                 else None
             ),
-            topics=[
-                ConfidenceItem(
-                    value=t.title,
-                    confidence=t.confidence,
-                    detail="; ".join(
-                        f"✓ {e.source}" for e in t.evidence[:5]
-                    )
-                    or f"key={t.id}",
-                    page_count=t.page_count,
-                )
-                for t in ctx.topics
-            ],
+            topics=self._preview_topics(ctx, profile),
             aliases=[
                 ConfidenceItem(value=a, confidence=0.7, detail="alias")
                 for a in ctx.organization.aliases
@@ -350,6 +373,29 @@ class KnowledgeProfilePipeline:
             validation_issues=[i.model_dump() for i in ctx.validation_issues],
             analytics=ctx.report.model_dump(),
         )
+
+    @staticmethod
+    def _preview_topics(
+        ctx: PipelineContext,
+        profile: KnowledgeProfile,
+    ) -> list[ConfidenceItem]:
+        discovered = {topic.id: topic for topic in ctx.topics}
+        items: list[ConfidenceItem] = []
+        for topic in profile.important_topics:
+            source = discovered.get(topic.key)
+            items.append(
+                ConfidenceItem(
+                    value=topic.label,
+                    confidence=source.confidence if source else 0.5,
+                    detail=(
+                        "; ".join(f"✓ {e.source}" for e in source.evidence[:5])
+                        if source
+                        else f"key={topic.key}"
+                    ),
+                    page_count=source.page_count if source else 0,
+                )
+            )
+        return items
 
     def _low_confidence_keys(self, ctx: PipelineContext) -> list[str]:
         keys: list[str] = []

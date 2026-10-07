@@ -47,9 +47,11 @@ class ProfileAssembler:
             metadata=ctx.metadata,
             hierarchy=ctx.hierarchy,
             top_url_segments=list(ctx.statistics.top_url_segments or []),
+            topic_labels=[topic.title for topic in ctx.topics],
         )
         ctx.extras["identity_subject_source"] = identity.subject_source
         ctx.extras["identity_entity_type_source"] = identity.entity_type_source
+        ctx.extras["identity_evidence_snippets"] = list(identity.evidence_snippets)
 
         overview_patterns = self._overview_patterns(ctx, base)
         expansions = self._expansions(ctx, topics, base)

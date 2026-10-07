@@ -29,6 +29,9 @@ from app.services.knowledge_profile_generation.models import (
     PageRecord,
     WebsiteHierarchy,
 )
+from app.services.knowledge_profile_generation.lexical_grounding import (
+    tokens_share_stem,
+)
 from app.services.knowledge_profile_generation.structural_filters import (
     SECTION_NOISE_LABELS,
     is_locale_like_path_segment,
@@ -66,6 +69,7 @@ class SiteIdentity:
     entity_type: str
     subject_source: str
     entity_type_source: str
+    evidence_snippets: tuple[str, ...] = ()
 
 
 def infer_site_identity(
@@ -76,19 +80,73 @@ def infer_site_identity(
     hierarchy: WebsiteHierarchy | None,
     top_url_segments: list[str] | None = None,
     max_subject_len: int = 160,
+    topic_labels: list[str] | None = None,
 ) -> SiteIdentity:
     org = (organization_name or "").strip()
-    evidence = _evidence_texts(pages, hierarchy, metadata)
+    evidence = _rank_identity_evidence(
+        org,
+        _evidence_texts(pages, hierarchy, metadata),
+    )
 
-    subject, subject_src = _infer_subject(org, evidence, top_url_segments or [], max_subject_len)
-    entity_type, type_src = _infer_entity_type(org, evidence, metadata, top_url_segments or [])
+    subject, subject_src = _infer_subject(
+        org,
+        evidence,
+        top_url_segments or [],
+        topic_labels or [],
+        max_subject_len,
+    )
+    entity_type, type_src = _infer_entity_type(
+        org,
+        evidence,
+        pages,
+        metadata,
+        top_url_segments or [],
+    )
 
     return SiteIdentity(
         site_subject=subject,
         entity_type=entity_type,
         subject_source=subject_src,
         entity_type_source=type_src,
+        evidence_snippets=_identity_snippets(evidence, org=org),
     )
+
+
+def _rank_identity_evidence(
+    org: str,
+    evidence: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    indexed = list(enumerate(evidence))
+
+    def quality(item: tuple[int, tuple[str, str]]) -> tuple[int, int]:
+        index, (_, text) = item
+        if _definitional_type(org, text):
+            return 3, -index
+        if _mentions_name(text, org):
+            return 2, -index
+        return 1, -index
+
+    indexed.sort(key=quality, reverse=True)
+    return [item for _, item in indexed]
+
+
+def _identity_snippets(
+    evidence: list[tuple[str, str]],
+    *,
+    org: str,
+) -> tuple[str, ...]:
+    seen: set[str] = set()
+    snippets: list[str] = []
+    for _, text in evidence:
+        cleaned = " ".join((text or "").split())[:500]
+        key = cleaned.casefold()
+        if not cleaned or key in seen or (org and not _mentions_name(cleaned, org)):
+            continue
+        seen.add(key)
+        snippets.append(cleaned)
+        if len(snippets) >= 12:
+            break
+    return tuple(snippets)
 
 
 def ground_topic_label(label: str, *, evidence_text: str, fallback: str) -> str:
@@ -102,6 +160,37 @@ def ground_topic_label(label: str, *, evidence_text: str, fallback: str) -> str:
     if fb and not _is_ungrounded_placeholder(fb, evidence_text):
         return fb[:80]
     return cleaned[:80]
+
+
+def is_grounded_in_evidence(
+    value: str,
+    evidence: list[str],
+    *,
+    minimum_token_coverage: float = 0.3,
+) -> bool:
+    """Validate generated identity text against corpus vocabulary."""
+    tokens = {
+        token.casefold()
+        for token in _WORD.findall(value or "")
+        if len(token) >= 4
+    }
+    if not tokens:
+        return False
+    evidence_tokens = {
+        token.casefold()
+        for text in evidence
+        for token in _WORD.findall(text or "")
+        if len(token) >= 4
+    }
+    if not evidence_tokens:
+        return False
+    grounded = {
+        token
+        for token in tokens
+        if any(tokens_share_stem(token, candidate) for candidate in evidence_tokens)
+    }
+    coverage = len(grounded) / len(tokens)
+    return coverage >= minimum_token_coverage
 
 
 def _evidence_texts(
@@ -149,22 +238,32 @@ def _evidence_texts(
         for i, chunk in enumerate(chunks):
             bucket.append((f"{page.url}#{i}", chunk))
 
-    if metadata:
-        for meta in metadata.pages:
-            if meta.meta_description:
-                about.insert(0, (f"meta:{meta.url}", meta.meta_description))
+    # PageMetadata.meta_description is extracted from page text in this
+    # pipeline, not a distinct authoritative signal. Re-adding every value
+    # here would duplicate evidence and promote arbitrary pages to About.
+    del metadata
 
-    return about + home + other[:16]
+    return about + home + other
 
 
 def _infer_subject(
     org: str,
     evidence: list[tuple[str, str]],
     top_segments: list[str],
+    topic_labels: list[str],
     max_len: int,
 ) -> tuple[str, str]:
+    # Site-wide concepts outrank any single page: they represent recurring,
+    # corpus-level understanding rather than one campaign or local page role.
+    if org:
+        topics = _site_topic_labels(topic_labels, org=org, limit=3)
+        if topics:
+            return f"{org} — {', '.join(topics)}"[:max_len], "site_understanding"
+
+    # A self-definition is stronger identity evidence than banners, alerts,
+    # promotions, or other transient sentences that merely mention the name.
     for source, text in evidence:
-        sentence = _first_clean_sentence(text, org=org, max_len=max_len)
+        sentence = _definitional_sentence(text, org=org, max_len=max_len)
         if sentence:
             return sentence, source.split("#", 1)[0]
 
@@ -222,6 +321,7 @@ def _schema_type_from_text(text: str) -> str:
 def _infer_entity_type(
     org: str,
     evidence: list[tuple[str, str]],
+    pages: list[PageRecord],
     metadata: MetadataDataset | None,
     top_segments: list[str],
 ) -> tuple[str, str]:
@@ -231,6 +331,10 @@ def _infer_entity_type(
             return schema, f"schema:{source.split('#', 1)[0]}"
 
     del metadata  # reserved; names alone are not types
+
+    semantic_type = _dominant_semantic_entity_type(pages)
+    if semantic_type:
+        return semantic_type, "source_intelligence"
 
     if org:
         for source, text in evidence[:10]:
@@ -245,17 +349,45 @@ def _infer_entity_type(
     return "", "empty"
 
 
+def _dominant_semantic_entity_type(pages: list[PageRecord]) -> str:
+    identity_pages = [page for page in pages if page.is_homepage]
+    if not identity_pages:
+        identity_pages = [page for page in pages if page.canonical]
+    if not identity_pages:
+        identity_pages = pages
+
+    scores: dict[str, float] = {}
+    labels: dict[str, str] = {}
+    support: dict[str, set[int]] = {}
+    for page in identity_pages:
+        semantic = page.semantic_profile
+        if semantic is None:
+            continue
+        label = (semantic.entity_type or "").strip()
+        confidence = float(semantic.entity_type_confidence or 0.0)
+        if not label or confidence <= 0.0:
+            continue
+        key = label.casefold()
+        labels.setdefault(key, label)
+        scores[key] = scores.get(key, 0.0) + confidence
+        support.setdefault(key, set()).add(page.source_id)
+    if not scores:
+        return ""
+    best = max(scores, key=lambda key: (scores[key], len(support[key])))
+    count = len(support[best])
+    mean_confidence = scores[best] / max(count, 1)
+    minimum_support = 1 if len(identity_pages) == 1 else 2
+    if count < minimum_support or mean_confidence < 0.5:
+        return ""
+    return labels[best][:60]
+
+
 def _definitional_type(org: str, text: str) -> str:
     """Extract 'Org is a Y' type phrase anchored on the organization name."""
     if not org or not text:
         return ""
     lower = text.lower()
-    candidates = [org]
-    token = org.split()[0] if org.split() else org
-    if token.lower() != org.lower():
-        candidates.append(token)
-
-    for cand in candidates:
+    for cand in [org]:
         cand_l = cand.lower()
         start = 0
         while True:
@@ -331,46 +463,69 @@ def _site_section_labels(top_segments: list[str], *, limit: int) -> list[str]:
     return out
 
 
-def _first_clean_sentence(text: str, *, org: str, max_len: int) -> str:
+def _site_topic_labels(
+    topic_labels: list[str],
+    *,
+    org: str,
+    limit: int,
+) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in topic_labels:
+        label = " ".join((raw or "").split()).strip(" .,;|")
+        key = label.casefold()
+        if not label or key in seen or key == org.casefold():
+            continue
+        if len(label) > 60 or is_section_noise_label(label):
+            continue
+        seen.add(key)
+        out.append(label)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _definitional_sentence(text: str, *, org: str, max_len: int) -> str:
     raw = " ".join((text or "").split())
-    if not raw:
+    if not raw or not org:
         return ""
-    # Prefer a sentence that mentions the organization.
-    parts: list[str] = []
     start = 0
+    parts: list[str] = []
     for match in _SENTENCE_END.finditer(raw):
         parts.append(raw[start : match.start()].strip())
         start = match.end()
     if start < len(raw):
         parts.append(raw[start:].strip())
-    if not parts:
-        parts = [raw]
-
-    org_l = (org or "").lower()
-    ordered = parts
-    if org_l:
-        with_org = [p for p in parts if org_l in p.lower()]
-        if with_org:
-            ordered = with_org + [p for p in parts if p not in with_org]
-
-    for part in ordered:
+    for part in parts:
         candidate = part.strip(" .,;|")
-        if not candidate or "|" in candidate:
-            continue
-        if len(candidate) > max_len:
-            continue
-        if org_l:
-            # Subject must mention the organization when we know the name.
-            if org_l not in candidate.lower():
-                # Allow first token of multi-word org names
-                token = org_l.split()[0]
-                if len(token) < 3 or token not in candidate.lower():
-                    continue
-        # Skip pure nav noise
-        if is_section_noise_label(candidate):
-            continue
-        return candidate[:max_len]
+        if (
+            candidate
+            and "|" not in candidate
+            and len(candidate) <= max_len
+            and _mentions_name(candidate, org)
+            and _definitional_type(org, candidate)
+        ):
+            return candidate
     return ""
+
+
+def _mentions_name(text: str, name: str) -> bool:
+    """Match a complete identity phrase, never an arbitrary first token."""
+    text_tokens = [t.casefold() for t in _WORD.findall(text)]
+    name_tokens = [t.casefold() for t in _WORD.findall(name)]
+    if not text_tokens or not name_tokens:
+        return False
+    width = len(name_tokens)
+    if any(
+        text_tokens[i : i + width] == name_tokens
+        for i in range(len(text_tokens) - width + 1)
+    ):
+        return True
+    # Permit punctuation/spacing differences for a substantial compact name,
+    # but never degrade a multi-word identity to one common word.
+    compact_name = "".join(name_tokens)
+    compact_text = "".join(text_tokens)
+    return len(compact_name) >= 6 and compact_name in compact_text
 
 
 def _is_ungrounded_placeholder(label: str, evidence_text: str) -> bool:

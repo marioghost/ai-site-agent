@@ -1,6 +1,8 @@
 """Confidence scoring engine with explainable evidence weights."""
 from __future__ import annotations
 
+import math
+
 from app.services.knowledge_profile_generation.models import EvidenceItem
 
 _ORG_SOURCE_WEIGHTS: dict[str, float] = {
@@ -94,8 +96,37 @@ class ConfidenceEngine:
 
         return min(1.0, score / 100.0), evidence
 
-    def hint_score(self, page_count: int, pattern_strength: float) -> float:
-        return min(1.0, (page_count * 5 + pattern_strength * 40) / 100.0)
+    def hint_score(
+        self,
+        page_count: int,
+        pattern_strength: float,
+        *,
+        total_pages: int,
+    ) -> float:
+        if page_count <= 0 or total_pages <= 0:
+            return 0.0
+        support = math.log1p(page_count) / math.log1p(total_pages)
+        evidence_quality = min(1.0, max(0.0, pattern_strength))
+        return min(1.0, evidence_quality * 0.75 + support * 0.25)
+
+    def understanding_topic_score(
+        self,
+        *,
+        concept_confidence: float,
+        evidence_count: int,
+        max_evidence_count: int,
+    ) -> float:
+        """Combine semantic confidence with corpus support.
+
+        Log support prevents very large repeated content families from
+        overwhelming semantically stronger concepts.
+        """
+        if evidence_count <= 0:
+            return 0.0
+        denominator = math.log1p(max(max_evidence_count, 1))
+        support = math.log1p(evidence_count) / denominator
+        semantic = min(1.0, max(0.0, concept_confidence))
+        return min(1.0, semantic * 0.75 + support * 0.25)
 
     def distribution(self, values: list[float]) -> dict[str, float]:
         if not values:

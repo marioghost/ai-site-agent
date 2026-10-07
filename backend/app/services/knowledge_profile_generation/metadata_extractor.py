@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from urllib.parse import urlparse
 
 from app.services.knowledge_profile_generation.models import (
     MetadataDataset,
@@ -47,10 +48,18 @@ class WebsiteMetadataExtractor:
         org_counter: Counter[str] = Counter()
         all_phones: list[str] = []
         all_emails: list[str] = []
+        resolved_site_url = site_url or self._dominant_site_url(pages)
 
         for page in pages:
-            full_text = "\n".join(page.texts)
-            raw_join = "\n".join([page.title] + page.headings + page.texts)
+            main_text = page.main_text or "\n".join(page.texts)
+            full_text = "\n".join(
+                part for part in (main_text, page.footer_text) if part
+            )
+            raw_join = "\n".join(
+                part
+                for part in ([page.title] + page.headings + [main_text, page.footer_text])
+                if part
+            )
 
             h1 = page.headings[0] if page.headings else ""
             h2_list = page.headings[1:6] if len(page.headings) > 1 else []
@@ -78,7 +87,9 @@ class WebsiteMetadataExtractor:
                 currency=self._guess_currency(full_text),
             )
 
-            meta.meta_description = self._first_sentence(full_text, 240)
+            # This is an extracted content summary, not an HTML meta tag.
+            # Keep it page-local and free of repeated footer/navigation text.
+            meta.meta_description = self._first_sentence(main_text, 240)
             meta.schema_org_names = _SCHEMA_ORG_NAME_RE.findall(raw_join)
             meta.json_ld_names = self._json_ld_names(raw_join)
             meta.og_site_name = (_OG_SITE_RE.search(raw_join) or [None, ""])[1]
@@ -99,11 +110,21 @@ class WebsiteMetadataExtractor:
 
         return MetadataDataset(
             pages=meta_pages,
-            site_url=site_url,
+            site_url=resolved_site_url,
             aggregated_phones=sorted(set(all_phones))[:20],
             aggregated_emails=sorted(set(all_emails))[:20],
             aggregated_org_mentions=dict(org_counter.most_common(50)),
         )
+
+    @staticmethod
+    def _dominant_site_url(pages: list[PageRecord]) -> str:
+        """Infer corpus origin when Settings.site_url is absent."""
+        origins: Counter[str] = Counter()
+        for page in pages:
+            parsed = urlparse(page.url)
+            if parsed.scheme and parsed.netloc:
+                origins[f"{parsed.scheme}://{parsed.netloc}"] += 1
+        return origins.most_common(1)[0][0] if origins else ""
 
     def _nav_labels(self, page: PageRecord) -> list[str]:
         labels: list[str] = []

@@ -8,12 +8,16 @@ from copy import deepcopy
 from app.models.settings import Settings
 from app.schemas.knowledge_profile import ImportantTopic, KnowledgeProfile
 from app.services.knowledge_profile_generation.alias_utils import dedupe_topic_aliases
+from app.services.knowledge_profile_generation.lexical_grounding import labels_overlap
 from app.services.knowledge_profile_generation.models import (
     DetectedOrganization,
     DiscoveredTopic,
     PipelineContext,
 )
-from app.services.knowledge_profile_generation.site_identity import ground_topic_label
+from app.services.knowledge_profile_generation.site_identity import (
+    ground_topic_label,
+    is_grounded_in_evidence,
+)
 from app.services.ollama_service import OllamaError, OllamaService
 
 
@@ -36,35 +40,45 @@ class LlmRefiner:
             ],
             "site_subject": ctx.profile.site_subject,
             "entity_type": ctx.profile.entity_type,
-            "statistics": ctx.statistics.model_dump() if ctx.statistics else {},
-            "entities": [e.model_dump() for e in ctx.entities[:30]],
+            "identity_evidence": [
+                str(text)[:350]
+                for text in ctx.extras.get("identity_evidence_snippets", [])[:6]
+            ],
             "topic_candidates": [
                 {
                     "id": t.id,
                     "title": t.title,
-                    "aliases": t.aliases,
                     "page_count": t.page_count,
-                    "description": t.description,
                 }
                 for t in ctx.topics
             ],
             "allowed_topic_ids": allowed_topic_ids,
-            "allowed_content_hints": allowed_hints,
-            "current_profile": ctx.profile.model_dump(),
         }
 
         system = (
-            "You refine a KnowledgeProfile JSON for a website RAG agent. "
-            "Return ONLY valid JSON with the same top-level schema as current_profile. "
+            "You refine site identity and topic selection from supplied evidence. "
+            "Return ONLY compact JSON with this exact shape: "
+            '{"site_subject":"...", "entity_type":"...", '
+            '"topic_keys":["existing-id"], "topic_labels":{"existing-id":"grounded label"}}. '
             "RULES: "
-            "1) Do NOT change organization_name, site_subject, or entity_type. "
+            "1) Do NOT change organization_name. "
+            "You MAY improve site_subject and entity_type only when identity_evidence "
+            "or recurring topic_candidates support the result; describe the site's "
+            "enduring identity, never episodic or page-local content. "
+            "entity_type must be the most specific enduring kind supported by the "
+            "evidence; do not keep a generic type when the corpus clearly supports a "
+            "more specific one. Return entity_type as a concise entity class, not a "
+            "relationship phrase or page-content type. "
             "2) Do NOT invent new important_topics keys — only use allowed_topic_ids. "
             "3) Do NOT reference content hints outside allowed_content_hints. "
             "4) You MAY improve topic labels only using words that appear in topic_candidates. "
-            "5) Do NOT invent URLs or document types not in the input. "
-            "6) Do NOT replace labels with generic English like 'About the organization'."
+            "Keep a compact set of semantically distinct, enduring knowledge areas; "
+            "omit duplicate formulations, document formats, and temporary events. "
+            "Prefer 4–8 distinct topics when that many are supported; do not collapse "
+            "unrelated areas merely to shorten the list. "
+            "5) Do NOT replace labels with generic English like 'About the organization'."
         )
-        user = json.dumps(summary, ensure_ascii=False)[:14000]
+        user = json.dumps(summary, ensure_ascii=False)[:6000]
 
         try:
             ollama = OllamaService(timeout=settings.ollama_generation_timeout_seconds)
@@ -73,27 +87,69 @@ class LlmRefiner:
                 system,
                 user,
                 temperature=0.15,
-                max_tokens=4096,
+                max_tokens=1536,
             )
         except OllamaError as exc:
             return ctx.profile, {"llm_tokens": 0, "llm_used": False, "llm_error": str(exc)}
 
-        cleaned = raw.content.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = self._json_object(raw.content)
 
         try:
             data = json.loads(cleaned)
-            refined = KnowledgeProfile.model_validate(data)
-        except (json.JSONDecodeError, ValueError):
-            return ctx.profile, {"llm_tokens": len(user.split()), "llm_used": False, "llm_parse_error": True}
+            if not isinstance(data, dict):
+                raise ValueError("LLM response is not an object")
+            refined = self._apply_patch(ctx.profile, data)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return ctx.profile, {
+                "llm_tokens": raw.prompt_eval_count + raw.eval_count,
+                "llm_used": False,
+                "llm_parse_error": True,
+            }
 
         refined = self._enforce_constraints(refined, ctx, allowed_topic_ids, allowed_hints)
         return refined, {
-            "llm_tokens": len(user.split()) + len(raw.split()),
+            "llm_tokens": raw.prompt_eval_count + raw.eval_count,
             "llm_used": True,
         }
+
+    @staticmethod
+    def _json_object(content: str) -> str:
+        cleaned = (content or "").strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        return cleaned[start : end + 1] if start >= 0 and end > start else cleaned
+
+    @staticmethod
+    def _apply_patch(profile: KnowledgeProfile, data: dict) -> KnowledgeProfile:
+        refined = deepcopy(profile)
+        if isinstance(data.get("site_subject"), str):
+            refined.site_subject = data["site_subject"].strip()[:160]
+        if isinstance(data.get("entity_type"), str):
+            refined.entity_type = data["entity_type"].strip()[:80]
+
+        labels = data.get("topic_labels")
+        labels = labels if isinstance(labels, dict) else {}
+        requested = data.get("topic_keys")
+        requested = requested if isinstance(requested, list) else []
+        topics_by_key = {topic.key: topic for topic in refined.important_topics}
+        selected: list[ImportantTopic] = []
+        seen: set[str] = set()
+        for raw_key in requested:
+            key = str(raw_key)
+            if key in seen or key not in topics_by_key:
+                continue
+            seen.add(key)
+            topic = topics_by_key[key]
+            proposed = labels.get(key)
+            if isinstance(proposed, str) and proposed.strip():
+                topic = topic.model_copy(update={"label": proposed.strip()[:80]})
+            selected.append(topic)
+        if selected:
+            refined.important_topics = selected
+        return refined
 
     def _enforce_constraints(
         self,
@@ -110,10 +166,23 @@ class LlmRefiner:
             profile.site_display_name = ctx.organization.name
             profile.organization_aliases = list(ctx.organization.aliases)
 
-        # Identity is inferred deterministically — never trust LLM rewrites.
+        # Organization is deterministic. LLM identity refinements survive only
+        # when their vocabulary is grounded in the selected site evidence.
         if ctx.profile is not None:
-            profile.site_subject = ctx.profile.site_subject
-            profile.entity_type = ctx.profile.entity_type
+            identity_evidence = list(
+                ctx.extras.get("identity_evidence_snippets", [])
+            )
+            if not is_grounded_in_evidence(
+                profile.site_subject,
+                identity_evidence,
+            ):
+                profile.site_subject = ctx.profile.site_subject
+            if not is_grounded_in_evidence(
+                profile.entity_type,
+                identity_evidence,
+                minimum_token_coverage=0.5,
+            ):
+                profile.entity_type = ctx.profile.entity_type
 
         filtered_topics: list[ImportantTopic] = []
         topic_map = {t.id: t for t in ctx.topics}
@@ -140,7 +209,6 @@ class LlmRefiner:
                 [
                     src.title if src else "",
                     " ".join(src.aliases) if src else "",
-                    topic.label,
                 ]
             )
             label = ground_topic_label(
@@ -148,6 +216,14 @@ class LlmRefiner:
                 evidence_text=evidence,
                 fallback=(src.title if src else topic.key.replace("_", " ")),
             )
+            if src and not is_grounded_in_evidence(
+                label,
+                [evidence],
+                minimum_token_coverage=0.5,
+            ):
+                label = src.title
+            if any(labels_overlap(label, item.label) for item in filtered_topics):
+                continue
             filtered_topics.append(
                 topic.model_copy(
                     update={

@@ -67,7 +67,7 @@ def test_derive_site_subject_rejects_polluted_homepage():
     )
     assert derive_site_subject(organization_name=org, homepage_texts=[polluted]) == ""
 
-    clean = "UKRSIBBANK provides banking services for teams."
+    clean = "UKRSIBBANK is a bank providing services for teams."
     subject = derive_site_subject(organization_name=org, homepage_texts=[clean])
     assert "UKRSIBBANK" in subject
     assert "|" not in subject
@@ -158,7 +158,7 @@ def test_assembler_uses_generic_base_not_industry_preset():
                 url="https://example.com/",
                 title="Home",
                 path_segments=[],
-                texts=["Acme builds software for teams."],
+                texts=["Acme is a software company for teams."],
                 is_homepage=True,
             )
         ],
