@@ -80,11 +80,13 @@ def test_compact_prompt_is_shorter_than_legacy_style():
     combined = len(system) + len(user)
     assert combined < 2500
     assert "Evidence:" in user
-    assert "Task:" not in user
+    assert "OUTPUT_LANGUAGE=uk" in user
     assert "AI-помічник цього вебсайту" in system
     assert "Sources" in system
     # Admin system_prompt is primary when set.
-    settings_custom = type("S", (), {"system_prompt": "CUSTOM ADMIN SYSTEM PROMPT"})()
+    settings_custom = type(
+        "S", (), {"system_prompt": "CUSTOM ADMIN SYSTEM PROMPT", "default_response_language": "en"}
+    )()
     system2, user2 = CompactPromptBuilder.build(
         message="What is this?",
         hits=hits,
@@ -92,7 +94,8 @@ def test_compact_prompt_is_shorter_than_legacy_style():
         intent="entity_overview",
         settings=settings_custom,
         org_name="Example",
+        response_language="en",
     )
     assert system2 == "CUSTOM ADMIN SYSTEM PROMPT"
-    assert "Task:" not in user2
+    assert "OUTPUT_LANGUAGE=en" in user2
     assert "Question: What is this?" in user2

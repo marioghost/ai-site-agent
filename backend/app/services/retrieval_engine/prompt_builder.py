@@ -28,6 +28,7 @@ class CompactPromptBuilder:
         answer_plan: AnswerPlan | None = None,
         additional_guidance: list[str] | None = None,
         intent: str = "",
+        response_language: str | None = None,
     ) -> tuple[str, str]:
         _ = org_name, intent
 
@@ -45,13 +46,25 @@ class CompactPromptBuilder:
             instruction = cls._default_instruction(intent)
         if instruction:
             parts.append(f"Instruction: {instruction}")
-        task_lines = cls._task_lines(answer_plan, additional_guidance or [])
+        # Pass Settings.default_response_language (or speech-plan override) as a
+        # typed code only — no engine language phrase tables. Wording lives in
+        # Settings.system_prompt.
+        lang = cls._resolve_output_language(settings, response_language)
+        guidance = [f"OUTPUT_LANGUAGE={lang}", *(additional_guidance or [])]
+        task_lines = cls._task_lines(answer_plan, guidance)
         if task_lines:
             parts.append("Task:\n" + "\n".join(f"- {line}" for line in task_lines))
         parts.append(f"Question: {message.strip()}")
         parts.append("Answer:")
         user = "\n\n".join(parts)
         return system, user
+
+    @staticmethod
+    def _resolve_output_language(settings, response_language: str | None) -> str:
+        """Normalize Settings.default_response_language (uk|en only in admin UI)."""
+        configured = getattr(settings, "default_response_language", None) or "uk"
+        raw = str(response_language or configured or "uk").lower().strip()
+        return "en" if raw.startswith("en") else "uk"
 
     @classmethod
     def resolve_system_prompt(cls, settings) -> str:

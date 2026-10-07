@@ -198,6 +198,7 @@ class LlmGenerationService:
             settings=self.settings,
             answer_plan=compact_plan,
             additional_guidance=additional_guidance,
+            response_language=getattr(self.settings, "default_response_language", None),
         )
         _, compact_user = CompactPromptBuilder.truncate_prompts(
             system_prompt, compact_user, max_prompt

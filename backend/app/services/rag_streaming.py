@@ -1133,6 +1133,9 @@ class RagStreamingService:
             ),
             answer_plan=planner_decision.answer_plan if planner_decision else None,
             additional_guidance=(answer_guidance or {}).get("guidance_lines"),
+            response_language=(
+                speech_plan.response_language if speech_plan else language
+            ),
         )
         prompt_build_ms = int((perf_counter() - t_prompt) * 1000)
         prompt_chars = len(gen_system) + len(gen_user) + 2

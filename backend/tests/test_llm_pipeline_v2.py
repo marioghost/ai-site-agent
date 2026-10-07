@@ -49,6 +49,29 @@ def test_prompt_builder_excludes_debug_trace():
     assert "trace_steps" not in combined.lower()
 
 
+def test_prompt_builder_passes_settings_output_language():
+    settings = Settings(default_response_language="uk", system_prompt="")
+    _, user = CompactPromptBuilder.build(
+        message="кредит готівкою",
+        hits=[],
+        built_context=None,
+        settings=settings,
+        intent="product_query",
+    )
+    assert "OUTPUT_LANGUAGE=uk" in user
+    assert user.index("OUTPUT_LANGUAGE=uk") < user.index("Question:")
+
+    _, user_en = CompactPromptBuilder.build(
+        message="cash loan",
+        hits=[],
+        built_context=None,
+        settings=Settings(default_response_language="en"),
+        response_language="en",
+    )
+    assert "OUTPUT_LANGUAGE=en" in user_en
+    assert "OUTPUT_LANGUAGE=uk" not in user_en
+
+
 def test_prompt_builder_respects_max_prompt_chars_via_mode():
     fast = Settings(fast_mode_enabled=True)
     hq = Settings(llm_mode_profile="high_quality")
