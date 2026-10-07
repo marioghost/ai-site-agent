@@ -12,16 +12,39 @@
 
 | Wave | Status |
 |------|--------|
-| A Runtime Truth | **PASS** on prod (`site_url`, Settings singleton, KP retained) |
-| B SI / KU Phase 0 | **PASS** — indexed SI v3=4325; READY snap id=5 KV=38 |
-| C Phase 1 shadow | **VALIDATED** — zero ranking interference; metrics recorded |
+| A Runtime Truth | **PASS** |
+| B SI / KU Phase 0 | **PASS** — SI v3=4325/4325; READY snap **id=7 KV=40** (3522 concepts / 9371 evidence) |
+| C Phase 1 shadow | **VALIDATED** — observe-only; warm p50≈24ms after cache |
+| D Product quality completion | **PASS with accepted debt** — Ask retrieval P1 classes fixed generically |
 
-Deploy identity `6bbe2f9` verified. Code fix after tip requires one more `deploy full` for Understanding builder.
+Architecture Contract 1.0 remains frozen. Phase 2 ranking assist was **not** implemented.
 
 ---
 
-## Next
+## Product quality completion (this wave)
 
-1. Deploy tip containing entity-echo concept filter  
-2. Product Ask-quality acceptance (separate from Phase 1)  
-3. Phase 2 assist — explicit decision only
+Generic fixes (no tenant hardcode):
+
+- SI structural topic rejection + Understanding content-kind entity echo filter
+- Phase 1 shadow process-local READY snapshot cache + vectorized resolve
+- Lexical morphology for FTS `simple` (inflected query tokens)
+- News/promo flood refill via purpose→document_type exclusion
+- QueryUnderstanding: UK org overview, rates→pricing, locator/policy expectations
+- Focus/authority: career false-positive on «Робота відділення»; product-path vs locator; packer protects exact-match evidence
+- Answer-trace UniqueViolation no longer poisons the DB session
+
+---
+
+## Remaining (classified)
+
+| Class | Items |
+|-------|--------|
+| ACCEPTED DEBT | EN overview can still latch onto charity/service pages; org “benefits” leans awards; life-insurance has no stable non-news product page |
+| CORPUS OPS | 669 pending, 21 errors, ~3397 refresh-due — triage separately |
+| PHASE 2+ | Ranking assist; ANN; sub-250ms cold-start without process cache |
+
+---
+
+## Release decision
+
+See live acceptance report — recommend **close Release 1.1**.
