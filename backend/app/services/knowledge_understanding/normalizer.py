@@ -17,6 +17,11 @@ _TOKEN_RE = re.compile(r"[\w\u0400-\u04FF]+", re.UNICODE)
 # Cooperative progress while comparing pairs (large corpora).
 _PROGRESS_EVERY_PAIRS = 25_000
 _PROGRESS_EVERY_SECONDS = 2.0
+# Above this unique-component count, use token-block candidates instead of
+# full pairwise (embedding similarity remains the merge authority).
+_FULL_PAIRWISE_MAX = 2500
+# Skip high-DF tokens when building token-block candidates.
+_MAX_TOKEN_DF = 48
 
 
 class ConceptNormalizeStopped(Exception):
@@ -165,11 +170,34 @@ class ConceptNormalizer:
                 },
             )
 
-        # Phase 2 — fuzzy merge only across different components.
-        # Skip pairs that cannot merge (exact already united; single-token distinct).
-        n = len(items)
+        # Phase 2 — fuzzy merge. Small corpora: full pairwise (embedding is
+        # sole merge authority). Large corpora: token-block candidates so
+        # rebuild finishes in production time (exact merge already ran).
+        reps = sorted({find(i) for i in range(len(items))})
+        use_token_block = len(reps) > _FULL_PAIRWISE_MAX
+        merge_strategy = "token_block" if use_token_block else "full_pairwise"
+
+        candidate_pairs: set[tuple[int, int]] | None = None
+        if use_token_block:
+            inv: dict[str, list[int]] = {}
+            for i in reps:
+                for tok in token_sets[i]:
+                    inv.setdefault(tok, []).append(i)
+            # High-DF tokens create near-O(n²) blocks; skip for candidates only.
+            candidate_pairs = set()
+            for idxs in inv.values():
+                if len(idxs) < 2 or len(idxs) > _MAX_TOKEN_DF:
+                    continue
+                idxs_sorted = sorted(idxs)
+                for a_i, i in enumerate(idxs_sorted):
+                    for j in idxs_sorted[a_i + 1 :]:
+                        candidate_pairs.add((i, j))
+
         pairs_checked = 0
-        pairs_total_est = max(1, n * (n - 1) // 2)
+        if candidate_pairs is not None:
+            pairs_total_est = max(1, len(candidate_pairs))
+        else:
+            pairs_total_est = max(1, len(reps) * (len(reps) - 1) // 2)
         last_progress_at = time.monotonic()
 
         def maybe_progress(force: bool = False) -> None:
@@ -192,51 +220,55 @@ class ConceptNormalizer:
                     "understanding_merge_checks": pairs_checked,
                     "understanding_merge_checks_est": pairs_total_est,
                     "understanding_unique_labels": len(first_by_label),
+                    "understanding_merge_strategy": merge_strategy,
                 },
             )
 
-        for i in range(n):
-            if should_stop and should_stop():
-                raise ConceptNormalizeStopped()
-            ri = find(i)
-            ti = token_sets[i]
-            single_i = len(ti) == 1
-            for j in range(i + 1, n):
-                pairs_checked += 1
-                if find(j) == ri:
-                    continue
-                # Distinct single-token labels never fuzzy-merge — skip cosine.
-                if single_i and len(token_sets[j]) == 1:
-                    continue
-                if labels_l[i] == labels_l[j]:
-                    union(i, j)
-                    ri = find(i)
-                    continue
-                na, nb = norms[i], norms[j]
-                if na <= 0.0 or nb <= 0.0:
+        def try_fuzzy_merge(i: int, j: int) -> None:
+            if find(i) == find(j):
+                return
+            # Distinct single-token labels never fuzzy-merge — skip cosine.
+            if len(token_sets[i]) == 1 and len(token_sets[j]) == 1:
+                return
+            na, nb = norms[i], norms[j]
+            if na <= 0.0 or nb <= 0.0:
+                sim = 0.0
+            else:
+                emb_i, emb_j = embeddings[i], embeddings[j]
+                if len(emb_i) != len(emb_j):
                     sim = 0.0
                 else:
-                    # Inline cosine with cached norms (identical math to cosine()).
-                    emb_i, emb_j = embeddings[i], embeddings[j]
-                    if len(emb_i) != len(emb_j):
-                        sim = 0.0
-                    else:
-                        dot = 0.0
-                        for x, y in zip(emb_i, emb_j):
-                            dot += x * y
-                        sim = dot / (na * nb)
-                if should_merge_labels(
-                    labels[i],
-                    labels[j],
-                    sim,
-                    threshold=self._threshold,
-                ):
-                    union(i, j)
-                    ri = find(i)
-                if pairs_checked % 4096 == 0:
-                    maybe_progress()
-                    if should_stop and should_stop():
-                        raise ConceptNormalizeStopped()
+                    dot = 0.0
+                    for x, y in zip(emb_i, emb_j):
+                        dot += x * y
+                    sim = dot / (na * nb)
+            if should_merge_labels(
+                labels[i],
+                labels[j],
+                sim,
+                threshold=self._threshold,
+            ):
+                union(i, j)
+
+        if candidate_pairs is not None:
+            pair_iter = iter(candidate_pairs)
+        else:
+            def _full_pairs():
+                for a, i in enumerate(reps):
+                    for j in reps[a + 1 :]:
+                        yield i, j
+
+            pair_iter = _full_pairs()
+
+        for i, j in pair_iter:
+            if should_stop and should_stop():
+                raise ConceptNormalizeStopped()
+            pairs_checked += 1
+            try_fuzzy_merge(i, j)
+            if pairs_checked % 4096 == 0:
+                maybe_progress()
+                if should_stop and should_stop():
+                    raise ConceptNormalizeStopped()
 
         maybe_progress(force=True)
 

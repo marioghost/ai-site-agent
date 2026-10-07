@@ -108,6 +108,26 @@ def test_normalize_respects_cooperative_stop():
         ConceptNormalizer(embed_fn=_embed).normalize(raw, should_stop=lambda: True)
 
 
+def test_token_block_merges_shared_token_near_duplicates(monkeypatch):
+    """Large corpora use token-block candidates; shared-token aliases still merge."""
+    import app.services.knowledge_understanding.normalizer as norm_mod
+
+    monkeypatch.setattr(norm_mod, "_FULL_PAIRWISE_MAX", 2)
+    raw = [
+        RawConcept(label="API authentication", confidence=0.9, source_id=1),
+        RawConcept(label="API auth guide", confidence=0.8, source_id=2),
+        RawConcept(label="Privacy policy", confidence=0.95, source_id=3),
+        RawConcept(label="Getting started", confidence=0.7, source_id=4),
+    ]
+    concepts = ConceptNormalizer(embed_fn=_embed, merge_threshold=0.88).normalize(raw)
+    labels = {c.label for c in concepts}
+    assert "Privacy policy" in labels
+    # Shared-token near-duplicates should merge under token_block.
+    api = [c for c in concepts if "api" in c.label.lower() or "auth" in c.label.lower()]
+    assert len(api) == 1
+    assert len(api[0].members) >= 2
+
+
 def test_normalizer_module_has_no_domain_synonym_tables():
     src_path = Path(__file__).resolve().parents[1] / (
         "app/services/knowledge_understanding/normalizer.py"
